@@ -28,14 +28,26 @@ const DEFAULT_SERIALIZE_OPTIONS: SerializeOptions = {
 };
 
 let serializeFailureMock = false;
+let parseFailureMock = false;
 
 /** Test hook for TC-056. */
 export function setSerializeFailureMock(enabled: boolean): void {
   serializeFailureMock = enabled;
 }
 
+/** Test hook for TC-078 / TC-079 (Raw parse failure). */
+export function setParseFailureMock(enabled: boolean): void {
+  parseFailureMock = enabled;
+}
+
 /** Parse Markdown string into TipTap document model. */
 export function parseMarkdown(markdown: string): TipTapDoc {
+  if (parseFailureMock) {
+    throw new Error('Parse failure (mocked)');
+  }
+  if (markdown.includes('\0')) {
+    throw new Error('Invalid markdown: null byte');
+  }
   const tree = fromMarkdown(markdown, {
     extensions: [gfmTable()],
     mdastExtensions: [gfmTableFromMarkdown()],
@@ -173,6 +185,16 @@ function phrasingToTipTap(nodes: PhrasingContent[]): TipTapNode[] {
           marks: [{ type: 'link', attrs: { href: node.url, target: '_blank' } }],
         });
         break;
+      case 'image':
+        result.push({
+          type: 'image',
+          attrs: {
+            src: node.url,
+            alt: node.alt ?? '',
+            title: node.title ?? null,
+          },
+        });
+        break;
       case 'html':
         result.push({ type: 'text', text: node.value });
         break;
@@ -203,6 +225,11 @@ function gfmTableToHtmlTable(table: Table): TipTapNode {
 function htmlToTipTap(node: Html): TipTapNode {
   const sanitized = sanitizeHtml(node.value);
   if (/<table[\s>]/i.test(sanitized)) {
+    const parsed = parseHtmlTableToTipTap(sanitized);
+    if (parsed) {
+      return parsed;
+    }
+    // Fallback: keep raw HTML only when structure cannot be recovered
     return {
       type: 'table',
       attrs: { html: sanitized, gfmSource: false, converted: true },
@@ -213,6 +240,90 @@ function htmlToTipTap(node: Html): TipTapNode {
     type: 'htmlBlock',
     attrs: { html: sanitized },
   };
+}
+
+/**
+ * Parse HTML `<table>` into an editable TipTap table model (AD-005).
+ * Prefer structured rows/cells over atom htmlBlock so WYSIWYG edits persist.
+ */
+function parseHtmlTableToTipTap(html: string): TipTapNode | null {
+  const rowMatches = [...html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)];
+  if (rowMatches.length === 0) {
+    return null;
+  }
+  const rows: TipTapNode[] = [];
+  for (const rowMatch of rowMatches) {
+    const cellsHtml = rowMatch[1] ?? '';
+    const cellMatches = [...cellsHtml.matchAll(/<(td|th)\b[^>]*>([\s\S]*?)<\/\1>/gi)];
+    if (cellMatches.length === 0) {
+      continue;
+    }
+    const cells: TipTapNode[] = cellMatches.map((cellMatch) => {
+      const tag = (cellMatch[1] ?? 'td').toLowerCase();
+      const inner = cellMatch[2] ?? '';
+      const cellType = tag === 'th' ? 'tableHeader' : 'tableCell';
+      return {
+        type: cellType,
+        content: htmlCellInnerToTipTap(inner),
+      };
+    });
+    rows.push({ type: 'tableRow', content: cells });
+  }
+  if (rows.length === 0) {
+    return null;
+  }
+  return {
+    type: 'table',
+    attrs: { gfmSource: false, converted: true },
+    content: rows,
+  };
+}
+
+function htmlCellInnerToTipTap(inner: string): TipTapNode[] {
+  const listMatch = inner.match(/<ul\b[^>]*>([\s\S]*?)<\/ul>/i);
+  if (listMatch) {
+    const items = [...listMatch[1].matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi)].map((m) => {
+      const checked = /type\s*=\s*["']?checkbox/i.test(m[1]) && /\bchecked\b/i.test(m[1]);
+      const text = stripHtmlTags(m[1]).trim();
+      if (/type\s*=\s*["']?checkbox/i.test(m[1])) {
+        return {
+          type: 'taskItem',
+          attrs: { checked },
+          content: [{ type: 'paragraph', content: text ? [{ type: 'text', text }] : [] }],
+        };
+      }
+      return {
+        type: 'listItem',
+        content: [{ type: 'paragraph', content: text ? [{ type: 'text', text }] : [] }],
+      };
+    });
+    const isTask = items.some((i) => i.type === 'taskItem');
+    return [
+      {
+        type: isTask ? 'taskList' : 'bulletList',
+        content: items,
+      },
+    ];
+  }
+  const withBreaks = inner.replace(/<br\s*\/?>/gi, '\n');
+  const text = stripHtmlTags(withBreaks);
+  const lines = text.split('\n');
+  if (lines.length <= 1) {
+    return [
+      {
+        type: 'paragraph',
+        content: text ? [{ type: 'text', text }] : [],
+      },
+    ];
+  }
+  return lines.map((line) => ({
+    type: 'paragraph',
+    content: line ? [{ type: 'text', text: line }] : [],
+  }));
+}
+
+function stripHtmlTags(html: string): string {
+  return html.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
 }
 
 function extractRawText(node: Content): string {
@@ -280,6 +391,18 @@ function tipTapNodeToMdast(node: TipTapNode): Content | undefined {
       return { type: 'html', value: (node.attrs?.html as string) ?? '' };
     case 'horizontalRule':
       return { type: 'thematicBreak' };
+    case 'image':
+      return {
+        type: 'paragraph',
+        children: [
+          {
+            type: 'image',
+            url: (node.attrs?.src as string) ?? '',
+            alt: (node.attrs?.alt as string) ?? '',
+            title: (node.attrs?.title as string | null | undefined) ?? null,
+          },
+        ],
+      };
     case 'taskList':
       return {
         type: 'list',
@@ -305,6 +428,15 @@ function tipTapNodeToMdast(node: TipTapNode): Content | undefined {
 function tipTapPhrasingToMdast(nodes: TipTapNode[]): PhrasingContent[] {
   const result: PhrasingContent[] = [];
   for (const node of nodes) {
+    if (node.type === 'image') {
+      result.push({
+        type: 'image',
+        url: (node.attrs?.src as string) ?? '',
+        alt: (node.attrs?.alt as string) ?? '',
+        title: (node.attrs?.title as string | null | undefined) ?? null,
+      });
+      continue;
+    }
     if (node.type !== 'text' || !node.text) {
       continue;
     }
@@ -331,6 +463,11 @@ function tipTapPhrasingToMdast(nodes: TipTapNode[]): PhrasingContent[] {
 }
 
 function tableToHtmlBlock(node: TipTapNode): Html {
+  // Prefer live TipTap table content so WYSIWYG edits are persisted (AD-005).
+  if (node.content && node.content.length > 0) {
+    const html = tipTapTableToHtml(node);
+    return { type: 'html', value: '\n' + html + '\n' };
+  }
   if (node.attrs?.html && typeof node.attrs.html === 'string') {
     return { type: 'html', value: '\n' + node.attrs.html + '\n' };
   }
@@ -376,7 +513,7 @@ function tipTapTableToHtml(node: TipTapNode): string {
   return sanitizeHtml(html);
 }
 
-/** Convert GFM table node to HTML table on first edit (TC-019). */
+/** Convert GFM table node to HTML-backed editable table on first edit (TC-019 / AD-005). */
 export function convertGfmTableToHtml(doc: TipTapDoc): TipTapDoc {
   const content = doc.content.map((node) => {
     if (node.type === 'table' && node.attrs?.gfmSource && !node.attrs?.converted) {
@@ -384,7 +521,8 @@ export function convertGfmTableToHtml(doc: TipTapDoc): TipTapDoc {
       return {
         type: 'table',
         attrs: { html, gfmSource: false, converted: true },
-        content: [],
+        // Keep row/cell content so TipTap can edit; do not collapse to atom htmlBlock.
+        content: node.content ?? [],
       };
     }
     return node;

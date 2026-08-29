@@ -14,6 +14,40 @@ body {
   flex-direction: column;
 }
 
+#mode-toolbar {
+  display: flex;
+  gap: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-editorWidget-background);
+}
+
+#mode-toolbar button {
+  background: transparent;
+  color: var(--vscode-foreground);
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: inherit;
+}
+
+#mode-toolbar button:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+#mode-toolbar button.active {
+  border-bottom-color: var(--vscode-focusBorder);
+  color: var(--vscode-foreground);
+  font-weight: 600;
+}
+
+/* Mode toolbar stays clickable under file RO (mode switch / Preview viewing). */
+body[data-readonly='true'] #mode-toolbar {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 #toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -41,21 +75,49 @@ body[data-readonly='true'] #toolbar {
   pointer-events: none;
 }
 
-#table-warning {
+#table-warning,
+#raw-parse-banner {
   background: var(--vscode-inputValidation-warningBackground);
   color: var(--vscode-inputValidation-warningForeground);
   border-bottom: 1px solid var(--vscode-inputValidation-warningBorder);
   padding: 8px 12px;
 }
 
-#table-warning.hidden {
-  display: none;
+#raw-parse-banner {
+  background: var(--vscode-inputValidation-errorBackground);
+  color: var(--vscode-inputValidation-errorForeground);
+  border-bottom-color: var(--vscode-inputValidation-errorBorder);
+}
+
+#table-warning.hidden,
+#raw-parse-banner.hidden,
+.hidden {
+  display: none !important;
 }
 
 #editor {
   flex: 1;
   overflow: auto;
   padding: 16px 24px;
+}
+
+#raw-editor {
+  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
+  border: none;
+  resize: none;
+  padding: 16px 24px;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+  outline: none;
+}
+
+#raw-editor:read-only {
+  opacity: 0.9;
+  cursor: default;
 }
 
 .ProseMirror {
@@ -121,6 +183,11 @@ body[data-readonly='true'] #toolbar {
   background: var(--vscode-editorWidget-background);
 }
 
+.ProseMirror img {
+  max-width: 100%;
+  height: auto;
+}
+
 .mermaid-block {
   border: 1px solid var(--vscode-panel-border);
   border-radius: 4px;
@@ -156,4 +223,8 @@ body[data-readonly='true'] #toolbar {
 
 .ProseMirror[contenteditable='false'] {
   opacity: 0.95;
+}
+
+body[data-mode='preview'] #toolbar {
+  display: none;
 }

@@ -33,7 +33,8 @@
 1. リポジトリを VS Code で開く
 2. `npm run compile` で Extension Host / Webview をビルド（esbuild — AD-011）
 3. **Run and Debug** パネルから **Run Extension** を選択して F5
-4. 起動した Extension Development Host で `.md` を開き、Custom Editor が表示されることを確認
+4. 起動した Extension Development Host で `.md` を開き、Custom Editor（viewType `vsc-md-editor.wysiwyg`）が表示されることを確認
+5. 初期モードは **Markdown**（TipTap）。UI から **Preview** / **Raw** へ切替可能（モード切替 alone ではディスク非書込）。**Marp Preview**（サイド/パネル）は三点 Preview とは別 — [systemspec.md](./systemspec.md) §1 / §6
 
 ### よく使うコマンド
 
@@ -303,6 +304,7 @@ chmod +x .cursor/hooks/*.sh .cursor/hooks/*.py
 
 | 日付 | 変更 |
 |------|------|
+| 2026-08-29 | Extension Development Host 手順に三点モード・viewType・Marp 区別を追記 |
 | 2026-08-29 | 初版。Cursor 開発フロー節を追加 |
 | 2026-08-29 | テンプレート汎用化 — stack.md、templates/rules、skills/agents の stack 参照 |
 | 2026-08-29 | coding-conventions.md への参照を追加 |

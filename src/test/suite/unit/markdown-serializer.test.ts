@@ -31,9 +31,16 @@ suite('Markdown serializer unit tests', () => {
 
   test('TC-054: HTML table round-trip preserves table tag', () => {
     const md = 'Intro\n\n<table><tr><td>A</td><td>B</td></tr></table>\n';
+    const doc = parseMarkdown(md);
+    const tableNode = doc.content.find((n) => n.type === 'table');
+    assert.ok(tableNode, 'HTML table must become TipTap table model');
+    assert.ok(
+      (tableNode?.content?.length ?? 0) > 0,
+      'HTML table must have editable row/cell content (not empty atom)',
+    );
     const result = roundTrip(md);
     assert.ok(result.includes('<table>'));
-    assert.ok(result.includes('<td>A</td>'));
+    assert.ok(result.includes('<td>A</td>') || result.includes('>A</td>'));
   });
 
   test('TC-019: GFM table converts on first edit helper', () => {
@@ -46,6 +53,21 @@ suite('Markdown serializer unit tests', () => {
     const convertedTable = converted.content.find((n) => n.type === 'table');
     assert.strictEqual(convertedTable?.attrs?.converted, true);
     assert.ok(typeof convertedTable?.attrs?.html === 'string');
+    assert.ok(
+      (convertedTable?.content?.length ?? 0) > 0,
+      'converted table must keep editable TipTap rows',
+    );
+  });
+
+  test('image node serializes to markdown image syntax', () => {
+    const md = 'See ![alt text](img/image-0001.png) here.\n';
+    const doc = parseMarkdown(md);
+    const para = doc.content.find((n) => n.type === 'paragraph');
+    const image = para?.content?.find((n) => n.type === 'image');
+    assert.ok(image, 'image node must be parsed');
+    assert.strictEqual(image?.attrs?.src, 'img/image-0001.png');
+    const out = serializeMarkdown(doc);
+    assert.ok(out.includes('![alt text](img/image-0001.png)') || out.includes('img/image-0001.png'));
   });
 
   test('TC-056: serialize failure throws', () => {

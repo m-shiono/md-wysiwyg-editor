@@ -6,11 +6,12 @@ VS Code 向け WYSIWYG Markdown エディタ拡張。チーム技術ドキュメ
 
 | 機能 | 説明 |
 |------|------|
-| WYSIWYG 本文 | 見出し・太字・リスト・リンク・コードブロック等をビジュアル編集 |
+| 三点モード | 同一 Custom Editor で **Preview**（RO 描画）/ **Markdown**（TipTap WYSIWYG）/ **Raw**（ソース）を切替。正本は Document |
+| WYSIWYG 本文 | Markdown モードで見出し・太字・リスト・リンク・コードブロック等をビジュアル編集 |
 | HTML 表編集 | セル内改行・箇条書き・チェックボックス対応の Excel 的表操作 |
-| Readonly モード | ファイル単位で編集可否を切替（誤編集防止） |
+| Readonly モード | ファイル単位で全編集面（Markdown / Raw）をロック（三点 Preview とは別） |
 | Mermaid | ` ```mermaid ` ブロックのリアルタイム描画（テキスト編集） |
-| Marp プレビュー | スライド形式 Markdown のプレビュー表示 |
+| Marp プレビュー | スライド用サイド/パネル表示（三点 Preview とは別・AD-008） |
 | 画像貼付 | クリップボード画像を同階層 `img/image-NNNN.ext` に保存 |
 
 リッチ表現（HTML 混在・拡張記法）を Markdown 厳密互換より優先する設計。詳細は [doc/systemspec.md](doc/systemspec.md)。
@@ -31,7 +32,7 @@ VS Code で **Run Extension**（F5）を実行し Extension Development Host を
 ```json
 {
   "workbench.editorAssociations": {
-    "*.md": "vsc-md-editor.mdEditor"
+    "*.md": "vsc-md-editor.wysiwyg"
   }
 }
 ```
@@ -61,3 +62,4 @@ VS Code で **Run Extension**（F5）を実行し Extension Development Host を
 | 日付 | 変更 |
 |------|------|
 | 2026-08-29 | テンプレート README から vsc-md-editor 製品説明へ更新 |
+| 2026-08-29 | 三点モード・Marp 区別を機能表に追記。`workbench.editorAssociations` の viewType を `vsc-md-editor.wysiwyg` に修正 |

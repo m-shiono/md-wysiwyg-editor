@@ -223808,11 +223808,18 @@ img.ProseMirror-separator {
   var lowlight = createLowlight(grammars);
   mermaid_default.initialize({ startOnLoad: false, securityLevel: "strict" });
   var MERMAID_DEBOUNCE_MS = 300;
+  var RAW_SYNC_DEBOUNCE_MS = 200;
+  var RAW_UPDATE_DEBOUNCE_MS = 250;
   var mermaidTimers = /* @__PURE__ */ new Map();
   var editor;
   var readonly = false;
+  var editorMode = "markdown";
   var suppressUpdate = false;
+  var suppressRawUpdate = false;
   var isEditorInitialized = false;
+  var latestMarkdownText = "";
+  var rawSyncTimer;
+  var rawUpdateTimer;
   var HtmlTableExtension = Extension.create({
     name: "htmlTable",
     addGlobalAttributes() {
@@ -223925,7 +223932,7 @@ img.ProseMirror-separator {
   function prepareDocForEditor(doc3) {
     const content = (doc3.content ?? []).map((raw) => {
       const node2 = raw;
-      if (node2.type === "table" && node2.attrs?.html && (!node2.content || node2.content.length === 0)) {
+      if (node2.type === "table" && typeof node2.attrs?.html === "string" && node2.attrs.html.length > 0 && (!node2.content || node2.content.length === 0)) {
         return {
           type: "htmlBlock",
           attrs: { html: node2.attrs.html }
@@ -223954,6 +223961,93 @@ img.ProseMirror-separator {
       HtmlBlockNode
     ];
   }
+  function getRawEditor() {
+    return document.getElementById("raw-editor");
+  }
+  function isRawFocused() {
+    const raw = getRawEditor();
+    return !!raw && document.activeElement === raw;
+  }
+  function scheduleRawTextUpdate(text4) {
+    latestMarkdownText = text4;
+    if (isRawFocused()) {
+      return;
+    }
+    if (rawSyncTimer) {
+      clearTimeout(rawSyncTimer);
+    }
+    rawSyncTimer = setTimeout(() => {
+      const raw = getRawEditor();
+      if (!raw || isRawFocused()) {
+        return;
+      }
+      if (raw.value !== text4) {
+        suppressRawUpdate = true;
+        raw.value = text4;
+        suppressRawUpdate = false;
+      }
+    }, RAW_SYNC_DEBOUNCE_MS);
+  }
+  function setModeUi(mode) {
+    editorMode = mode;
+    document.body.setAttribute("data-mode", mode);
+    document.querySelectorAll("#mode-toolbar button[data-mode]").forEach((btn) => {
+      const el = btn;
+      el.classList.toggle("active", el.getAttribute("data-mode") === mode);
+    });
+    const editorEl = document.getElementById("editor");
+    const rawEl = getRawEditor();
+    const formatToolbar = document.getElementById("toolbar");
+    if (editorEl) {
+      editorEl.classList.toggle("hidden", mode === "raw");
+    }
+    if (rawEl) {
+      rawEl.classList.toggle("hidden", mode !== "raw");
+    }
+    if (formatToolbar) {
+      formatToolbar.classList.toggle("hidden", mode !== "markdown");
+    }
+    const canEdit = !readonly && (mode === "markdown" || mode === "raw");
+    editor?.setEditable(mode === "markdown" && canEdit);
+    if (mode === "preview") {
+      editor?.setEditable(false);
+    }
+    if (rawEl) {
+      rawEl.readOnly = !canEdit || mode !== "raw";
+    }
+  }
+  function flushPendingRawUpdate() {
+    if (!rawUpdateTimer) {
+      return;
+    }
+    clearTimeout(rawUpdateTimer);
+    rawUpdateTimer = void 0;
+    if (readonly) {
+      return;
+    }
+    const raw = getRawEditor();
+    if (!raw) {
+      return;
+    }
+    vscode.postMessage({ type: "updateRaw", markdown: raw.value });
+  }
+  function applyMode(mode, notifyHost) {
+    if (editorMode === "raw" && mode !== "raw") {
+      flushPendingRawUpdate();
+    }
+    setModeUi(mode);
+    if (mode === "raw") {
+      const raw = getRawEditor();
+      if (raw && !isRawFocused()) {
+        suppressRawUpdate = true;
+        raw.value = latestMarkdownText;
+        suppressRawUpdate = false;
+      }
+    }
+    if (notifyHost) {
+      vscode.postMessage({ type: "setMode", editorMode: mode });
+    }
+  }
   function initEditor(initialDoc) {
     if (editor) {
       editor.destroy();
@@ -223964,9 +224058,9 @@ img.ProseMirror-separator {
       element: document.getElementById("editor"),
       extensions: getEditorExtensions(),
       content,
-      editable: !readonly,
+      editable: !readonly && editorMode === "markdown",
       onUpdate: ({ editor: ed }) => {
-        if (suppressUpdate || readonly) {
+        if (suppressUpdate || readonly || editorMode !== "markdown") {
           return;
         }
         const json4 = ed.getJSON();
@@ -223976,23 +224070,61 @@ img.ProseMirror-separator {
     });
     isEditorInitialized = true;
     attachToolbarHandlers();
+    attachModeToolbarHandlers();
     attachPasteHandler();
+    attachRawEditorHandlers();
     attachGfmTableClickHandler(initialDoc);
+    setModeUi(editorMode);
   }
   function applyExternalDoc(doc3) {
     if (!editor) {
+      return;
+    }
+    if (editorMode === "markdown" && editor.isFocused) {
       return;
     }
     suppressUpdate = true;
     editor.commands.setContent(prepareDocForEditor(doc3));
     suppressUpdate = false;
   }
+  function attachModeToolbarHandlers() {
+    document.querySelectorAll("#mode-toolbar button[data-mode]").forEach((btn) => {
+      const clone8 = btn.cloneNode(true);
+      btn.parentNode?.replaceChild(clone8, btn);
+      clone8.addEventListener("click", () => {
+        const mode = clone8.getAttribute("data-mode");
+        if (!mode || mode === editorMode) {
+          return;
+        }
+        applyMode(mode, true);
+      });
+    });
+  }
+  function attachRawEditorHandlers() {
+    const raw = getRawEditor();
+    if (!raw || raw.dataset.bound === "1") {
+      return;
+    }
+    raw.dataset.bound = "1";
+    raw.addEventListener("input", () => {
+      if (suppressRawUpdate || readonly || editorMode !== "raw") {
+        return;
+      }
+      const value2 = raw.value;
+      if (rawUpdateTimer) {
+        clearTimeout(rawUpdateTimer);
+      }
+      rawUpdateTimer = setTimeout(() => {
+        vscode.postMessage({ type: "updateRaw", markdown: value2 });
+      }, RAW_UPDATE_DEBOUNCE_MS);
+    });
+  }
   function attachToolbarHandlers() {
     document.querySelectorAll("#toolbar button").forEach((btn) => {
       const clone8 = btn.cloneNode(true);
       btn.parentNode?.replaceChild(clone8, btn);
       clone8.addEventListener("click", () => {
-        if (!editor || readonly) {
+        if (!editor || readonly || editorMode !== "markdown") {
           return;
         }
         const cmd = clone8.getAttribute("data-cmd");
@@ -224039,7 +224171,7 @@ img.ProseMirror-separator {
     }
     pasteHandlerAttached = true;
     document.addEventListener("paste", (event3) => {
-      if (readonly || !event3.clipboardData) {
+      if (readonly || editorMode !== "markdown" || !event3.clipboardData) {
         return;
       }
       const items = event3.clipboardData.items;
@@ -224072,7 +224204,7 @@ img.ProseMirror-separator {
     }
     gfmTableHandlerAttached = true;
     document.getElementById("editor")?.addEventListener("click", (e3) => {
-      if (readonly) {
+      if (readonly || editorMode !== "markdown") {
         return;
       }
       const target = e3.target;
@@ -224100,28 +224232,62 @@ img.ProseMirror-separator {
       vscode.postMessage({ type: "checkTableLimits", rows: maxRows, cols: maxCols });
     }
   }
+  function setRawParseBanner(failed, message) {
+    const el = document.getElementById("raw-parse-banner");
+    if (!el) {
+      return;
+    }
+    if (failed) {
+      el.textContent = message ?? "Raw Markdown parse failed. Save is blocked until fixed.";
+      el.classList.remove("hidden");
+    } else {
+      el.classList.add("hidden");
+      el.textContent = "";
+    }
+  }
   window.addEventListener("message", (event3) => {
     const message = event3.data;
     switch (message.type) {
       case "init":
         readonly = message.readonly;
         document.body.setAttribute("data-readonly", String(readonly));
+        latestMarkdownText = message.markdownText ?? "";
+        editorMode = message.editorMode ?? "markdown";
         if (isEditorInitialized && editor) {
-          editor.setEditable(!readonly);
+          editor.setEditable(!readonly && editorMode === "markdown");
           applyExternalDoc(JSON.parse(message.docJson));
+          scheduleRawTextUpdate(latestMarkdownText);
+          setModeUi(editorMode);
           break;
         }
         initEditor(JSON.parse(message.docJson));
+        scheduleRawTextUpdate(latestMarkdownText);
+        setModeUi(editorMode);
         break;
       case "docUpdated":
-        if (editor) {
+        latestMarkdownText = message.markdownText ?? latestMarkdownText;
+        scheduleRawTextUpdate(latestMarkdownText);
+        if (typeof message.docJson !== "string") {
+          break;
+        }
+        if (editorMode === "preview" || editorMode === "markdown" && editor && !editor.isFocused) {
+          applyExternalDoc(JSON.parse(message.docJson));
+        } else if (editorMode === "raw") {
           applyExternalDoc(JSON.parse(message.docJson));
         }
+        break;
+      case "modeChanged":
+        if (message.editorMode && message.editorMode !== editorMode) {
+          applyMode(message.editorMode, false);
+        }
+        break;
+      case "rawParseFailed":
+        setRawParseBanner(!!message.failed, message.message);
         break;
       case "readonlyChanged":
         readonly = message.readonly;
         document.body.setAttribute("data-readonly", String(readonly));
-        editor?.setEditable(!readonly);
+        setModeUi(editorMode);
         break;
       case "tableLimitWarning": {
         const el = document.getElementById("table-warning");
@@ -224136,7 +224302,7 @@ img.ProseMirror-separator {
         break;
       }
       case "imageInserted":
-        if (editor && !readonly) {
+        if (editor && !readonly && editorMode === "markdown") {
           editor.chain().focus().setImage({ src: message.relativePath, alt: message.relativePath }).run();
           vscode.postMessage({ type: "update", docJson: JSON.stringify(editor.getJSON()) });
         }

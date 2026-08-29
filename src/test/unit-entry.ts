@@ -5,3 +5,4 @@
 import './suite/unit/markdown-serializer.test';
 import './suite/unit/image-numbering.test';
 import './suite/unit/markdown-document.test';
+import './suite/unit/editor-modes.test';

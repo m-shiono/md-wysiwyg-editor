@@ -2,9 +2,9 @@
 
 ## 概要
 
-- **対象:** VS Code 拡張 vsc-md-editor の MVP 機能（Custom Editor、WYSIWYG、表、Readonly、Mermaid、Marp、画像 paste、シリアライズ、セキュリティ、ログ・共存）
-- **対応仕様:** [doc/systemspec.md](systemspec.md) §1–§10
-- **テストコード:** `tests/integration/**/*.test.ts`（@vscode/test-electron）、`tests/unit/**/*.test.ts`（Vitest）— testspec-implementation フェーズで実装
+- **対象:** VS Code 拡張 vsc-md-editor の MVP 機能（Custom Editor、三点モード Preview/Markdown/Raw、WYSIWYG、表、Readonly、Mermaid、Marp、画像 paste、シリアライズ、セキュリティ、ログ・共存）
+- **対応仕様:** [doc/systemspec.md](systemspec.md) §1–§10（AD-016 三点モード含む）
+- **テストコード:** `src/test/suite/unit/**/*.test.ts`（mocha + vscode mock）、`src/test/suite/integration/**/*.test.ts`（@vscode/test-electron）
 - **作成日:** 2026-08-29
 
 ## Spec Digest
@@ -15,9 +15,13 @@
 |------------|-----|------|------|------|
 | `documentUri` | `vscode.Uri` | — | — | ワークスペース内 `.md` |
 | `fileContent` | `string` (UTF-8) | 0 B | 推奨 500 KB 未満 | 超過時警告のみ（RK-004） |
-| `editOperation` | 編集コマンド / キー入力 | — | — | RO 時拒否 |
+| `editorMode` | `"preview" \| "markdown" \| "raw"` | — | — | 初期値 `"markdown"`（AD-016） |
+| `modeSwitchCommand` | コマンド / UI 切替 | — | — | モード変更のみ。ディスク I/O なし |
+| `rawSourceEdit` | `string` | — | — | Raw 面からのソース。パース成功時のみ Document 反映 |
+| `isRawParseFailed` | `boolean` | — | — | true の間は save 拒否（§1, §8） |
+| `editOperation` | 編集コマンド / キー入力 | — | — | RO 時拒否；Preview 面からは送らない |
 | `tableOperation` | 行/列/セル操作 | 1×1 | ソフト上限 100行×20列 | 超過時 UI 警告、保存は許可 |
-| `toggleReadonlyCommand` | コマンド | — | — | `Toggle Readonly Mode` |
+| `toggleReadonlyCommand` | コマンド | — | — | `Toggle Readonly Mode`（三点 Preview とは別） |
 | `mermaidSource` | `string` | 0 文字 | — | debounce 300 ms 目安 |
 | `documentContent` | `string` | — | — | Marp front matter + 本文 |
 | `clipboardImage` | `image/*` バイナリ | 1 B | — | jpg/png/gif/svg |
@@ -28,10 +32,13 @@
 
 | 条件 | 戻り値 / ステータス | 仕様根拠 |
 |------|-------------------|---------|
-| Custom Editor オープン成功 | タブ表示、Webview ロード完了 | §1 |
+| Custom Editor オープン成功 | タブ表示、Webview ロード完了、初期モード Markdown、viewType `vsc-md-editor.wysiwyg` | §1, AD-002, AD-016 |
+| モード切替成功 | 対象面表示、Document 維持、ディスク未書込、内容不変なら dirty 不変 | §1 |
 | 保存成功 | ディスク `.md` 更新、`dirty` 解除 | §1, §8 |
 | シリアライズ失敗 | 保存拒否、`dirty` 維持、通知 + Output | §1, §8 |
-| RO ON | 編集不可、バッジ表示 | §4 |
+| Raw パース失敗 | Document 非更新、通知 + Output、save ブロック | §1 例外系 2, §8 |
+| Raw パース回復 | `isRawParseFailed=false`、save 再開可 | §1, §8 |
+| RO ON | Markdown / Raw 全編集面ロック、バッジ表示（三点 Preview とは別） | §4, AD-006 |
 | 表ソフト上限超過 | UI 警告表示、保存は許可 | §3（Advisor default） |
 | GFM パイプ表初回編集 | HTML `<table>` へ変換 | §3（Advisor default, UD-001） |
 | 非 Marp 文書プレビュー | 「No Marp slides detected」ガイダンス | §6（Advisor default） |
@@ -59,7 +66,8 @@
 
 ### Spec Gaps
 
-- （なし — Advisor defaults で systemspec に反映済み。詳細は [systemspec.md Spec Gaps（resolved）](systemspec.md#spec-gapsresolved)）
+- （なし — Advisor defaults および AD-016 三点モード契約は systemspec に反映済み。詳細は [systemspec.md Spec Gaps（resolved）](systemspec.md#spec-gapsresolved)）
+- **実装ギャップ（テスト待ち）:** （なし — TC-071/073/076/078/079 はユニット実装済み）
 
 ---
 
@@ -136,15 +144,25 @@
 | TC-067 | Corner | regression-edit-display-break | P0 | Webview 起点の `updateFromJson(..., { syncWebview: false })` | `onDidContentChange` は発火しない（echo 抑止）。`onDidChange` は発火（dirty 維持） | Regression: 編集後に setContent echo で表示破壊 | §1 Behavior 2 |
 | TC-068 | Corner | regression-edit-display-break | P0 | 既定の `updateDoc` / undo による Document 変更 | `onDidContentChange` が発火し、docUpdated 用リスナーが通知される | Regression: 外部同期（undo/revert）が途切れないこと | §1 Behavior 4 |
 | TC-069 | Corner | regression-edit-display-break | P0 | Mermaid フェンス付き doc で段落テキストのみ変更後 serialize | ` ```mermaid ` フェンスとソースが残る | Regression: 通常編集で Mermaid が消えないこと | §5 正常系 2 |
+| TC-070 | Happy | editor-mode-init | P0 | Custom Editor（viewType `vsc-md-editor.wysiwyg`）で `.md` を開く | 初期 `editorMode === "markdown"`、タブ viewType が `vsc-md-editor.wysiwyg` | AD-016 初期モード + AD-002 viewType | §1 Inputs, 正常系 1 |
+| TC-071 | Happy | preview-one-way | P0 | Preview モード表示中に描画面からの編集イベントを送ろうとする / Document のみ更新 | Preview は RO 描画のみ。編集イベントは Document へ送られない。Document 更新時は描画が追随 | Document→一方表示契約 | §1 三点モード定義, 正常系 3 |
+| TC-072 | Happy | markdown-raw-sync | P0 | Markdown 面で段落編集 → Raw 投影；続けて Raw 相当のソースを Document に反映 | 正本は `MarkdownDocument`。一方の変更が他方面へ Document 経由で反映され、`markdownText` / `doc` が一致 | Markdown↔Raw 相互リアルタイム同期 | §1 正常系 2, §8 |
+| TC-073 | Corner | mode-switch-no-io | P0 | dirty=false の Document で Preview↔Markdown↔Raw を切替のみ（内容変更なし） | ディスクへの `writeFile` なし、`onDidChange`（dirty）非発火、Document 内容不変 | モード切替 alone は表示のみ | §1 正常系 4, AD-016 |
+| TC-074 | Happy | edit-dirty-save | P0 | Markdown または Raw 相当の内容変更 → `save` / `saveAs` | 変更で dirty（`onDidChange`）、save 後ディスク更新・シリアライズ反映 | 通常編集の dirty/save 契約 | §1 正常系 5, §8 |
+| TC-075 | Happy | file-ro-locks-editors | P0 | ファイル RO ON 後に Markdown / Raw 編集を試行 | 両編集面とも編集不可（`editable: false`）。三点 Preview（描画 RO）とは別概念（RO フラグ独立） | AD-006 全編集面ロック | §4 正常系 1, 3 |
+| TC-076 | Happy | ro-allows-viewing | P0 | ファイル RO ON のまま三点モード切替・Preview 表示・Marp Preview 起動 | モード切替可、Preview / Marp 閲覧可。編集は不可のまま | RO 中も閲覧系は可 | §4 正常系 4–5, §6 |
+| TC-077 | Structural | marp-vs-preview | P0 | Custom Editor viewType と Marp Preview パネル/コマンドを比較 | Marp Preview（`vsc-md-editor.marpPreview` / `showMarpPreview`）は三点 Preview ではない。viewType `wysiwyg` と別責務 | AD-008 責務分離 | §1, §6 |
+| TC-078 | Corner | raw-parse-fail | P0 | Raw ソースをパース不能な文字列に変更して Document へ適用試行 | Document（直前の有効内容）非破壊、通知 + Output、`isRawParseFailed=true`、`save` ブロック | Raw 失敗時データ保全 | §1 例外系 2, §8 |
+| TC-079 | Happy | raw-parse-recover | P0 | TC-078 状態から有効な Raw ソースに修正して再適用 → `save` | `isRawParseFailed=false`、Document 更新、save 成功 | パース回復後の save 再開 | §1, §8 |
 
 ### Category Coverage
 
 | Category | Covered | N/A Reason |
 |----------|---------|------------|
-| Happy Path | TC-001–004, TC-010–012, TC-016–019, TC-025–027, TC-031, TC-033, TC-038–039, TC-043–044, TC-052–054, TC-057–058 | — |
+| Happy Path | TC-001–004, TC-010–012, TC-016–019, TC-025–027, TC-031, TC-033, TC-038–039, TC-043–044, TC-052–054, TC-057–058, TC-070–072, TC-074–076, TC-079 | — |
 | Boundary | TC-008, TC-021–023 | — |
-| Structural | TC-014, TC-055 | — |
-| Corner | TC-005–009, TC-015, TC-020, TC-024, TC-030, TC-034–037, TC-041–042, TC-047–051, TC-056, TC-059, TC-061, TC-064, TC-067–069 | — |
+| Structural | TC-014, TC-055, TC-077 | — |
+| Corner | TC-005–009, TC-015, TC-020, TC-024, TC-030, TC-034–037, TC-041–042, TC-047–051, TC-056, TC-059, TC-061, TC-064, TC-067–069, TC-073, TC-078 | — |
 | Stress | TC-065–066 | — |
 
 ### Complexity Notes
@@ -166,7 +184,9 @@
 |---------|--------------|
 | TC-052–056, TC-053, TC-069 | ユニット（remark シリアライズ） |
 | TC-044 | ユニット（採番ロジック） |
-| TC-067–068 | ユニット（MarkdownDocument + vscode mock） |
+| TC-067–068, TC-072, TC-074 | ユニット（MarkdownDocument + vscode mock） |
+| TC-070（viewType）, TC-075（readonly key）, TC-077 | ユニット（package.json / 定数 / readonly-state） |
+| TC-070（初期モード）, TC-071, TC-073, TC-076, TC-078–079 | ユニット（EditorModeState / MarkdownDocument + vscode mock） |
 | TC-001–051, TC-057–064 | 統合（Extension Development Host） |
 | TC-065–066 | 統合 `@slow` |
 
@@ -190,6 +210,12 @@ P0 + P1 の机上トレース（実装前）。
 | TC-067 | Webview update → `syncWebview: false` → content-change 未発火、dirty 用 onDidChange のみ | ✅ 回帰（edit-display-break） |
 | TC-068 | 既定 update / undo → onDidContentChange 発火 | ✅ 回帰（edit-display-break） |
 | TC-069 | Mermaid + 段落編集 → serialize でフェンス保持 | ✅ 回帰（edit-display-break） |
+| TC-070 | package.json viewType = `vsc-md-editor.wysiwyg`；初期モード Markdown | ✅ ユニット |
+| TC-072 | updateDoc → markdownText 更新（正本 Document）；parse → updateDoc で Raw 相当同期 | ✅ ユニット |
+| TC-074 | updateDoc → onDidChange → save → mock FS 更新 | ✅ ユニット |
+| TC-075 | setReadonly(true) → isReadonly；Preview 概念と独立 | ✅ ユニット |
+| TC-077 | customEditors viewType ≠ marpPreview panel / showMarpPreview は別コマンド | ✅ ユニット |
+| TC-071/073/076/078/079 | Preview 一方向・mode switch 非 I/O・RO 切替可・Raw 失敗/回復 | ✅ ユニット |
 
 ### TC-067 (P0): Regression — webview edit must not echo setContent
 
@@ -224,6 +250,16 @@ P0 + P1 の机上トレース（実装前）。
 
 **Result:** ✅ Pass（npm run test:unit 2026-08-29）
 
+### TC-070–079 (P0): Three-mode contracts (unit)
+
+| Step | Value |
+|------|-------|
+| Input | package.json viewType; EditorModeState; Document updateDoc/save/applyRawSource; readonly-state; Marp vs custom editor IDs |
+| Expected | viewType 一致、Preview 一方向、Document 正本同期、mode switch 非 I/O、dirty→save、RO キー、Raw 失敗/回復、Marp≠三点 Preview |
+| Actual | Pass（ユニット実装済み） |
+
+**Result:** ✅ Pass（npm run test:unit）
+
 ---
 
 ## Self-Check Report
@@ -231,17 +267,19 @@ P0 + P1 の机上トレース（実装前）。
 ### A. Input & Constraints
 - [x] 最小値: 空 `.md`（TC-001）、空 Mermaid（TC-031）、1×1 表（TC-016）
 - [x] 最大値: 500 KB 警告（TC-008）、表 100×20 境界（TC-021）、画像連番 9999（仕様定義、P2 省略理由明記）
-- [x] 型/形式: 各 MIME 画像（TC-045）、非画像 paste（TC-049）
+- [x] 型/形式: 各 MIME 画像（TC-045）、非画像 paste（TC-049）、`editorMode` 三値（TC-070–073）
 
 ### B. Structural Patterns
 - [x] 未対応記法保持（TC-014）
 - [x] GFM/HTML 混在（TC-019, TC-020）
 - [x] 欠番連番（TC-044: 0003 次は 0004）
+- [x] Marp Preview ≠ 三点 Preview（TC-077）
 
 ### C. Corner & Failure
-- [x] 解なし/拒否: シリアライズ失敗（TC-006, TC-015, TC-056）、paste 拒否（TC-050）
+- [x] 解なし/拒否: シリアライズ失敗（TC-006, TC-015, TC-056）、paste 拒否（TC-050）、Raw パース失敗（TC-078）
 - [x] 先頭/末尾: 表 100 行/20 列境界（TC-021）、101/21 超過（TC-022, TC-023）
 - [x] 外部変更・FS 失敗（TC-007, TC-009, TC-048）
+- [x] モード切替 alone の非 I/O（TC-073）、パース回復（TC-079）
 
 ### D. Complexity & Resources
 - [x] P2 ストレス TC-065, TC-066 定義
@@ -251,7 +289,7 @@ P0 + P1 の机上トレース（実装前）。
 - N/A — ローカル VS Code 拡張。HTTP/KV 該当なし
 
 ### Uncovered / Spec Gaps
-- なし（Advisor defaults は systemspec に反映済み）
+- （なし — TC-071/073/076/078/079 はユニット実装済み）
 - 画像サイズ上限は MVP 未定 — backlog（BL-008）で管理、本 testspec では MIME 検証のみ
 
 ---
@@ -262,3 +300,5 @@ P0 + P1 の机上トレース（実装前）。
 |------|---------|
 | 2026-08-29 | 初版。systemspec §1–§10 MVP カバー、Spec Gaps を Advisor defaults で解決 |
 | 2026-08-29 | TC-067–069 追加 | 回帰: edit-display-break（webview echo 抑止 / 外部同期 / Mermaid 保持） |
+| 2026-08-29 | TC-070–079 追加 | Preview/Markdown/Raw 三点モード・同期・dirty/save・RO・Raw パース失敗契約。ユニット実装可能な TC をコード化、未実装 API は skip |
+| 2026-08-30 | TC-071/073/076/078/079 skip 記述を解除（ユニット実装済みに同期） |

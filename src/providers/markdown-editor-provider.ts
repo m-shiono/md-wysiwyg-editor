@@ -16,6 +16,13 @@ import {
   mimeToExtension,
 } from '../utils/image-numbering';
 import { logError, logInfo } from '../utils/logger';
+import {
+  acceptsWebviewContentUpdate,
+  DEFAULT_EDITOR_MODE,
+  EditorModeState,
+  isEditorMode,
+  type EditorMode,
+} from '../utils/editor-mode';
 import type { WebviewInboundMessage, WebviewOutboundMessage } from '../webviews/messages';
 
 export class MarkdownEditorProvider implements vscode.CustomEditorProvider<MarkdownDocument> {
@@ -27,6 +34,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
   readonly onDidChangeCustomDocument = this._onDidChangeCustomDocument.event;
 
   private readonly _openPanels = new Map<string, vscode.WebviewPanel>();
+  private readonly _modeStates = new Map<string, EditorModeState>();
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -50,7 +58,12 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     webviewPanel: vscode.WebviewPanel,
     _token: vscode.CancellationToken,
   ): Promise<void> {
-    this._openPanels.set(document.uri.toString(), webviewPanel);
+    const key = document.uri.toString();
+    this._openPanels.set(key, webviewPanel);
+    if (!this._modeStates.has(key)) {
+      this._modeStates.set(key, new EditorModeState());
+    }
+
     webviewPanel.webview.options = {
       enableScripts: true,
       localResourceRoots: [
@@ -83,12 +96,21 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
       this.postMessage(webviewPanel.webview, {
         type: 'docUpdated',
         docJson: document.docJson,
+        markdownText: document.markdownText,
       });
+      // Content mutations clear Raw-fail state — keep webview banner in sync.
+      if (!document.isRawParseFailed) {
+        this.postMessage(webviewPanel.webview, {
+          type: 'rawParseFailed',
+          failed: false,
+        });
+      }
       void this.marpManager.updatePreview(document.uri, document.markdownText);
     });
 
     webviewPanel.onDidDispose(() => {
-      this._openPanels.delete(document.uri.toString());
+      this._openPanels.delete(key);
+      this._modeStates.delete(key);
     });
 
     void this.marpManager.updatePreview(document.uri, document.markdownText);
@@ -116,6 +138,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
       this.postMessage(panel.webview, {
         type: 'docUpdated',
         docJson: document.docJson,
+        markdownText: document.markdownText,
       });
     }
   }
@@ -147,6 +170,10 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     return undefined;
   }
 
+  getEditorMode(uri: vscode.Uri): EditorMode {
+    return this._modeStates.get(uri.toString())?.mode ?? DEFAULT_EDITOR_MODE;
+  }
+
   refreshReadonly(uri: vscode.Uri, readonly: boolean): void {
     const panel = this._openPanels.get(uri.toString());
     if (panel) {
@@ -171,31 +198,91 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     void webview.postMessage(message);
   }
 
+  private modeStateFor(document: MarkdownDocument): EditorModeState {
+    const key = document.uri.toString();
+    let state = this._modeStates.get(key);
+    if (!state) {
+      state = new EditorModeState();
+      this._modeStates.set(key, state);
+    }
+    return state;
+  }
+
   private async handleMessage(
     document: MarkdownDocument,
     panel: vscode.WebviewPanel,
     message: WebviewInboundMessage,
   ): Promise<void> {
     const readonly = isReadonly(this.context, document.uri);
+    const modeState = this.modeStateFor(document);
 
     switch (message.type) {
       case 'ready':
         this.postMessage(panel.webview, {
           type: 'init',
           docJson: document.docJson,
+          markdownText: document.markdownText,
           readonly,
           uri: document.uri.toString(),
+          editorMode: modeState.mode,
         });
         break;
-      case 'update':
-        if (readonly) {
+      case 'setMode':
+        // Mode switch alone: display only — no disk I/O, no dirty (AD-016).
+        if (!isEditorMode(message.editorMode)) {
           return;
         }
-        // Do not echo docUpdated — webview already has this content.
+        {
+          const next = modeState.setMode(message.editorMode);
+          this.postMessage(panel.webview, { type: 'modeChanged', editorMode: next });
+        }
+        break;
+      case 'update':
+        if (
+          readonly ||
+          !acceptsWebviewContentUpdate(modeState.mode) ||
+          typeof message.docJson !== 'string'
+        ) {
+          return;
+        }
+        // Do not echo docJson — webview already has TipTap content (TC-067).
         document.updateFromJson(message.docJson, 'Edit', { syncWebview: false });
+        // Markdown edit clears Raw-fail banner if it was showing.
+        this.postMessage(panel.webview, {
+          type: 'rawParseFailed',
+          failed: false,
+        });
+        // markdownText only — Raw surface refresh; avoid setContent echo.
+        this.postMessage(panel.webview, {
+          type: 'docUpdated',
+          markdownText: document.markdownText,
+        });
+        break;
+      case 'updateRaw':
+        // Late flush after Raw→other mode must still apply; only file RO blocks.
+        if (readonly || typeof message.markdown !== 'string') {
+          return;
+        }
+        {
+          const ok = document.applyRawSource(message.markdown, 'Raw edit', { syncWebview: false });
+          this.postMessage(panel.webview, {
+            type: 'rawParseFailed',
+            failed: document.isRawParseFailed,
+            message: ok
+              ? undefined
+              : 'Raw Markdown parse failed. Document was not modified.',
+          });
+          if (ok) {
+            this.postMessage(panel.webview, {
+              type: 'docUpdated',
+              docJson: document.docJson,
+              markdownText: document.markdownText,
+            });
+          }
+        }
         break;
       case 'convertGfmTable':
-        if (readonly) {
+        if (readonly || typeof message.docJson !== 'string') {
           return;
         }
         {
@@ -205,6 +292,9 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
         }
         break;
       case 'checkTableLimits':
+        if (typeof message.rows !== 'number' || typeof message.cols !== 'number') {
+          return;
+        }
         {
           const limits = checkTableLimits(message.rows, message.cols);
           this.postMessage(panel.webview, {
@@ -214,13 +304,23 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
         }
         break;
       case 'pasteImage':
+        if (
+          typeof message.mime !== 'string' ||
+          typeof message.dataBase64 !== 'string'
+        ) {
+          return;
+        }
         await this.handleImagePaste(document, panel, message, readonly);
         break;
       case 'mermaidError':
-        logError(`Mermaid render error: ${message.error}`);
+        if (typeof message.error === 'string') {
+          logError(`Mermaid render error: ${message.error}`);
+        }
         break;
       case 'log':
-        logInfo(message.message);
+        if (typeof message.message === 'string') {
+          logInfo(message.message);
+        }
         break;
       default:
         break;
@@ -314,7 +414,12 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
   <link rel="stylesheet" href="${styleUri}" nonce="${nonce}" />
   <title>MD WYSIWYG Editor</title>
 </head>
-<body data-readonly="${readonly}">
+<body data-readonly="${readonly}" data-mode="markdown">
+  <div id="mode-toolbar" role="toolbar" aria-label="Editor mode">
+    <button type="button" data-mode="preview" title="Preview">Preview</button>
+    <button type="button" data-mode="markdown" class="active" title="Markdown (WYSIWYG)">Markdown</button>
+    <button type="button" data-mode="raw" title="Raw source">Raw</button>
+  </div>
   <div id="toolbar">
     <button data-cmd="bold" title="Bold"><b>B</b></button>
     <button data-cmd="italic" title="Italic"><i>I</i></button>
@@ -327,7 +432,9 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     <button data-cmd="insertTable" title="Insert Table">Table</button>
   </div>
   <div id="table-warning" class="hidden"></div>
+  <div id="raw-parse-banner" class="hidden" role="alert"></div>
   <div id="editor"></div>
+  <textarea id="raw-editor" class="hidden" spellcheck="false" aria-label="Raw Markdown"></textarea>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;

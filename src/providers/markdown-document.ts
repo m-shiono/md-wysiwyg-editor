@@ -28,6 +28,7 @@ export class MarkdownDocument implements vscode.CustomDocument {
   private readonly _uri: vscode.Uri;
   private _markdownText: string;
   private _doc: TipTapDoc;
+  private _isRawParseFailed = false;
   private readonly _onDidChange = new vscode.EventEmitter<
     vscode.CustomDocumentEditEvent<MarkdownDocument>
   >();
@@ -73,6 +74,11 @@ export class MarkdownDocument implements vscode.CustomDocument {
     return docToJson(this._doc);
   }
 
+  /** True while Raw source cannot be parsed — save is blocked (§1 / §8). */
+  get isRawParseFailed(): boolean {
+    return this._isRawParseFailed;
+  }
+
   dispose(): void {
     this._onDidChange.dispose();
     this._onDidContentChange.dispose();
@@ -89,6 +95,12 @@ export class MarkdownDocument implements vscode.CustomDocument {
     if (cancellation.isCancellationRequested) {
       return;
     }
+    if (this._isRawParseFailed) {
+      const message = 'Cannot save: Raw Markdown parse failed. Fix the source and try again.';
+      logError(message);
+      void vscode.window.showErrorMessage(message);
+      throw new Error(message);
+    }
     try {
       const serialized = serializeMarkdown(this._doc);
       this._markdownText = serialized;
@@ -104,13 +116,66 @@ export class MarkdownDocument implements vscode.CustomDocument {
     const data = await vscode.workspace.fs.readFile(this._uri);
     this._markdownText = Buffer.from(data).toString('utf8');
     this._doc = parseMarkdown(this._markdownText);
+    this._isRawParseFailed = false;
     this._onDidContentChange.fire();
   }
 
   async backup(destination: vscode.Uri): Promise<void> {
+    if (this._isRawParseFailed) {
+      throw new Error('Cannot backup: Raw Markdown parse failed');
+    }
     const serialized = serializeMarkdown(this._doc);
     this._markdownText = serialized;
     await vscode.workspace.fs.writeFile(destination, Buffer.from(serialized, 'utf8'));
+  }
+
+  /**
+   * Apply Raw-mode source. On parse failure, leave Document intact and set
+   * `isRawParseFailed` (blocks save until recovery).
+   * @returns true when Document was updated
+   */
+  applyRawSource(
+    markdown: string,
+    label = 'Raw edit',
+    options?: { syncWebview?: boolean },
+  ): boolean {
+    try {
+      const newDoc = parseMarkdown(markdown);
+      // Ensure the model is serializable before committing.
+      serializeMarkdown(newDoc);
+      const previousDoc = this._doc;
+      const previousText = this._markdownText;
+      const previousFailed = this._isRawParseFailed;
+      this._doc = newDoc;
+      this._markdownText = markdown;
+      this._isRawParseFailed = false;
+      this.pushEdit(
+        label,
+        () => {
+          this._doc = previousDoc;
+          this._markdownText = previousText;
+          this._isRawParseFailed = previousFailed;
+          this._onDidContentChange.fire();
+        },
+        () => {
+          this._doc = newDoc;
+          this._markdownText = markdown;
+          this._isRawParseFailed = false;
+          this._onDidContentChange.fire();
+        },
+      );
+      if (options?.syncWebview !== false) {
+        this._onDidContentChange.fire();
+      }
+      return true;
+    } catch (error) {
+      this._isRawParseFailed = true;
+      logError('Raw parse failure — Document left intact', error);
+      void vscode.window.showErrorMessage(
+        'Raw Markdown parse failed. Document was not modified. Fix the source to enable save.',
+      );
+      return false;
+    }
   }
 
   /**
@@ -124,6 +189,7 @@ export class MarkdownDocument implements vscode.CustomDocument {
   ): void {
     const previous = this._doc;
     this._doc = newDoc;
+    this._isRawParseFailed = false;
     try {
       this._markdownText = serializeMarkdown(newDoc);
     } catch {

@@ -19,12 +19,16 @@ declare function acquireVsCodeApi(): {
   setState(state: unknown): void;
 };
 
+type EditorMode = 'preview' | 'markdown' | 'raw';
+
 const vscode = acquireVsCodeApi();
 const lowlight = createLowlight(common);
 
 mermaid.initialize({ startOnLoad: false, securityLevel: 'strict' });
 
 const MERMAID_DEBOUNCE_MS = 300;
+const RAW_SYNC_DEBOUNCE_MS = 200;
+const RAW_UPDATE_DEBOUNCE_MS = 250;
 const mermaidTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 interface TipTapDoc {
@@ -37,9 +41,14 @@ interface TipTapDoc {
 
 let editor: Editor | undefined;
 let readonly = false;
+let editorMode: EditorMode = 'markdown';
 let suppressUpdate = false;
+let suppressRawUpdate = false;
 /** True after the first successful initEditor — ready must not force a second full init. */
 let isEditorInitialized = false;
+let latestMarkdownText = '';
+let rawSyncTimer: ReturnType<typeof setTimeout> | undefined;
+let rawUpdateTimer: ReturnType<typeof setTimeout> | undefined;
 
 const HtmlTableExtension = Extension.create({
   name: 'htmlTable',
@@ -165,20 +174,22 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
 }).configure({ lowlight });
 
 /**
- * TipTap table schema requires rows; HTML-only tables from the serializer use
- * attrs.html with empty content — map those to htmlBlock for the editor.
+ * TipTap table schema requires rows. Host usually parses HTML tables into structure;
+ * unparseable html-only tables keep attrs.html — map to htmlBlock so real HTML is not
+ * replaced by a "(table)" placeholder.
  */
 function prepareDocForEditor(doc: TipTapDoc): JSONContent {
   const content = (doc.content ?? []).map((raw) => {
     const node = raw as TipTapDoc;
     if (
       node.type === 'table' &&
-      node.attrs?.html &&
+      typeof node.attrs?.html === 'string' &&
+      node.attrs.html.length > 0 &&
       (!node.content || node.content.length === 0)
     ) {
       return {
         type: 'htmlBlock',
-        attrs: { html: node.attrs.html as string },
+        attrs: { html: node.attrs.html },
       };
     }
     return raw;
@@ -211,6 +222,107 @@ function getEditorExtensions() {
   ];
 }
 
+function getRawEditor(): HTMLTextAreaElement | null {
+  return document.getElementById('raw-editor') as HTMLTextAreaElement | null;
+}
+
+function isRawFocused(): boolean {
+  const raw = getRawEditor();
+  return !!raw && document.activeElement === raw;
+}
+
+function scheduleRawTextUpdate(text: string): void {
+  latestMarkdownText = text;
+  if (isRawFocused()) {
+    // Focus-safe: do not clobber in-progress Raw edits.
+    return;
+  }
+  if (rawSyncTimer) {
+    clearTimeout(rawSyncTimer);
+  }
+  rawSyncTimer = setTimeout(() => {
+    const raw = getRawEditor();
+    if (!raw || isRawFocused()) {
+      return;
+    }
+    if (raw.value !== text) {
+      suppressRawUpdate = true;
+      raw.value = text;
+      suppressRawUpdate = false;
+    }
+  }, RAW_SYNC_DEBOUNCE_MS);
+}
+
+function setModeUi(mode: EditorMode): void {
+  editorMode = mode;
+  document.body.setAttribute('data-mode', mode);
+
+  document.querySelectorAll('#mode-toolbar button[data-mode]').forEach((btn) => {
+    const el = btn as HTMLElement;
+    el.classList.toggle('active', el.getAttribute('data-mode') === mode);
+  });
+
+  const editorEl = document.getElementById('editor');
+  const rawEl = getRawEditor();
+  const formatToolbar = document.getElementById('toolbar');
+
+  if (editorEl) {
+    editorEl.classList.toggle('hidden', mode === 'raw');
+  }
+  if (rawEl) {
+    rawEl.classList.toggle('hidden', mode !== 'raw');
+  }
+  if (formatToolbar) {
+    // Format toolbar only for Markdown WYSIWYG (and hidden when file RO).
+    formatToolbar.classList.toggle('hidden', mode !== 'markdown');
+  }
+
+  const canEdit = !readonly && (mode === 'markdown' || mode === 'raw');
+  editor?.setEditable(mode === 'markdown' && canEdit);
+  if (mode === 'preview') {
+    editor?.setEditable(false);
+  }
+  if (rawEl) {
+    rawEl.readOnly = !canEdit || mode !== 'raw';
+  }
+}
+
+/** Flush pending Raw debounce before leaving Raw so edits are not dropped. */
+function flushPendingRawUpdate(): void {
+  if (!rawUpdateTimer) {
+    return;
+  }
+  clearTimeout(rawUpdateTimer);
+  rawUpdateTimer = undefined;
+  if (readonly) {
+    return;
+  }
+  const raw = getRawEditor();
+  if (!raw) {
+    return;
+  }
+  // Host accepts late updateRaw when !readonly (even if UI already left Raw).
+  vscode.postMessage({ type: 'updateRaw', markdown: raw.value });
+}
+
+function applyMode(mode: EditorMode, notifyHost: boolean): void {
+  if (editorMode === 'raw' && mode !== 'raw') {
+    flushPendingRawUpdate();
+  }
+  setModeUi(mode);
+  if (mode === 'raw') {
+    const raw = getRawEditor();
+    if (raw && !isRawFocused()) {
+      suppressRawUpdate = true;
+      raw.value = latestMarkdownText;
+      suppressRawUpdate = false;
+    }
+  }
+  if (notifyHost) {
+    vscode.postMessage({ type: 'setMode', editorMode: mode });
+  }
+}
+
 function initEditor(initialDoc: TipTapDoc): void {
   // Guard against double init without destroy (ready + duplicate init).
   if (editor) {
@@ -224,9 +336,9 @@ function initEditor(initialDoc: TipTapDoc): void {
     element: document.getElementById('editor')!,
     extensions: getEditorExtensions(),
     content,
-    editable: !readonly,
+    editable: !readonly && editorMode === 'markdown',
     onUpdate: ({ editor: ed }) => {
-      if (suppressUpdate || readonly) {
+      if (suppressUpdate || readonly || editorMode !== 'markdown') {
         return;
       }
       const json = ed.getJSON();
@@ -237,18 +349,59 @@ function initEditor(initialDoc: TipTapDoc): void {
 
   isEditorInitialized = true;
   attachToolbarHandlers();
+  attachModeToolbarHandlers();
   attachPasteHandler();
+  attachRawEditorHandlers();
   attachGfmTableClickHandler(initialDoc);
+  setModeUi(editorMode);
 }
 
 function applyExternalDoc(doc: TipTapDoc): void {
   if (!editor) {
     return;
   }
+  // Focus-safe: do not replace TipTap while the user is editing Markdown.
+  if (editorMode === 'markdown' && editor.isFocused) {
+    return;
+  }
   suppressUpdate = true;
-  // Prefer TipTap JSON — avoids lossy tipTapJsonToHtml default-empty path.
   editor.commands.setContent(prepareDocForEditor(doc));
   suppressUpdate = false;
+}
+
+function attachModeToolbarHandlers(): void {
+  document.querySelectorAll('#mode-toolbar button[data-mode]').forEach((btn) => {
+    const clone = btn.cloneNode(true) as HTMLElement;
+    btn.parentNode?.replaceChild(clone, btn);
+    clone.addEventListener('click', () => {
+      const mode = clone.getAttribute('data-mode') as EditorMode | null;
+      if (!mode || mode === editorMode) {
+        return;
+      }
+      // Mode switch alone — no content mutation; Host does not write disk.
+      applyMode(mode, true);
+    });
+  });
+}
+
+function attachRawEditorHandlers(): void {
+  const raw = getRawEditor();
+  if (!raw || raw.dataset.bound === '1') {
+    return;
+  }
+  raw.dataset.bound = '1';
+  raw.addEventListener('input', () => {
+    if (suppressRawUpdate || readonly || editorMode !== 'raw') {
+      return;
+    }
+    const value = raw.value;
+    if (rawUpdateTimer) {
+      clearTimeout(rawUpdateTimer);
+    }
+    rawUpdateTimer = setTimeout(() => {
+      vscode.postMessage({ type: 'updateRaw', markdown: value });
+    }, RAW_UPDATE_DEBOUNCE_MS);
+  });
 }
 
 function attachToolbarHandlers(): void {
@@ -257,7 +410,7 @@ function attachToolbarHandlers(): void {
     const clone = btn.cloneNode(true) as HTMLElement;
     btn.parentNode?.replaceChild(clone, btn);
     clone.addEventListener('click', () => {
-      if (!editor || readonly) {
+      if (!editor || readonly || editorMode !== 'markdown') {
         return;
       }
       const cmd = clone.getAttribute('data-cmd');
@@ -311,7 +464,7 @@ function attachPasteHandler(): void {
   }
   pasteHandlerAttached = true;
   document.addEventListener('paste', (event) => {
-    if (readonly || !event.clipboardData) {
+    if (readonly || editorMode !== 'markdown' || !event.clipboardData) {
       return;
     }
     const items = event.clipboardData.items;
@@ -345,7 +498,7 @@ function attachGfmTableClickHandler(initialDoc: TipTapDoc): void {
   }
   gfmTableHandlerAttached = true;
   document.getElementById('editor')?.addEventListener('click', (e) => {
-    if (readonly) {
+    if (readonly || editorMode !== 'markdown') {
       return;
     }
     const target = e.target as HTMLElement;
@@ -375,31 +528,67 @@ function checkTableLimitsFromEditor(ed: Editor): void {
   }
 }
 
+function setRawParseBanner(failed: boolean, message?: string): void {
+  const el = document.getElementById('raw-parse-banner');
+  if (!el) {
+    return;
+  }
+  if (failed) {
+    el.textContent = message ?? 'Raw Markdown parse failed. Save is blocked until fixed.';
+    el.classList.remove('hidden');
+  } else {
+    el.classList.add('hidden');
+    el.textContent = '';
+  }
+}
+
 window.addEventListener('message', (event) => {
   const message = event.data;
   switch (message.type) {
     case 'init':
       readonly = message.readonly;
       document.body.setAttribute('data-readonly', String(readonly));
+      latestMarkdownText = message.markdownText ?? '';
+      editorMode = (message.editorMode as EditorMode) ?? 'markdown';
       // ready must not force a second full init if already initialized —
       // apply content refresh instead of destroying a live editing session.
       if (isEditorInitialized && editor) {
-        editor.setEditable(!readonly);
+        editor.setEditable(!readonly && editorMode === 'markdown');
         applyExternalDoc(JSON.parse(message.docJson));
+        scheduleRawTextUpdate(latestMarkdownText);
+        setModeUi(editorMode);
         break;
       }
       initEditor(JSON.parse(message.docJson));
-      // Do not post ready here — that would loop with host sendInit on ready.
+      scheduleRawTextUpdate(latestMarkdownText);
+      setModeUi(editorMode);
       break;
     case 'docUpdated':
-      if (editor) {
+      latestMarkdownText = message.markdownText ?? latestMarkdownText;
+      scheduleRawTextUpdate(latestMarkdownText);
+      // Markdown-originated updates omit docJson (TC-067: do not re-apply TipTap).
+      if (typeof message.docJson !== 'string') {
+        break;
+      }
+      // External / undo / Raw success — refresh Preview, idle Markdown, or TipTap under Raw.
+      if (editorMode === 'preview' || (editorMode === 'markdown' && editor && !editor.isFocused)) {
+        applyExternalDoc(JSON.parse(message.docJson));
+      } else if (editorMode === 'raw') {
         applyExternalDoc(JSON.parse(message.docJson));
       }
+      break;
+    case 'modeChanged':
+      if (message.editorMode && message.editorMode !== editorMode) {
+        applyMode(message.editorMode as EditorMode, false);
+      }
+      break;
+    case 'rawParseFailed':
+      setRawParseBanner(!!message.failed, message.message);
       break;
     case 'readonlyChanged':
       readonly = message.readonly;
       document.body.setAttribute('data-readonly', String(readonly));
-      editor?.setEditable(!readonly);
+      setModeUi(editorMode);
       break;
     case 'tableLimitWarning': {
       const el = document.getElementById('table-warning');
@@ -414,7 +603,7 @@ window.addEventListener('message', (event) => {
       break;
     }
     case 'imageInserted':
-      if (editor && !readonly) {
+      if (editor && !readonly && editorMode === 'markdown') {
         editor.chain().focus().setImage({ src: message.relativePath, alt: message.relativePath }).run();
         vscode.postMessage({ type: 'update', docJson: JSON.stringify(editor.getJSON()) });
       }

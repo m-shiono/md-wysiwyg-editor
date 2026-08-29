@@ -6,22 +6,24 @@ VS Code 拡張 **vsc-md-editor** の振る舞い仕様（WHAT）。実装詳細�
 
 ## 概要
 
-チーム向け技術ドキュメントを Git 管理しながら、Word/Excel に近い WYSIWYG 体験で Markdown（`.md`）を編集する VS Code 拡張機能。MVP では本文 WYSIWYG、HTML 表編集、ファイル単位 Readonly 切替、Mermaid リアルタイム描画、Marp プレビュー、クリップボード画像のローカル保存を提供する。リッチ表現（拡張記法・HTML 混在）を Markdown 厳密互換より優先する（UD-001）。
+チーム向け技術ドキュメントを Git 管理しながら、Word/Excel に近い WYSIWYG 体験で Markdown（`.md`）を編集する VS Code 拡張機能。MVP では同一 Custom Editor 上の **Preview / Markdown / Raw 三点モード**、HTML 表編集、ファイル単位 Readonly 切替、Mermaid リアルタイム描画、**Marp プレビュー**（§6・AD-008 — 三点の Preview とは別）、クリップボード画像のローカル保存を提供する。リッチ表現（拡張記法・HTML 混在）を Markdown 厳密互換より優先する（UD-001）。
 
 **feature-slug:** `vsc-md-wysiwyg`
+
+**Custom Editor viewType:** `vsc-md-editor.wysiwyg`（`package.json` `contributes.customEditors` と一致）
 
 ### アーキテクチャ方針（AD-* 要約）
 
 | ID | 方針（WHAT） |
 |----|-------------|
 | AD-001 | TypeScript / VS Code Extension Host / npm / `@vscode/test-electron` |
-| AD-002 | `*.md` を Custom Editor で開く。Document が dirty・undo/redo・save の正本 |
-| AD-003 | Webview 内 WYSIWYG エディタ。見出し・太字・斜体・リスト・リンク・コードブロック等を MVP 対象ノードとする |
+| AD-002 | `*.md` を Custom Editor（viewType `vsc-md-editor.wysiwyg`）で開く。Extension Host 上の `MarkdownDocument` が dirty・undo/redo・save および表示内容の正本 |
+| AD-003 | **Markdown モード**は Webview 内 TipTap（ProseMirror）WYSIWYG。見出し・太字・斜体・リスト・リンク・コードブロック等を MVP 対象ノードとする |
 | AD-004 | 編集内容 ↔ ディスク `.md` は remark/unified パイプラインで変換。HTML 混在・拡張ブロックを許容。出力は決定的（AD-013） |
 | AD-005 | 表は WYSIWYG 内部でリッチ編集、永続化は HTML `<table>` ブロックをデフォルトとする |
-| AD-006 | Readonly はファイル単位。状態はワークスペースに永続化 |
+| AD-006 | ファイル単位 Readonly は **全編集面**（Markdown / Raw）をロック。Preview モードとは別概念。状態はワークスペースに永続化 |
 | AD-007 | Mermaid はコードブロック + リアルタイム描画。編集はテキストのみ |
-| AD-008 | Marp はプレビュー表示のみ。編集は WYSIWYG 本文側 |
+| AD-008 | **Marp Preview** はサイド/パネルのスライド表示専用（§6）。三点モードの **Preview**（§1）とは別 UI・別責務。編集は Markdown / Raw 側 |
 | AD-009 | 画像 paste → 同階層 `img/image-NNNN.ext` に保存し相対パスを挿入 |
 | AD-010 | Webview CSP + HTML サニタイズ。許可タグ・属性を限定 |
 | AD-011 | Extension Host と Webview を別バンドルし `media/` に配置 |
@@ -29,6 +31,7 @@ VS Code 拡張 **vsc-md-editor** の振る舞い仕様（WHAT）。実装詳細�
 | AD-013 | 保存時の整形ルールを固定し Git diff 可読性を確保 |
 | AD-014 | ビルトイン Markdown エディタとの共存（エディタ関連付けの切替可能） |
 | AD-015 | Output チャンネルで障害ログ。ユーザー向けはエディタ内インライン表示を優先 |
+| AD-016 | 同一 Custom Editor 内に **Preview / Markdown / Raw** 三点モード。初期モードは Markdown。モード切替 alone ではディスク書き込みしない |
 
 ---
 
@@ -36,7 +39,7 @@ VS Code 拡張 **vsc-md-editor** の振る舞い仕様（WHAT）。実装詳細�
 
 ### 概要
 
-`.md` ファイルを Custom Editor として開き、Extension Host 上の Document と Webview 上の WYSIWYG UI を同期する。
+`.md` ファイルを Custom Editor（viewType `vsc-md-editor.wysiwyg`）として開き、Extension Host 上の `MarkdownDocument` を正本として、同一タブ内の **Preview / Markdown / Raw** 三点モードと同期する（AD-002, AD-016）。
 
 ### Inputs & Types
 
@@ -45,15 +48,19 @@ VS Code 拡張 **vsc-md-editor** の振る舞い仕様（WHAT）。実装詳細�
 | `documentUri` | `vscode.Uri` | はい | — | — | ワークスペース内 `.md` |
 | `fileContent` | `string` (UTF-8) | はい | 0 B | 推奨 500 KB 未満 | 超過時は警告のみ（RK-004） |
 | `extensionActivation` | イベント | はい | — | — | Custom Editor オープン時に限定起動（AD-002） |
+| `editorMode` | `"preview" \| "markdown" \| "raw"` | はい | — | — | 初期値 `"markdown"`（AD-016） |
+| `modeSwitchCommand` | コマンド / UI 切替 | 任意 | — | — | モード変更のみ。ディスク I/O なし |
 
 ### Outputs & Failure Returns
 
 | 条件 | 戻り値 / ステータス | 備考 |
 |------|-------------------|------|
-| 成功（オープン） | Custom Editor タブ表示、Webview ロード完了 | — |
+| 成功（オープン） | Custom Editor タブ表示、Webview ロード完了、初期モード Markdown | AD-016 |
+| 成功（モード切替） | 対象面を表示、Document 内容は維持、**ディスク未書込** | dirty 状態も変更しない（内容未変更時） |
 | 成功（保存） | ディスク上 `.md` 更新、`dirty` 解除 | AD-013 整形後 |
 | ファイル読込失敗 | エディタ未表示、通知 + Output | 権限・存在エラー |
-| シリアライズ失敗 | 保存拒否、`dirty` 維持、通知 + Output | ソースは Webview 内に保持 |
+| シリアライズ失敗 | 保存拒否、`dirty` 維持、通知 + Output | Document 正本は維持 |
+| Raw パース失敗 | Document **を更新しない**、通知 + Output、**save ブロック** | 失敗中フラグ。直前の有効 Document を保持 |
 | 大ファイル警告 | 編集継続可、Output に警告 | RK-004 |
 
 ### Preconditions
@@ -64,35 +71,54 @@ VS Code 拡張 **vsc-md-editor** の振る舞い仕様（WHAT）。実装詳細�
 
 ### Behavior
 
+#### 三点モード定義（AD-016）
+
+同一 Custom Editor タブ内で次の 3 モードを切り替える。**Marp Preview（§6 / AD-008）は本節の Preview ではない。**
+
+| モード | 役割 | 編集可否 | Document との関係 |
+|--------|------|----------|-------------------|
+| **Preview** | 読み取り専用の描画表示（レンダリング結果） | 不可（RO 描画） | **Document → 一方表示**のみ。編集イベントを Document へ送らない |
+| **Markdown** | TipTap WYSIWYG 本文編集（§2） | 可（ファイル RO 時は不可 — §4） | Markdown 面 ↔ Document 双方向。変更で `dirty` |
+| **Raw** | Markdown ソース文字列の直接編集 | 可（ファイル RO 時は不可 — §4） | Raw 面 ↔ Document 双方向。変更で `dirty` |
+
 #### 正常系
 
-1. ユーザーが `.md` を開くと Custom Editor が起動し、ディスク内容をパースして Webview に表示する
-2. Webview での編集は postMessage 経由で Document に反映され `dirty` となる
-3. `save` / `saveAs` で Document 内容をシリアライズし UTF-8 で書き込む
-4. undo/redo は Document 経由で一貫して動作する
-5. エディタを閉じる際、未保存変更があれば VS Code 標準の確認ダイアログが表示される
+1. ユーザーが `.md` を開くと Custom Editor が起動し、ディスク内容を `MarkdownDocument` に読み込み、初期モード **Markdown** で Webview に表示する
+2. **Markdown ↔ Raw 相互リアルタイム同期:** 一方の編集は postMessage 経由で Document に反映され、他方面も Document から再投影される。正本は常に Extension Host の `MarkdownDocument`
+3. **Preview** は Document の現在内容を描画する一方通行。Preview 表示中に Document が更新されれば描画を追随する
+4. **モード切替**（Preview ↔ Markdown ↔ Raw）は表示面の切替のみであり、**ディスクへの書き込みを行わない**。内容に差分がなければ `dirty` も変化しない
+5. Markdown / Raw での内容変更は既存の CustomDocument フローに乗り `dirty` となる。`save` / `saveAs` で Document 内容をシリアライズし UTF-8 で書き込む（§8）
+6. undo/redo は Document 経由で一貫して動作する（モードをまたいでも同一 Document 履歴）
+7. エディタを閉じる際、未保存変更があれば VS Code 標準の確認ダイアログが表示される
 
 #### 例外系
 
-1. パース不能な Markdown/HTML 混在は可能な範囲で表示し、保存時にシリアライズエラーを報告する
-2. 外部プロセスによるファイル変更は VS Code の標準リロード/競合フローに従う
+1. オープン時にパース不能な Markdown/HTML 混在は可能な範囲で表示し、保存時にシリアライズエラーを報告する
+2. **Raw 編集中のパース失敗:** Document を破壊・上書きしない。ユーザーへ通知し Output に記録する。パース失敗が解消されるまで **save をブロック**する（直前の有効 Document 内容を正本として維持）
+3. 外部プロセスによるファイル変更は VS Code の標準リロード/競合フローに従う
 
 ### Non-Goals
 
 - Language Server との完全統合（RK-008 — backlog 検討）
 - 仮想スクロールによる大ファイル最適化（RK-004 — backlog）
+- Preview / Markdown / Raw の同時分割表示（同一タブ内の三点切替のみ）
+- モードごとに別 Custom Editor / 別 viewType を登録すること
 
 ### Related Tests
 
-- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-001–009
+- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-001–009（基盤）および三点モード追加 TC（後続 `spec-test-design`）
+
+### Spec Gaps
+
+- なし（モード初期値 Markdown・Raw パース失敗時 save ブロック・モード切替でディスク非書込は本節で確定）
 
 ---
 
-## §2 WYSIWYG 本文編集
+## §2 WYSIWYG 本文編集（Markdown モード）
 
 ### 概要
 
-Webview 内で Markdown 本文を WYSIWYG 編集する。MVP ノードは見出し（h1–h6）、太字、斜体、箇条書き、番号リスト、リンク、インラインコード、コードブロック。
+三点モードのうち **Markdown モード**で、Webview 内 TipTap により Markdown 本文を WYSIWYG 編集する（AD-003）。MVP ノードは見出し（h1–h6）、太字、斜体、箇条書き、番号リスト、リンク、インラインコード、コードブロック。
 
 ### Inputs & Types
 
@@ -111,7 +137,7 @@ Webview 内で Markdown 本文を WYSIWYG 編集する。MVP ノードは見出�
 
 ### Preconditions
 
-- Custom Editor が編集モード（非 RO）であること
+- Custom Editor が **Markdown モード**であり、かつファイル単位 RO でないこと（§1, §4）
 - Webview がロード済みであること
 
 ### Behavior
@@ -119,9 +145,10 @@ Webview 内で Markdown 本文を WYSIWYG 編集する。MVP ノードは見出�
 #### 正常系
 
 1. ツールバー・ショートカットで書式を適用できる
-2. 編集内容はリアルタイムで内部モデルに反映される
+2. 編集内容はリアルタイムで内部モデルおよび `MarkdownDocument` に反映される（§1 同期）
 3. 保存時に remark パイプラインで Markdown（+ 許可 HTML）へシリアライズされる（AD-004）
 4. VS Code テーマ CSS 変数（`var(--vscode-*)`）で見た目を統合する
+5. Markdown モードでの変更は Raw 面へ Document 経由でリアルタイム反映される（§1）
 
 #### 例外系
 
@@ -133,6 +160,7 @@ Webview 内で Markdown 本文を WYSIWYG 編集する。MVP ノードは見出�
 - CommonMark / GFM の厳密互換（UD-001 — リッチ優先）
 - 全 Markdown 拡張記法の WYSIWYG 対応
 - i18n（UI 文言の多言語化 — backlog）
+- Raw / Preview モード中の TipTap 操作（当該モードでは Markdown 面は非表示または非アクティブ）
 
 ### Related Tests
 
@@ -193,11 +221,11 @@ Excel 的な表編集。セル直接編集、セル内改行・箇条書き・�
 
 ---
 
-## §4 Readonly モード
+## §4 Readonly モード（ファイル単位）
 
 ### 概要
 
-ファイル単位で編集可否を切り替える（UD-005）。状態はワークスペースに永続化する（AD-006）。
+ファイル単位で編集可否を切り替える（UD-005, AD-006）。**三点モードの Preview（読み取り専用描画）とは別概念**である。ファイル RO は Markdown / Raw の **全編集面をロック**する。状態はワークスペースに永続化する。
 
 ### Inputs & Types
 
@@ -210,8 +238,8 @@ Excel 的な表編集。セル直接編集、セル内改行・箇条書き・�
 
 | 条件 | 戻り値 / ステータス | 備考 |
 |------|-------------------|------|
-| 成功（RO ON） | 編集不可、バッジ表示 | Webview `editable: false` |
-| 成功（RO OFF） | 編集可 | — |
+| 成功（RO ON） | Markdown / Raw とも編集不可、バッジ表示 | Webview `editable: false`（全編集面） |
+| 成功（RO OFF） | 編集可（現在モードに応じる） | Preview モード自体は常に非編集 |
 | 未オープン URI | 次回オープン時に状態復元 | workspaceState |
 
 ### Preconditions
@@ -224,9 +252,10 @@ Excel 的な表編集。セル直接編集、セル内改行・箇条書き・�
 
 1. コマンド実行で当該ファイルの RO 状態がトグルされる
 2. RO 状態は `workspaceState` に `readonly:<uri>` として保存される
-3. RO 中は WYSIWYG 編集・表編集・画像 paste が無効化される
-4. RO 中も Mermaid 描画・Marp プレビュー等の閲覧系機能は利用できる
-5. 再オープン時に RO 状態が復元される
+3. RO 中は **Markdown モードの WYSIWYG・表編集・画像 paste** および **Raw モードのソース編集**が無効化される
+4. RO 中も三点の Preview 描画・Mermaid 描画・**Marp Preview（§6）** 等の閲覧系機能は利用できる
+5. RO 中でも三点モードの切替自体は可能（表示面の変更のみ。編集は不可のまま）
+6. 再オープン時に RO 状態が復元される
 
 #### 例外系
 
@@ -236,10 +265,11 @@ Excel 的な表編集。セル直接編集、セル内改行・箇条書き・�
 ### Non-Goals
 
 - ワークスペース全体 RO（`mdEditor.workspaceReadonly` — Phase 2 / backlog）
+- ファイル RO と三点 Preview モードの統合（別概念として維持）
 
 ### Related Tests
 
-- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-025–030
+- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-025–030、および RO×Raw/モード切替 TC（後続）
 
 ---
 
@@ -292,17 +322,24 @@ Excel 的な表編集。セル直接編集、セル内改行・箇条書き・�
 
 ---
 
-## §6 Marp プレビュー
+## §6 Marp プレビュー（AD-008）
 
 ### 概要
 
-Marp 形式スライドのプレビューをサイドまたはパネルに表示する。編集は WYSIWYG 本文のみ（UD-003, AD-008）。
+Marp 形式スライドのプレビューをサイドまたはパネルに表示する（UD-003, AD-008）。編集は Markdown / Raw 側のみ。
+
+**用語の区別（必須）:**
+
+| 名称 | 節 | 意味 |
+|------|-----|------|
+| **三点 Preview** | §1 | Custom Editor 内の読み取り専用 Markdown 描画モード |
+| **Marp Preview** | §6（本節） | Marp スライド用のサイド/パネル表示。三点モードとは独立 |
 
 ### Inputs & Types
 
 | 入力 | 型 | 必須 | 最小 | 最大 | 備考 |
 |------|-----|------|------|------|------|
-| `documentContent` | `string` | はい | — | — | front matter + 本文 |
+| `documentContent` | `string` | はい | — | — | front matter + 本文（Document 正本） |
 | `previewTrigger` | コマンド / 自動 | はい | — | — | ドキュメント変更で更新 |
 
 ### Outputs & Failure Returns
@@ -310,30 +347,32 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 | 条件 | 戻り値 / ステータス | 備考 |
 |------|-------------------|------|
 | 成功 | スライド HTML プレビュー | テーマは front matter から |
-| パース失敗 | プレビュー内エラー表示 | Output に記録 |
+| パース失敗 | プレビュー内エラー表示 | Output に記録。Document は変更しない |
 | 非 Marp 文書 | プレビュー内に「No Marp slides detected」ガイダンス表示 | Marp front matter / スライド区切り未検出時 |
 
 ### Preconditions
 
-- プレビュー用 Webview / Panel が利用可能であること
+- Marp 用 Webview / Panel が利用可能であること（Custom Editor 三点 Preview とは別インスタンスでも可）
 
 ### Behavior
 
 #### 正常系
 
 1. YAML front matter をパースし Marp テーマを適用する
-2. 本文変更に追随してプレビューを更新する
-3. RO / 編集モードいずれでもプレビューは表示できる
+2. 本文変更（Document 更新）に追随してプレビューを更新する
+3. ファイル RO / 三点いずれのモードでも Marp Preview は表示できる
+4. 三点モードを Preview にしても、本節の Marp Preview が自動で置き換わることはない
 
 #### 例外系
 
-1. レンダリング失敗時も `.md` ソースは変更しない
+1. レンダリング失敗時も `.md` ソース / Document は変更しない
 2. Marp スライドが検出されない文書では、プレビューパネルに **「No Marp slides detected」** とガイダンス（Marp front matter の追加方法等）を表示する
 
 ### Non-Goals
 
 - Marp WYSIWYG 編集（backlog）
 - スライド PDF / 画像エクスポート
+- 三点 Preview モードを Marp レンダラで兼用すること（責務分離を維持）
 
 ### Related Tests
 
@@ -361,7 +400,7 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 |------|-------------------|------|
 | 成功 | `img/image-NNNN.ext` 保存 + Markdown 画像参照挿入 | 上書きなし（UD-007） |
 | 未保存新規 doc | paste 拒否、「Save document first」通知 | URI 未確定 |
-| RO 中 | 操作拒否 | §5 |
+| RO 中 | 操作拒否 | §4（全編集面ロック） |
 | FS 書込失敗 | 通知、挿入なし | 権限・ディスク容量 |
 | 非画像 paste | 無視（通常 paste へ委譲） | — |
 
@@ -403,46 +442,55 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 
 ### 概要
 
-内部モデルとディスク `.md` の双方向変換。決定的出力で Git diff 可読性を確保する（AD-004, AD-013）。
+内部モデル（`MarkdownDocument`）とディスク `.md` の双方向変換。決定的出力で Git diff 可読性を確保する（AD-004, AD-013）。Raw モードからの反映も同一正本・同一保存経路を用いる（§1）。
 
 ### Inputs & Types
 
 | 入力 | 型 | 必須 | 最小 | 最大 | 備考 |
 |------|-----|------|------|------|------|
-| `internalDoc` | ドキュメントモデル | はい | — | — | §2–§7 の統合 |
+| `internalDoc` | ドキュメントモデル | はい | — | — | §1–§7 の統合正本（`MarkdownDocument`） |
+| `rawSourceEdit` | `string` | 任意 | — | — | Raw モードからのソース。パース成功時のみ Document へ反映 |
 | `stringifyOptions` | 設定オブジェクト | はい | — | — | 行長・インデント・空行規則を固定 |
+| `isRawParseFailed` | `boolean` | 自動 | — | — | true の間は save 拒否 |
 
 ### Outputs & Failure Returns
 
 | 条件 | 戻り値 / ステータス | 備考 |
 |------|-------------------|------|
-| 成功 | 決定的な UTF-8 Markdown 文字列 | round-trip 可能が望ましい |
-| 変換失敗 | エラー、保存中断 | Output に概要（全文は出さない） |
+| 成功 | 決定的な UTF-8 Markdown 文字列、ディスク更新、`dirty` 解除 | round-trip 可能が望ましい |
+| 変換失敗（stringify） | エラー、保存中断、`dirty` 維持 | Output に概要（全文は出さない） |
+| Raw パース失敗中 | **save ブロック**、Document 未更新 | §1 例外系 2。通知 + Output |
 
 ### Preconditions
 
 - normalize パスは保存前の単一経路に集約されること（AD-013）
+- `isRawParseFailed === false` であること（失敗中は save 不可）
 
 ### Behavior
 
 #### 正常系
 
-1. オープン時: `.md` → parse → 内部モデル
-2. 保存時: 内部モデル → stringify（固定オプション）→ `.md`
-3. HTML 表・許可 HTML は raw HTML ノードまたは同等手段で保持する
-4. 同一内容に対し、連続保存で byte-identical 出力を目指す（AD-013）
+1. オープン時: `.md` → parse → `MarkdownDocument`
+2. Markdown モード編集: TipTap モデル → Document 更新 →（必要時）Raw 面へ投影
+3. Raw モード編集: ソース文字列 → パース成功時のみ Document 更新 → Markdown / Preview 面へ投影
+4. 保存時: Document → stringify（固定オプション）→ `.md`
+5. HTML 表・許可 HTML は raw HTML ノードまたは同等手段で保持する
+6. 同一内容に対し、連続保存で byte-identical 出力を目指す（AD-013）
+7. **モード切替だけでは本節の保存処理を起動しない**（§1）
 
 #### 例外系
 
 1. パース不能部分は raw 保持を優先し、失敗時はユーザーに通知する
+2. Raw パース失敗時は Document を壊さず、失敗解消まで save を拒否する（§1）
 
 ### Non-Goals
 
 - 他エディタとの完全な Markdown 相互変換（RK-002）
+- Raw 失敗中の「強制保存（Document 無視で Raw バッファをそのまま書く）」オプション（MVP 非採用）
 
 ### Related Tests
 
-- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-052–056
+- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-052–056、Raw パース失敗 TC（後続）
 
 ---
 
@@ -530,6 +578,9 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 | 大ファイル仮想スクロール | RK-004 / backlog |
 | UI i18n（英語以外） | backlog |
 | Markdown LSP 完全連携 | RK-008 / backlog |
+| Preview / Markdown / Raw の同時分割表示 | §1 Non-Goals |
+| モード別の別 viewType / 別 Custom Editor | §1 Non-Goals / AD-016 |
+| Raw パース失敗中の強制ディスク書き込み | §8 Non-Goals |
 
 ---
 
@@ -553,7 +604,7 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 
 | ドキュメント | 状態 |
 |-------------|------|
-| [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) | **作成済** — TC-001–066（P0/P1/P2） |
+| [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) | **作成済** — TC-001–068。三点モード・Raw 同期・Raw パース失敗は **要追記**（次: test-agent / spec-test-design） |
 | MVP 外項目 | [doc/backlog-vsc-md-wysiwyg.md](backlog-vsc-md-wysiwyg.md) |
 
 ---
@@ -569,6 +620,9 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 | GFM パイプ表オープン時変換 | 初回編集時に HTML `<table>` へ変換（UD-001 整合） | TC-019 |
 | 非 Marp 文書の Marp プレビュー | **「No Marp slides detected」** ガイダンス表示 | TC-042 |
 | RO 未保存ワークスペース | 保存済み WS は `workspaceState` 永続化；未保存 WS はセッション内のみ | TC-027, TC-030 |
+| 三点モード・正本・dirty | 同一 Custom Editor、初期 Markdown、正本 `MarkdownDocument`、モード切替でディスク非書込 | 後続 TC（test-agent） |
+| Raw パース失敗 | Document 非破壊 + 通知 + 失敗中 save ブロック | 後続 TC（test-agent） |
+| Preview vs Marp Preview | §1 三点 Preview と §6 Marp Preview を別概念として明示 | 後続 TC / TC-038–042 |
 
 ---
 
@@ -578,3 +632,4 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 |------|-----|---------|
 | 2026-08-29 | 全体 | 初版。Requirements Brief `vsc-md-wysiwyg` に基づく MVP 仕様 |
 | 2026-08-29 | §3, §4, §6, §7, Spec Gaps | Advisor defaults で Spec Gaps 解決。testspec-vsc-md-wysiwyg 連携 |
+| 2026-08-29 | 概要, AD-*, §1, §2, §4, §6, §8, Non-Goals, Spec Gaps | Preview / Markdown / Raw 三点モード・相互同期・dirty/save・ファイル RO 全編集面ロック・Marp 区別・Raw パース失敗時 save ブロックを契約化（AD-016）。viewType `vsc-md-editor.wysiwyg` を明示 |
