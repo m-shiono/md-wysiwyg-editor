@@ -62,17 +62,8 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     const readonly = isReadonly(this.context, document.uri);
     webviewPanel.webview.html = this.getHtml(webviewPanel.webview, readonly);
 
-    const sendInit = (): void => {
-      this.postMessage(webviewPanel.webview, {
-        type: 'init',
-        docJson: document.docJson,
-        readonly,
-        uri: document.uri.toString(),
-      });
-    };
-
-    sendInit();
-
+    // Init only after webview posts `ready` — messages sent before the script
+    // loads are dropped by VS Code.
     webviewPanel.webview.onDidReceiveMessage(async (raw: unknown) => {
       const message = raw as WebviewInboundMessage;
       await this.handleMessage(document, webviewPanel, message);
@@ -189,13 +180,19 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
 
     switch (message.type) {
       case 'ready':
-        sendInitFallback(panel, document, readonly);
+        this.postMessage(panel.webview, {
+          type: 'init',
+          docJson: document.docJson,
+          readonly,
+          uri: document.uri.toString(),
+        });
         break;
       case 'update':
         if (readonly) {
           return;
         }
-        document.updateFromJson(message.docJson);
+        // Do not echo docUpdated — webview already has this content.
+        document.updateFromJson(message.docJson, 'Edit', { syncWebview: false });
         break;
       case 'convertGfmTable':
         if (readonly) {
@@ -227,19 +224,6 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
         break;
       default:
         break;
-    }
-
-    function sendInitFallback(
-      webviewPanel: vscode.WebviewPanel,
-      doc: MarkdownDocument,
-      ro: boolean,
-    ): void {
-      void webviewPanel.webview.postMessage({
-        type: 'init',
-        docJson: doc.docJson,
-        readonly: ro,
-        uri: doc.uri.toString(),
-      });
     }
   }
 

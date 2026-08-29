@@ -223812,6 +223812,7 @@ img.ProseMirror-separator {
   var editor;
   var readonly = false;
   var suppressUpdate = false;
+  var isEditorInitialized = false;
   var HtmlTableExtension = Extension.create({
     name: "htmlTable",
     addGlobalAttributes() {
@@ -223827,120 +223828,142 @@ img.ProseMirror-separator {
       ];
     }
   });
-  var HtmlBlockExtension = Extension.create({
+  var HtmlBlockNode = Node2.create({
     name: "htmlBlock",
     group: "block",
     atom: true,
+    selectable: true,
     addAttributes() {
-      return { html: { default: "" } };
+      return {
+        html: { default: "" }
+      };
     },
     parseHTML() {
       return [{ tag: "div[data-html-block]" }];
     },
     renderHTML({ HTMLAttributes }) {
-      return ["div", { "data-html-block": "true", innerHTML: HTMLAttributes.html }];
+      return ["div", { "data-html-block": "true", "data-html": HTMLAttributes.html }];
+    },
+    addNodeView() {
+      return ({ node: node2 }) => {
+        const dom = document.createElement("div");
+        dom.setAttribute("data-html-block", "true");
+        dom.innerHTML = purify.sanitize(node2.attrs.html ?? "");
+        return { dom };
+      };
     }
   });
-  function tipTapJsonToHtml(doc3) {
-    if (!doc3.content) {
-      return "<p></p>";
-    }
-    return doc3.content.map(nodeToHtml).join("");
-  }
-  function nodeToHtml(node2) {
-    switch (node2.type) {
-      case "heading": {
-        const level = node2.attrs?.level ?? 1;
-        const inner2 = inlineContent(node2.content ?? []);
-        return `<h${level}>${inner2}</h${level}>`;
-      }
-      case "paragraph":
-        return `<p>${inlineContent(node2.content ?? [])}</p>`;
-      case "bulletList":
-        return `<ul>${(node2.content ?? []).map((li) => `<li>${blockContent(li.content ?? [])}</li>`).join("")}</ul>`;
-      case "orderedList":
-        return `<ol>${(node2.content ?? []).map((li) => `<li>${blockContent(li.content ?? [])}</li>`).join("")}</ol>`;
-      case "codeBlock": {
-        const lang = node2.attrs?.language ?? "";
-        const text4 = inlineContent(node2.content ?? []);
-        if (lang === "mermaid") {
-          return `<div class="mermaid-block" data-mermaid="${encodeURIComponent(text4)}"><div class="mermaid-preview"></div><pre class="mermaid-source">${escapeHtml(text4)}</pre></div>`;
+  var MermaidAwareCodeBlock = CodeBlockLowlight.extend({
+    addNodeView() {
+      return ({ node: node2 }) => {
+        const language = node2.attrs.language ?? "";
+        if (language !== "mermaid") {
+          const pre2 = document.createElement("pre");
+          const code2 = document.createElement("code");
+          if (language) {
+            code2.classList.add(`language-${language}`);
+          }
+          pre2.appendChild(code2);
+          return { dom: pre2, contentDOM: code2 };
         }
-        return `<pre><code>${escapeHtml(text4)}</code></pre>`;
-      }
-      case "table":
-        if (node2.attrs?.html) {
-          return purify.sanitize(node2.attrs.html);
-        }
-        return tableToHtml(node2);
-      case "htmlBlock":
-        return purify.sanitize(node2.attrs?.html ?? "");
-      case "horizontalRule":
-        return "<hr/>";
-      case "blockquote":
-        return `<blockquote>${blockContent(node2.content ?? [])}</blockquote>`;
-      default:
-        return "";
+        const dom = document.createElement("div");
+        dom.classList.add("mermaid-block");
+        dom.setAttribute("data-mermaid-node", "true");
+        const preview = document.createElement("div");
+        preview.classList.add("mermaid-preview");
+        dom.appendChild(preview);
+        const pre = document.createElement("pre");
+        pre.classList.add("mermaid-source");
+        const code = document.createElement("code");
+        code.classList.add("language-mermaid");
+        pre.appendChild(code);
+        dom.appendChild(pre);
+        const viewId = `mermaid-nv-${Math.random().toString(36).slice(2, 10)}`;
+        const renderPreview = (source3) => {
+          const existing = mermaidTimers.get(viewId);
+          if (existing) {
+            clearTimeout(existing);
+          }
+          mermaidTimers.set(
+            viewId,
+            setTimeout(async () => {
+              try {
+                const { svg: svg2 } = await mermaid_default.render(`${viewId}-svg`, source3 || " ");
+                preview.innerHTML = purify.sanitize(svg2);
+              } catch (err) {
+                preview.innerHTML = `<div class="mermaid-error">${escapeHtml(String(err))}</div>`;
+                vscode.postMessage({ type: "mermaidError", error: String(err) });
+              }
+            }, MERMAID_DEBOUNCE_MS)
+          );
+        };
+        renderPreview(node2.textContent);
+        return {
+          dom,
+          contentDOM: code,
+          update: (updatedNode) => {
+            if (updatedNode.type.name !== "codeBlock") {
+              return false;
+            }
+            if (updatedNode.attrs.language !== "mermaid") {
+              return false;
+            }
+            renderPreview(updatedNode.textContent);
+            return true;
+          },
+          destroy: () => {
+            const existing = mermaidTimers.get(viewId);
+            if (existing) {
+              clearTimeout(existing);
+            }
+            mermaidTimers.delete(viewId);
+          }
+        };
+      };
     }
-  }
-  function inlineContent(nodes5) {
-    return nodes5.map((n2) => {
-      if (n2.type !== "text") {
-        return "";
+  }).configure({ lowlight });
+  function prepareDocForEditor(doc3) {
+    const content = (doc3.content ?? []).map((raw) => {
+      const node2 = raw;
+      if (node2.type === "table" && node2.attrs?.html && (!node2.content || node2.content.length === 0)) {
+        return {
+          type: "htmlBlock",
+          attrs: { html: node2.attrs.html }
+        };
       }
-      let text4 = escapeHtml(n2.text ?? "");
-      for (const mark of n2.marks ?? []) {
-        if (mark.type === "bold") {
-          text4 = `<strong>${text4}</strong>`;
-        } else if (mark.type === "italic") {
-          text4 = `<em>${text4}</em>`;
-        } else if (mark.type === "code") {
-          text4 = `<code>${text4}</code>`;
-        } else if (mark.type === "link") {
-          text4 = `<a href="${escapeHtml(mark.attrs?.href ?? "")}">${text4}</a>`;
-        }
-      }
-      return text4;
-    }).join("");
-  }
-  function blockContent(nodes5) {
-    return nodes5.map(nodeToHtml).join("");
-  }
-  function tableToHtml(node2) {
-    let html2 = "<table>";
-    for (const row of node2.content ?? []) {
-      html2 += "<tr>";
-      for (const cell of row.content ?? []) {
-        const tag = cell.type === "tableHeader" ? "th" : "td";
-        html2 += `<${tag}>${blockContent(cell.content ?? [])}</${tag}>`;
-      }
-      html2 += "</tr>";
-    }
-    html2 += "</table>";
-    return purify.sanitize(html2);
+      return raw;
+    });
+    return { type: "doc", content };
   }
   function escapeHtml(text4) {
     return text4.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
+  function getEditorExtensions() {
+    return [
+      StarterKit.configure({ codeBlock: false }),
+      Link.configure({ openOnClick: false }),
+      Table.configure({ resizable: true }),
+      TableRow,
+      TableCell,
+      TableHeader,
+      TaskList,
+      TaskItem.configure({ nested: true }),
+      MermaidAwareCodeBlock,
+      Image2.configure({ inline: true, allowBase64: false }),
+      HtmlTableExtension,
+      HtmlBlockNode
+    ];
+  }
   function initEditor(initialDoc) {
-    const html2 = tipTapJsonToHtml(initialDoc);
+    if (editor) {
+      editor.destroy();
+      editor = void 0;
+    }
+    const content = prepareDocForEditor(initialDoc);
     editor = new Editor({
       element: document.getElementById("editor"),
-      extensions: [
-        StarterKit.configure({ codeBlock: false }),
-        Link.configure({ openOnClick: false }),
-        Table.configure({ resizable: true }),
-        TableRow,
-        TableCell,
-        TableHeader,
-        TaskList,
-        TaskItem.configure({ nested: true }),
-        CodeBlockLowlight.configure({ lowlight }),
-        Image2.configure({ inline: true, allowBase64: false }),
-        HtmlTableExtension,
-        HtmlBlockExtension
-      ],
-      content: html2,
+      extensions: getEditorExtensions(),
+      content,
       editable: !readonly,
       onUpdate: ({ editor: ed }) => {
         if (suppressUpdate || readonly) {
@@ -223949,21 +223972,30 @@ img.ProseMirror-separator {
         const json4 = ed.getJSON();
         vscode.postMessage({ type: "update", docJson: JSON.stringify(json4) });
         checkTableLimitsFromEditor(ed);
-        scheduleMermaidRender();
       }
     });
+    isEditorInitialized = true;
     attachToolbarHandlers();
     attachPasteHandler();
     attachGfmTableClickHandler(initialDoc);
-    scheduleMermaidRender();
+  }
+  function applyExternalDoc(doc3) {
+    if (!editor) {
+      return;
+    }
+    suppressUpdate = true;
+    editor.commands.setContent(prepareDocForEditor(doc3));
+    suppressUpdate = false;
   }
   function attachToolbarHandlers() {
     document.querySelectorAll("#toolbar button").forEach((btn) => {
-      btn.addEventListener("click", () => {
+      const clone8 = btn.cloneNode(true);
+      btn.parentNode?.replaceChild(clone8, btn);
+      clone8.addEventListener("click", () => {
         if (!editor || readonly) {
           return;
         }
-        const cmd = btn.getAttribute("data-cmd");
+        const cmd = clone8.getAttribute("data-cmd");
         switch (cmd) {
           case "bold":
             editor.chain().focus().toggleBold().run();
@@ -223972,7 +224004,7 @@ img.ProseMirror-separator {
             editor.chain().focus().toggleItalic().run();
             break;
           case "heading": {
-            const level = parseInt(btn.getAttribute("data-level") ?? "1", 10);
+            const level = parseInt(clone8.getAttribute("data-level") ?? "1", 10);
             editor.chain().focus().toggleHeading({ level }).run();
             break;
           }
@@ -224000,7 +224032,12 @@ img.ProseMirror-separator {
       });
     });
   }
+  var pasteHandlerAttached = false;
   function attachPasteHandler() {
+    if (pasteHandlerAttached) {
+      return;
+    }
+    pasteHandlerAttached = true;
     document.addEventListener("paste", (event3) => {
       if (readonly || !event3.clipboardData) {
         return;
@@ -224025,13 +224062,15 @@ img.ProseMirror-separator {
       }
     });
   }
+  var gfmTableHandlerAttached = false;
   function attachGfmTableClickHandler(initialDoc) {
     const gfmTables = (initialDoc.content ?? []).filter(
       (n2) => n2.type === "table" && n2.attrs?.gfmSource
     );
-    if (gfmTables.length === 0) {
+    if (gfmTables.length === 0 || gfmTableHandlerAttached) {
       return;
     }
+    gfmTableHandlerAttached = true;
     document.getElementById("editor")?.addEventListener("click", (e3) => {
       if (readonly) {
         return;
@@ -224061,48 +224100,22 @@ img.ProseMirror-separator {
       vscode.postMessage({ type: "checkTableLimits", rows: maxRows, cols: maxCols });
     }
   }
-  function scheduleMermaidRender() {
-    document.querySelectorAll(".mermaid-block").forEach((block2, index) => {
-      const id39 = `mermaid-${index}`;
-      const source3 = decodeURIComponent(block2.getAttribute("data-mermaid") ?? "");
-      const preview = block2.querySelector(".mermaid-preview");
-      if (!preview) {
-        return;
-      }
-      const existing = mermaidTimers.get(id39);
-      if (existing) {
-        clearTimeout(existing);
-      }
-      mermaidTimers.set(
-        id39,
-        setTimeout(async () => {
-          try {
-            const { svg: svg2 } = await mermaid_default.render(`${id39}-svg`, source3);
-            preview.innerHTML = purify.sanitize(svg2);
-          } catch (err) {
-            preview.innerHTML = `<div class="mermaid-error">${escapeHtml(String(err))}</div>`;
-            vscode.postMessage({ type: "mermaidError", error: String(err) });
-          }
-        }, MERMAID_DEBOUNCE_MS)
-      );
-    });
-  }
   window.addEventListener("message", (event3) => {
     const message = event3.data;
     switch (message.type) {
       case "init":
         readonly = message.readonly;
         document.body.setAttribute("data-readonly", String(readonly));
+        if (isEditorInitialized && editor) {
+          editor.setEditable(!readonly);
+          applyExternalDoc(JSON.parse(message.docJson));
+          break;
+        }
         initEditor(JSON.parse(message.docJson));
-        vscode.postMessage({ type: "ready" });
         break;
       case "docUpdated":
         if (editor) {
-          suppressUpdate = true;
-          const doc3 = JSON.parse(message.docJson);
-          editor.commands.setContent(tipTapJsonToHtml(doc3));
-          suppressUpdate = false;
-          scheduleMermaidRender();
+          applyExternalDoc(JSON.parse(message.docJson));
         }
         break;
       case "readonlyChanged":

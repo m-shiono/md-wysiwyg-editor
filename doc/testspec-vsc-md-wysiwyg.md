@@ -133,6 +133,9 @@
 | TC-064 | Corner | output-render-failure | P1 | Mermaid/Marp 描画失敗 | Output に記録、インラインエラー優先 | AD-015 | §10, §5, §6 |
 | TC-065 | Stress | table-max-soft | P2 | 100×20 表で全セル編集後 save | 5 s 以内に save 完了、警告なし | 上限境界性能 | §3 |
 | TC-066 | Stress | large-doc-open | P2 | 450 KB `.md`（Mermaid 10 ブロック）を open | 30 s 以内に Webview ロード | 大 doc 性能 | §1, RK-004 |
+| TC-067 | Corner | regression-edit-display-break | P0 | Webview 起点の `updateFromJson(..., { syncWebview: false })` | `onDidContentChange` は発火しない（echo 抑止）。`onDidChange` は発火（dirty 維持） | Regression: 編集後に setContent echo で表示破壊 | §1 Behavior 2 |
+| TC-068 | Corner | regression-edit-display-break | P0 | 既定の `updateDoc` / undo による Document 変更 | `onDidContentChange` が発火し、docUpdated 用リスナーが通知される | Regression: 外部同期（undo/revert）が途切れないこと | §1 Behavior 4 |
+| TC-069 | Corner | regression-edit-display-break | P0 | Mermaid フェンス付き doc で段落テキストのみ変更後 serialize | ` ```mermaid ` フェンスとソースが残る | Regression: 通常編集で Mermaid が消えないこと | §5 正常系 2 |
 
 ### Category Coverage
 
@@ -141,7 +144,7 @@
 | Happy Path | TC-001–004, TC-010–012, TC-016–019, TC-025–027, TC-031, TC-033, TC-038–039, TC-043–044, TC-052–054, TC-057–058 | — |
 | Boundary | TC-008, TC-021–023 | — |
 | Structural | TC-014, TC-055 | — |
-| Corner | TC-005–009, TC-015, TC-020, TC-024, TC-030, TC-034–037, TC-041–042, TC-047–051, TC-056, TC-059, TC-061, TC-064 | — |
+| Corner | TC-005–009, TC-015, TC-020, TC-024, TC-030, TC-034–037, TC-041–042, TC-047–051, TC-056, TC-059, TC-061, TC-064, TC-067–069 | — |
 | Stress | TC-065–066 | — |
 
 ### Complexity Notes
@@ -161,8 +164,9 @@
 
 | TC 範囲 | 推奨テスト種別 |
 |---------|--------------|
-| TC-052–056, TC-053 | ユニット（remark シリアライズ） |
+| TC-052–056, TC-053, TC-069 | ユニット（remark シリアライズ） |
 | TC-044 | ユニット（採番ロジック） |
+| TC-067–068 | ユニット（MarkdownDocument + vscode mock） |
 | TC-001–051, TC-057–064 | 統合（Extension Development Host） |
 | TC-065–066 | 統合 `@slow` |
 
@@ -183,6 +187,42 @@ P0 + P1 の机上トレース（実装前）。
 | TC-050 | `untitled:` scheme URI → paste handler が early return → 通知「Save document first」 | ✅ 拒否 |
 | TC-053 | 同一 internalDoc を 2 回 stringify（固定 options）→ Buffer.compare === 0 | ✅ 決定的 |
 | TC-058 | DOMPurify 通過後 DOM に script ノードなし | ✅ サニタイズ |
+| TC-067 | Webview update → `syncWebview: false` → content-change 未発火、dirty 用 onDidChange のみ | ✅ 回帰（edit-display-break） |
+| TC-068 | 既定 update / undo → onDidContentChange 発火 | ✅ 回帰（edit-display-break） |
+| TC-069 | Mermaid + 段落編集 → serialize でフェンス保持 | ✅ 回帰（edit-display-break） |
+
+### TC-067 (P0): Regression — webview edit must not echo setContent
+
+| Step | Value |
+|------|-------|
+| Input | `updateFromJson(docJson, 'Edit', { syncWebview: false })` |
+| Expected | `onDidContentChange` 回数 0、`onDidChange` 回数 ≥ 1 |
+| Actual (pre-fix) | Fail: webview update が docUpdated/setContent を echo し表示破壊 |
+| Actual (post-fix) | Pass |
+
+**Result:** ✅ Pass（npm run test:unit 2026-08-29）
+
+### TC-068 (P0): Regression — external/document mutations still notify webview sync
+
+| Step | Value |
+|------|-------|
+| Input | 既定 `updateDoc` および undo コールバック |
+| Expected | いずれも `onDidContentChange` が発火 |
+| Actual (pre-fix) | N/A（同期経路自体は存在） / 回帰で欠落しうる |
+| Actual (post-fix) | Pass |
+
+**Result:** ✅ Pass（npm run test:unit 2026-08-29）
+
+### TC-069 (P0): Regression — mermaid fence survives ordinary paragraph edit
+
+| Step | Value |
+|------|-------|
+| Input | Mermaid ブロック + 段落を parse → 段落テキスト変更 → serialize |
+| Expected | 出力に ` ```mermaid ` と元ソースが含まれる |
+| Actual (pre-fix) | Fail: 表示破壊時に Mermaid NodeView/コンテンツが失われる経路あり |
+| Actual (post-fix) | Pass |
+
+**Result:** ✅ Pass（npm run test:unit 2026-08-29）
 
 ---
 
@@ -221,3 +261,4 @@ P0 + P1 の机上トレース（実装前）。
 | 日付 | 変更内容 |
 |------|---------|
 | 2026-08-29 | 初版。systemspec §1–§10 MVP カバー、Spec Gaps を Advisor defaults で解決 |
+| 2026-08-29 | TC-067–069 追加 | 回帰: edit-display-break（webview echo 抑止 / 外部同期 / Mermaid 保持） |

@@ -113,7 +113,15 @@ export class MarkdownDocument implements vscode.CustomDocument {
     await vscode.workspace.fs.writeFile(destination, Buffer.from(serialized, 'utf8'));
   }
 
-  updateDoc(newDoc: TipTapDoc, label = 'Edit'): void {
+  /**
+   * @param options.syncWebview - When false, skip immediate webview echo
+   *   (webview already applied the edit). Undo/redo still notify the webview.
+   */
+  updateDoc(
+    newDoc: TipTapDoc,
+    label = 'Edit',
+    options?: { syncWebview?: boolean },
+  ): void {
     const previous = this._doc;
     this._doc = newDoc;
     try {
@@ -142,11 +150,18 @@ export class MarkdownDocument implements vscode.CustomDocument {
         this._onDidContentChange.fire();
       },
     );
-    this._onDidContentChange.fire();
+    // Webview-originated edits must not echo setContent back into the same editor.
+    if (options?.syncWebview !== false) {
+      this._onDidContentChange.fire();
+    }
   }
 
-  updateFromJson(json: string, label = 'Edit'): void {
-    this.updateDoc(jsonToDoc(json), label);
+  updateFromJson(
+    json: string,
+    label = 'Edit',
+    options?: { syncWebview?: boolean },
+  ): void {
+    this.updateDoc(jsonToDoc(json), label, options);
   }
 
   private pushEdit(label: string, undo: () => void, redo: () => void): void {

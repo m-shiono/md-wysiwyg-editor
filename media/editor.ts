@@ -1,4 +1,4 @@
-import { Editor, Extension } from '@tiptap/core';
+import { Editor, Extension, Node, type JSONContent } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
 import Table from '@tiptap/extension-table';
@@ -31,11 +31,15 @@ interface TipTapDoc {
   type: string;
   content?: unknown[];
   attrs?: Record<string, unknown>;
+  text?: string;
+  marks?: Array<{ type: string; attrs?: Record<string, unknown> }>;
 }
 
 let editor: Editor | undefined;
 let readonly = false;
 let suppressUpdate = false;
+/** True after the first successful initEditor — ready must not force a second full init. */
+let isEditorInitialized = false;
 
 const HtmlTableExtension = Extension.create({
   name: 'htmlTable',
@@ -53,104 +57,133 @@ const HtmlTableExtension = Extension.create({
   },
 });
 
-const HtmlBlockExtension = Extension.create({
+const HtmlBlockNode = Node.create({
   name: 'htmlBlock',
   group: 'block',
   atom: true,
+  selectable: true,
   addAttributes() {
-    return { html: { default: '' } };
+    return {
+      html: { default: '' },
+    };
   },
   parseHTML() {
     return [{ tag: 'div[data-html-block]' }];
   },
   renderHTML({ HTMLAttributes }) {
-    return ['div', { 'data-html-block': 'true', innerHTML: HTMLAttributes.html }];
+    return ['div', { 'data-html-block': 'true', 'data-html': HTMLAttributes.html as string }];
+  },
+  addNodeView() {
+    return ({ node }) => {
+      const dom = document.createElement('div');
+      dom.setAttribute('data-html-block', 'true');
+      dom.innerHTML = DOMPurify.sanitize((node.attrs.html as string) ?? '');
+      return { dom };
+    };
   },
 });
 
-function tipTapJsonToHtml(doc: TipTapDoc): string {
-  if (!doc.content) {
-    return '<p></p>';
-  }
-  return doc.content.map(nodeToHtml).join('');
-}
-
-function nodeToHtml(node: TipTapDoc): string {
-  switch (node.type) {
-    case 'heading': {
-      const level = (node.attrs?.level as number) ?? 1;
-      const inner = inlineContent(node.content ?? []);
-      return `<h${level}>${inner}</h${level}>`;
-    }
-    case 'paragraph':
-      return `<p>${inlineContent(node.content ?? [])}</p>`;
-    case 'bulletList':
-      return `<ul>${(node.content ?? []).map((li) => `<li>${blockContent((li as TipTapDoc).content ?? [])}</li>`).join('')}</ul>`;
-    case 'orderedList':
-      return `<ol>${(node.content ?? []).map((li) => `<li>${blockContent((li as TipTapDoc).content ?? [])}</li>`).join('')}</ol>`;
-    case 'codeBlock': {
-      const lang = (node.attrs?.language as string) ?? '';
-      const text = inlineContent(node.content ?? []);
-      if (lang === 'mermaid') {
-        return `<div class="mermaid-block" data-mermaid="${encodeURIComponent(text)}"><div class="mermaid-preview"></div><pre class="mermaid-source">${escapeHtml(text)}</pre></div>`;
-      }
-      return `<pre><code>${escapeHtml(text)}</code></pre>`;
-    }
-    case 'table':
-      if (node.attrs?.html) {
-        return DOMPurify.sanitize(node.attrs.html as string);
-      }
-      return tableToHtml(node);
-    case 'htmlBlock':
-      return DOMPurify.sanitize((node.attrs?.html as string) ?? '');
-    case 'horizontalRule':
-      return '<hr/>';
-    case 'blockquote':
-      return `<blockquote>${blockContent(node.content ?? [])}</blockquote>`;
-    default:
-      return '';
-  }
-}
-
-function inlineContent(nodes: unknown[]): string {
-  return (nodes as TipTapDoc[])
-    .map((n) => {
-      if (n.type !== 'text') {
-        return '';
-      }
-      let text = escapeHtml(n.text ?? '');
-      for (const mark of n.marks ?? []) {
-        if (mark.type === 'bold') {
-          text = `<strong>${text}</strong>`;
-        } else if (mark.type === 'italic') {
-          text = `<em>${text}</em>`;
-        } else if (mark.type === 'code') {
-          text = `<code>${text}</code>`;
-        } else if (mark.type === 'link') {
-          text = `<a href="${escapeHtml((mark.attrs?.href as string) ?? '')}">${text}</a>`;
+/**
+ * CodeBlock with Mermaid NodeView so fence source stays a TipTap node and
+ * ordinary text edits do not wipe the diagram via lossy HTML round-trip.
+ */
+const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
+  addNodeView() {
+    return ({ node }) => {
+      const language = (node.attrs.language as string) ?? '';
+      if (language !== 'mermaid') {
+        const pre = document.createElement('pre');
+        const code = document.createElement('code');
+        if (language) {
+          code.classList.add(`language-${language}`);
         }
+        pre.appendChild(code);
+        return { dom: pre, contentDOM: code };
       }
-      return text;
-    })
-    .join('');
-}
 
-function blockContent(nodes: unknown[]): string {
-  return (nodes as TipTapDoc[]).map(nodeToHtml).join('');
-}
+      const dom = document.createElement('div');
+      dom.classList.add('mermaid-block');
+      dom.setAttribute('data-mermaid-node', 'true');
 
-function tableToHtml(node: TipTapDoc): string {
-  let html = '<table>';
-  for (const row of node.content ?? []) {
-    html += '<tr>';
-    for (const cell of (row as TipTapDoc).content ?? []) {
-      const tag = (cell as TipTapDoc).type === 'tableHeader' ? 'th' : 'td';
-      html += `<${tag}>${blockContent((cell as TipTapDoc).content ?? [])}</${tag}>`;
+      const preview = document.createElement('div');
+      preview.classList.add('mermaid-preview');
+      dom.appendChild(preview);
+
+      const pre = document.createElement('pre');
+      pre.classList.add('mermaid-source');
+      const code = document.createElement('code');
+      code.classList.add('language-mermaid');
+      pre.appendChild(code);
+      dom.appendChild(pre);
+
+      const viewId = `mermaid-nv-${Math.random().toString(36).slice(2, 10)}`;
+
+      const renderPreview = (source: string): void => {
+        const existing = mermaidTimers.get(viewId);
+        if (existing) {
+          clearTimeout(existing);
+        }
+        mermaidTimers.set(
+          viewId,
+          setTimeout(async () => {
+            try {
+              const { svg } = await mermaid.render(`${viewId}-svg`, source || ' ');
+              preview.innerHTML = DOMPurify.sanitize(svg);
+            } catch (err) {
+              preview.innerHTML = `<div class="mermaid-error">${escapeHtml(String(err))}</div>`;
+              vscode.postMessage({ type: 'mermaidError', error: String(err) });
+            }
+          }, MERMAID_DEBOUNCE_MS),
+        );
+      };
+
+      renderPreview(node.textContent);
+
+      return {
+        dom,
+        contentDOM: code,
+        update: (updatedNode) => {
+          if (updatedNode.type.name !== 'codeBlock') {
+            return false;
+          }
+          if ((updatedNode.attrs.language as string) !== 'mermaid') {
+            return false;
+          }
+          renderPreview(updatedNode.textContent);
+          return true;
+        },
+        destroy: () => {
+          const existing = mermaidTimers.get(viewId);
+          if (existing) {
+            clearTimeout(existing);
+          }
+          mermaidTimers.delete(viewId);
+        },
+      };
+    };
+  },
+}).configure({ lowlight });
+
+/**
+ * TipTap table schema requires rows; HTML-only tables from the serializer use
+ * attrs.html with empty content — map those to htmlBlock for the editor.
+ */
+function prepareDocForEditor(doc: TipTapDoc): JSONContent {
+  const content = (doc.content ?? []).map((raw) => {
+    const node = raw as TipTapDoc;
+    if (
+      node.type === 'table' &&
+      node.attrs?.html &&
+      (!node.content || node.content.length === 0)
+    ) {
+      return {
+        type: 'htmlBlock',
+        attrs: { html: node.attrs.html as string },
+      };
     }
-    html += '</tr>';
-  }
-  html += '</table>';
-  return DOMPurify.sanitize(html);
+    return raw;
+  });
+  return { type: 'doc', content: content as JSONContent[] };
 }
 
 function escapeHtml(text: string): string {
@@ -161,26 +194,36 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;');
 }
 
+function getEditorExtensions() {
+  return [
+    StarterKit.configure({ codeBlock: false }),
+    Link.configure({ openOnClick: false }),
+    Table.configure({ resizable: true }),
+    TableRow,
+    TableCell,
+    TableHeader,
+    TaskList,
+    TaskItem.configure({ nested: true }),
+    MermaidAwareCodeBlock,
+    Image.configure({ inline: true, allowBase64: false }),
+    HtmlTableExtension,
+    HtmlBlockNode,
+  ];
+}
+
 function initEditor(initialDoc: TipTapDoc): void {
-  const html = tipTapJsonToHtml(initialDoc);
+  // Guard against double init without destroy (ready + duplicate init).
+  if (editor) {
+    editor.destroy();
+    editor = undefined;
+  }
+
+  const content = prepareDocForEditor(initialDoc);
 
   editor = new Editor({
     element: document.getElementById('editor')!,
-    extensions: [
-      StarterKit.configure({ codeBlock: false }),
-      Link.configure({ openOnClick: false }),
-      Table.configure({ resizable: true }),
-      TableRow,
-      TableCell,
-      TableHeader,
-      TaskList,
-      TaskItem.configure({ nested: true }),
-      CodeBlockLowlight.configure({ lowlight }),
-      Image.configure({ inline: true, allowBase64: false }),
-      HtmlTableExtension,
-      HtmlBlockExtension,
-    ],
-    content: html,
+    extensions: getEditorExtensions(),
+    content,
     editable: !readonly,
     onUpdate: ({ editor: ed }) => {
       if (suppressUpdate || readonly) {
@@ -189,23 +232,35 @@ function initEditor(initialDoc: TipTapDoc): void {
       const json = ed.getJSON();
       vscode.postMessage({ type: 'update', docJson: JSON.stringify(json) });
       checkTableLimitsFromEditor(ed);
-      scheduleMermaidRender();
     },
   });
 
+  isEditorInitialized = true;
   attachToolbarHandlers();
   attachPasteHandler();
   attachGfmTableClickHandler(initialDoc);
-  scheduleMermaidRender();
+}
+
+function applyExternalDoc(doc: TipTapDoc): void {
+  if (!editor) {
+    return;
+  }
+  suppressUpdate = true;
+  // Prefer TipTap JSON — avoids lossy tipTapJsonToHtml default-empty path.
+  editor.commands.setContent(prepareDocForEditor(doc));
+  suppressUpdate = false;
 }
 
 function attachToolbarHandlers(): void {
   document.querySelectorAll('#toolbar button').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    // Avoid stacking handlers across re-inits.
+    const clone = btn.cloneNode(true) as HTMLElement;
+    btn.parentNode?.replaceChild(clone, btn);
+    clone.addEventListener('click', () => {
       if (!editor || readonly) {
         return;
       }
-      const cmd = btn.getAttribute('data-cmd');
+      const cmd = clone.getAttribute('data-cmd');
       switch (cmd) {
         case 'bold':
           editor.chain().focus().toggleBold().run();
@@ -214,7 +269,13 @@ function attachToolbarHandlers(): void {
           editor.chain().focus().toggleItalic().run();
           break;
         case 'heading': {
-          const level = parseInt(btn.getAttribute('data-level') ?? '1', 10) as 1 | 2 | 3 | 4 | 5 | 6;
+          const level = parseInt(clone.getAttribute('data-level') ?? '1', 10) as
+            | 1
+            | 2
+            | 3
+            | 4
+            | 5
+            | 6;
           editor.chain().focus().toggleHeading({ level }).run();
           break;
         }
@@ -243,7 +304,12 @@ function attachToolbarHandlers(): void {
   });
 }
 
+let pasteHandlerAttached = false;
 function attachPasteHandler(): void {
+  if (pasteHandlerAttached) {
+    return;
+  }
+  pasteHandlerAttached = true;
   document.addEventListener('paste', (event) => {
     if (readonly || !event.clipboardData) {
       return;
@@ -269,13 +335,15 @@ function attachPasteHandler(): void {
   });
 }
 
+let gfmTableHandlerAttached = false;
 function attachGfmTableClickHandler(initialDoc: TipTapDoc): void {
   const gfmTables = (initialDoc.content ?? []).filter(
     (n) => (n as TipTapDoc).type === 'table' && (n as TipTapDoc).attrs?.gfmSource,
   );
-  if (gfmTables.length === 0) {
+  if (gfmTables.length === 0 || gfmTableHandlerAttached) {
     return;
   }
+  gfmTableHandlerAttached = true;
   document.getElementById('editor')?.addEventListener('click', (e) => {
     if (readonly) {
       return;
@@ -307,49 +375,25 @@ function checkTableLimitsFromEditor(ed: Editor): void {
   }
 }
 
-function scheduleMermaidRender(): void {
-  document.querySelectorAll('.mermaid-block').forEach((block, index) => {
-    const id = `mermaid-${index}`;
-    const source = decodeURIComponent(block.getAttribute('data-mermaid') ?? '');
-    const preview = block.querySelector('.mermaid-preview');
-    if (!preview) {
-      return;
-    }
-    const existing = mermaidTimers.get(id);
-    if (existing) {
-      clearTimeout(existing);
-    }
-    mermaidTimers.set(
-      id,
-      setTimeout(async () => {
-        try {
-          const { svg } = await mermaid.render(`${id}-svg`, source);
-          preview.innerHTML = DOMPurify.sanitize(svg);
-        } catch (err) {
-          preview.innerHTML = `<div class="mermaid-error">${escapeHtml(String(err))}</div>`;
-          vscode.postMessage({ type: 'mermaidError', error: String(err) });
-        }
-      }, MERMAID_DEBOUNCE_MS),
-    );
-  });
-}
-
 window.addEventListener('message', (event) => {
   const message = event.data;
   switch (message.type) {
     case 'init':
       readonly = message.readonly;
       document.body.setAttribute('data-readonly', String(readonly));
+      // ready must not force a second full init if already initialized —
+      // apply content refresh instead of destroying a live editing session.
+      if (isEditorInitialized && editor) {
+        editor.setEditable(!readonly);
+        applyExternalDoc(JSON.parse(message.docJson));
+        break;
+      }
       initEditor(JSON.parse(message.docJson));
-      vscode.postMessage({ type: 'ready' });
+      // Do not post ready here — that would loop with host sendInit on ready.
       break;
     case 'docUpdated':
       if (editor) {
-        suppressUpdate = true;
-        const doc = JSON.parse(message.docJson);
-        editor.commands.setContent(tipTapJsonToHtml(doc));
-        suppressUpdate = false;
-        scheduleMermaidRender();
+        applyExternalDoc(JSON.parse(message.docJson));
       }
       break;
     case 'readonlyChanged':

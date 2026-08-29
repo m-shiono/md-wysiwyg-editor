@@ -1,5 +1,8 @@
 import * as esbuild from 'esbuild';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const watch = process.argv.includes('--watch');
 const sourcemap = process.env.SOURCEMAP !== '0';
 
@@ -30,7 +33,11 @@ const unitTestConfig = {
   entryPoints: ['src/test/unit-entry.ts'],
   bundle: true,
   outfile: 'out/test/unit-bundle.js',
-  external: ['vscode', 'mocha'],
+  // vscode is aliased to a shim so Document-level unit tests run outside Extension Host.
+  external: ['mocha'],
+  alias: {
+    vscode: path.resolve(__dirname, 'src/test/mocks/vscode.ts'),
+  },
   format: 'cjs',
   platform: 'node',
   sourcemap: true,
