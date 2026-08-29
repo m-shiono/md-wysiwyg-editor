@@ -13,11 +13,64 @@
 
 | フェーズ | 内容 |
 |----------|------|
-| **現在** | Cursor テンプレート（rules / agents / skills / doc 骨格）を試作・完成させる |
-| **テンプレート完成後** | テンプレート用ファイル群を **別リポジトリ（テンプレート管理）** に移植 |
-| **その後（本フォルダ）** | テンプレートを取り込んだうえで **vsc-md-editor 固有の開発** を進める |
+| **現在** | **vsc-md-editor**（VS Code WYSIWYG Markdown 拡張）の MVP 開発 |
+| **継承** | Cursor spec-first ワークフロー（rules / agents / skills）をテンプレートから利用 |
 
-テンプレート側は **言語非依存の工程**（spec-first、subagent、testspec）を担い、各アプリリポジトリは **stack.md + スタック別 rules/skills** で具体化する。
+振る舞いの正本は [systemspec.md](./systemspec.md)。スタックは [stack.md](./stack.md)（`profile: vscode-extension`）。
+
+---
+
+## VS Code 拡張の起動
+
+### 前提
+
+- Node.js（`doc/stack.md` の `engines` 確定後にバージョン追記）
+- VS Code 1.85+（Custom Editor — 実装時に `package.json` `engines.vscode` で確定）
+- 依存インストール済み: `npm install`
+
+### Extension Development Host
+
+1. リポジトリを VS Code で開く
+2. `npm run compile` で Extension Host / Webview をビルド（esbuild — AD-011）
+3. **Run and Debug** パネルから **Run Extension** を選択して F5
+4. 起動した Extension Development Host で `.md` を開き、Custom Editor が表示されることを確認
+
+### よく使うコマンド
+
+```bash
+npm run compile      # ビルド（watch: npm run watch があれば利用）
+npm run typecheck    # 型チェック
+npm run test         # unit + integration
+npm run lint         # ESLint
+npm run package:vsix # ローカルで .vsix 生成
+```
+
+品質コマンドの正本: [stack.md](./stack.md) Quality commands 節。
+
+### GitHub Actions で VSIX を作る
+
+手動実行で `.vsix` を Artifact として公開できる。
+
+1. GitHub → **Actions** → **Package VSIX**
+2. **Run workflow** → ブランチ `main`（または対象ブランチ）を選択して実行
+3. 完了後、run ページの **Artifacts** から `vsc-md-editor-vsix` をダウンロード
+4. インストール例: `code --install-extension vsc-md-editor-*.vsix`
+
+ワークフロー定義: [`.github/workflows/package-vsix.yml`](../.github/workflows/package-vsix.yml)  
+（lint / typecheck / compile / unit / **integration（xvfb）** → `vsce package` → upload-artifact。Marketplace 公開は含まない）
+
+### Webview のデバッグ
+
+- Extension Development Host 上で対象 `.md` を開く
+- コマンドパレット **Developer: Open Webview Developer Tools** で Webview の DevTools を開く
+- TipTap / Mermaid / Marp のコンソールエラーを確認
+
+### 標準 Markdown エディタとの切替
+
+本拡張をデフォルトにしない場合、または比較検証時:
+
+- エディタタブ右クリック → **Reopen Editor With…** → **Text Editor**
+- デフォルト関連付け: [README.md](../README.md) の `workbench.editorAssociations` 例
 
 ---
 
@@ -257,3 +310,4 @@ chmod +x .cursor/hooks/*.sh .cursor/hooks/*.py
 | 2026-08-29 | 2 層 dig — requirements-agent、アドバイザリーパネル、Requirements Brief を追加 |
 | 2026-08-29 | Phase 2 — frontend/backend/infra チェックリスト、review-lifecycle、requirements-gate-check |
 | 2026-08-29 | Phase 3 — Cursor Hooks（委譲ゲート、session リマインド、stop follow-up） |
+| 2026-08-29 | VS Code 拡張の起動手順節を追加。リポジトリ位置づけを vsc-md-editor 開発に更新 |

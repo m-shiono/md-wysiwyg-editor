@@ -1,3 +1,9 @@
+node_modules/
+dist/
+out/
+*.vsix
+.vscode-test/
+
 # 機能開発の作業用成果物（Intent Brief、Requirements Brief 等）
 temporary/*
 

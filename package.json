@@ -1,0 +1,115 @@
+{
+  "name": "vsc-md-editor",
+  "displayName": "MD WYSIWYG Editor",
+  "description": "WYSIWYG Markdown editor with tables, Mermaid, Marp preview, and image paste",
+  "version": "0.1.0",
+  "publisher": "vsc-md-editor",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/m-shiono/vsc-md-editor.git"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCustomEditor:vsc-md-editor.wysiwyg"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "vsc-md-editor.wysiwyg",
+        "displayName": "MD WYSIWYG Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.md"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "commands": [
+      {
+        "command": "vsc-md-editor.toggleReadonly",
+        "title": "Toggle Readonly Mode",
+        "category": "MD WYSIWYG Editor"
+      },
+      {
+        "command": "vsc-md-editor.showMarpPreview",
+        "title": "Show Marp Preview",
+        "category": "MD WYSIWYG Editor"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "vsc-md-editor.toggleReadonly",
+          "when": "activeCustomEditorId == vsc-md-editor.wysiwyg",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "node esbuild.config.mjs && tsc",
+    "watch": "node esbuild.config.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext ts",
+    "format": "prettier --write \"src/**/*.ts\" \"media/**/*.ts\"",
+    "test:unit": "npm run compile && node ./out/test/runUnit.js",
+    "test:integration": "npm run compile && node ./out/test/runTest.js",
+    "test": "npm run test:unit && npm run test:integration",
+    "package:vsix": "SOURCEMAP=0 npm run compile && rm -f dist/*.map media/*.map && vsce package",
+    "vscode:prepublish": "SOURCEMAP=0 npm run compile && rm -f dist/*.map media/*.map"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/dompurify": "^3.0.5",
+    "@types/mdast": "^4.0.4",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20.17.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.25.0",
+    "eslint": "^9.0.0",
+    "glob": "^11.0.0",
+    "mocha": "^10.8.0",
+    "prettier": "^3.4.0",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "@marp-team/marp-core": "^4.0.0",
+    "@tiptap/core": "^2.11.0",
+    "@tiptap/extension-code-block-lowlight": "^2.11.0",
+    "@tiptap/extension-image": "^2.11.0",
+    "@tiptap/extension-link": "^2.11.0",
+    "@tiptap/extension-table": "^2.11.0",
+    "@tiptap/extension-table-cell": "^2.11.0",
+    "@tiptap/extension-table-header": "^2.11.0",
+    "@tiptap/extension-table-row": "^2.11.0",
+    "@tiptap/extension-task-item": "^2.11.0",
+    "@tiptap/extension-task-list": "^2.11.0",
+    "@tiptap/pm": "^2.11.0",
+    "@tiptap/starter-kit": "^2.11.0",
+    "dompurify": "^3.4.14",
+    "lowlight": "^3.1.0",
+    "mdast-util-from-markdown": "^2.0.2",
+    "mdast-util-gfm-table": "^2.0.0",
+    "mdast-util-to-markdown": "^2.1.2",
+    "mermaid": "^11.4.0",
+    "micromark-extension-gfm-table": "^2.1.0",
+    "rehype-raw": "^7.0.0",
+    "rehype-stringify": "^10.0.0",
+    "remark-gfm": "^4.0.0",
+    "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.0.0",
+    "unified": "^11.0.5"
+  }
+}
