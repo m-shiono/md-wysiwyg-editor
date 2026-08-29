@@ -66,6 +66,9 @@
     "package:vsix": "SOURCEMAP=0 npm run compile && rm -f dist/*.map media/*.map && vsce package",
     "vscode:prepublish": "SOURCEMAP=0 npm run compile && rm -f dist/*.map media/*.map"
   },
+  "overrides": {
+    "serialize-javascript": "^7.0.5"
+  },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "@types/dompurify": "^3.0.5",
@@ -84,6 +87,7 @@
     "prettier": "^3.4.0",
     "typescript": "^5.7.0"
   },
+
   "dependencies": {
     "@marp-team/marp-core": "^4.0.0",
     "@tiptap/core": "^2.11.0",
