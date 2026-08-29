@@ -4,6 +4,7 @@
   "description": "WYSIWYG Markdown editor with tables, Mermaid, Marp preview, and image paste",
   "version": "0.1.0",
   "publisher": "vsc-md-editor",
+  "icon": "media/icon.png",
   "license": "MIT",
   "repository": {
     "type": "git",

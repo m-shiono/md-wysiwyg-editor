@@ -23,4 +23,5 @@ AGENTS.md
 !dist/**
 !media/editor.js
 !media/editor.css
+!media/icon.png
 **/*.map
