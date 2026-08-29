@@ -1,0 +1,36 @@
+---
+description: Go application conventions
+globs: "**/*.go"
+alwaysApply: false
+---
+
+# Go Conventions
+
+Apply when editing Go sources (exclude `*_test.go` for app logic reviews). Read [doc/stack.md](../../doc/stack.md). Subagent: `build-agent`.
+
+## Layout
+
+Follow `layout` in `doc/stack.md` (`cmd/`, `internal/`, etc.).
+
+## Style
+
+- Small packages and functions
+- Explicit error handling
+- Match existing project patterns
+
+## Naming
+
+Full rules: [doc/coding-conventions.md](../../doc/coding-conventions.md). Follow Effective Go.
+
+| Target | Case | Example |
+|--------|------|---------|
+| Unexported identifiers | lowerCamelCase | `userName`, `fetchOrder` |
+| Exported identifiers | PascalCase | `UserName`, `FetchOrder` |
+| Files | snake_case | `user_service.go` |
+| Test functions | `TestTCNNN_<What>` | `TestTC001_Returns404WhenMissing` |
+
+Semantics: verb-first functions; `is`/`has`/`can` booleans; plural collections; English identifiers; comments may be Japanese.
+
+## Before finishing
+
+Use `test_all` from `doc/stack.md` (`go test ./...`, `go vet`).

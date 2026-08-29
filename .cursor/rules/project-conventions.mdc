@@ -1,0 +1,58 @@
+---
+description: Core project conventions — specification-first, writing rules, stack reference
+alwaysApply: true
+---
+
+# Project Conventions
+
+Language-agnostic defaults. **Stack-specific layout, commands, and secrets:** [doc/stack.md](../../doc/stack.md).
+
+Canonical AI rules: `.cursor/rules/*.mdc`. `AGENTS.md` is an entry point only.
+
+## Writing rules
+
+- Code: explain **How**
+- Test code: explain **What**
+- Commit messages: explain **Why**
+- Code comments: explain **Why not**
+
+## Coding & naming conventions
+
+Full reference: [doc/coding-conventions.md](../../doc/coding-conventions.md). AI summary: [naming-conventions.mdc](./naming-conventions.mdc).
+
+- Identifiers: **English**; comments: **Japanese OK**, public API docs: **English**
+- Stack-specific case rules live in [templates/rules/](../../templates/rules/) (enable per [doc/stack.md](../../doc/stack.md))
+
+## Specification-first workflow
+
+When behavior, requirements, or design change:
+
+1. Read `doc/systemspec.md` and confirm what must change
+2. **Update documentation first** — before code or test changes
+3. Then change code and tests to match
+4. Update `README.md`, `doc/deployment.md`, `doc/development.md` when affected
+5. Add **改訂履歴** to each modified doc under `doc/`
+6. Run quality commands from `doc/stack.md` before finishing
+
+Pure refactors, typo fixes, or no-spec-impact changes may skip doc updates.
+
+## Stack profile
+
+Before implementation or stack-specific review:
+
+1. Read [doc/stack.md](../../doc/stack.md)
+2. If `status: template`, do not assume a runtime — ask user or activate stack first
+3. Follow active rules listed in `cursor_rules` (see [.cursor/rules/README.md](../rules/README.md))
+
+## Temporary files
+
+- Generated artifacts under `temporary/` only
+- Do not commit temp files under source, tests, or repo root
+
+## References
+
+- [AGENTS.md](../../AGENTS.md)
+- [doc/coding-conventions.md](../../doc/coding-conventions.md)
+- [doc/development.md](../../doc/development.md)
+- [doc/testspec-readme.md](../../doc/testspec-readme.md)
+- [templates/README.md](../../templates/README.md)

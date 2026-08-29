@@ -1,0 +1,51 @@
+---
+description: TypeScript and Cloudflare Workers conventions for src/
+globs: src/**/*.ts
+alwaysApply: false
+---
+
+# TypeScript & Workers
+
+Apply when editing `src/**/*.ts`. Read [doc/stack.md](../../doc/stack.md) for layout and commands. Subagent: `build-agent`.
+
+## Structure
+
+Follow `layout` in `doc/stack.md`. Default (Workers):
+
+- `src/core` — orchestration, routing, handlers
+- `src/services` — external integrations
+- `src/utils` — pure helpers
+- `src/types/` — shared contracts
+
+Prefer small, single-purpose functions. Match existing logging patterns.
+
+## Types & docs
+
+- Type-annotate functions and methods
+- Public APIs: English JSDoc when non-obvious
+
+## Naming
+
+Full rules: [doc/coding-conventions.md](../../doc/coding-conventions.md).
+
+| Target | Case | Example |
+|--------|------|---------|
+| Variables, functions, methods | lowerCamelCase | `userName`, `fetchOrder` |
+| Classes, interfaces, types, enums | PascalCase | `UserService`, `OrderStatus` |
+| Module constants | SCREAMING_SNAKE_CASE | `MAX_RETRY_COUNT` |
+| Enum members | PascalCase | `OrderStatus.Pending` |
+| General module files | kebab-case | `user-service.ts` |
+| React component files | PascalCase | `UserProfile.tsx` |
+
+Semantics (all stacks): verb-first functions; `is`/`has`/`can` booleans; plural collections; English identifiers only.
+
+## Workers specifics
+
+- Keep handler signatures stable unless systemspec changes
+- Bindings must match `wrangler.toml` and docs
+- Validate auth on triggers/webhooks; fail closed
+- No secrets in logs
+
+## Before finishing
+
+Use quality commands from `doc/stack.md` (`test_single`, `typecheck`).

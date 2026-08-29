@@ -1,0 +1,8 @@
+# 機能開発の作業用成果物（Intent Brief、Requirements Brief 等）
+temporary/*
+
+# meta-agent 改善ループの run 成果物（再生成可）
+.triage/findings/*
+!.triage/findings/.gitkeep
+.triage/reports/*
+!.triage/reports/.gitkeep

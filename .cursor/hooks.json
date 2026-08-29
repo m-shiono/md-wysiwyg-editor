@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": ".cursor/hooks/session-requirements-reminder.sh"
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": ".cursor/hooks/gate-requirements-workflow.py",
+        "matcher": "Task",
+        "failClosed": false
+      }
+    ],
+    "stop": [
+      {
+        "command": ".cursor/hooks/requirements-stop-check.py",
+        "loop_limit": 1
+      }
+    ]
+  }
+}

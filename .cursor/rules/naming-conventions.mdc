@@ -1,0 +1,50 @@
+---
+description: Naming and coding semantics — language-agnostic rules for all stacks
+alwaysApply: true
+---
+
+# Naming Conventions
+
+Full reference: [doc/coding-conventions.md](../../doc/coding-conventions.md). Stack-specific case rules: [templates/rules/](../../templates/rules/) (enable via [doc/stack.md](../../doc/stack.md)).
+
+## Identifiers
+
+- **English only** for variables, functions, types, files — no Japanese identifiers
+- Prefer clarity over brevity; use [abbreviation dictionary](../../doc/coding-conventions.md#略語辞書) only
+- **Functions:** verb-first — `getUserById`, `validateInput`
+- **Booleans:** `is` / `has` / `can` prefix — `isValid`, `hasError`, `canSubmit`
+- **Collections:** plural nouns — `users`, `orderItems`
+- **Constants:** `SCREAMING_SNAKE_CASE` with full meaning — `MAX_RETRY_COUNT`
+
+## Forbidden
+
+- Type in names: `strName`, `userList`, `intCount`
+- Hungarian notation: `mName`, `s_name`, `opt_value`
+- TypeScript: no `I` prefix on interfaces; no leading/trailing `_` for private (use `#` or `private`)
+- Meaningless names: `tmp`, `data`, `obj`, `val`
+- Test names describing **How** instead of **What**
+
+## Comments
+
+Follow [project-conventions.mdc](./project-conventions.mdc) writing rules:
+
+- Inline/block comments: **Japanese OK**
+- Public API JSDoc/docstring: **English** when non-obvious
+- Comments explain **Why not** — not what the code obviously does
+- Use `TODO:`, `FIXME:`, `NOTE:` annotations
+
+## File naming (TypeScript default)
+
+| Kind | Case | Example |
+|------|------|---------|
+| General modules | kebab-case | `user-service.ts` |
+| React components | PascalCase | `UserProfile.tsx` |
+| Tests | kebab-case + `.test.ts` | `user-service.test.ts` |
+
+Python: `snake_case.py`. Go: `snake_case.go`. See stack rules for details.
+
+## Tests
+
+- Include TC ID from `doc/testspec-*.md`
+- Name describes expected outcome (**What**), not implementation steps
+- Patterns: Vitest `'TC-001: …'`, pytest `test_tc_001_…`, Go `TestTC001_…`
