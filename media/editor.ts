@@ -268,6 +268,7 @@ function setModeUi(mode: EditorMode): void {
 
   if (editorEl) {
     editorEl.classList.toggle('hidden', mode === 'raw');
+    editorEl.setAttribute('aria-readonly', String(mode === 'preview'));
   }
   if (rawEl) {
     rawEl.classList.toggle('hidden', mode !== 'raw');
@@ -281,6 +282,7 @@ function setModeUi(mode: EditorMode): void {
   editor?.setEditable(mode === 'markdown' && canEdit);
   if (mode === 'preview') {
     editor?.setEditable(false);
+    editor?.commands.blur();
   }
   if (rawEl) {
     rawEl.readOnly = !canEdit || mode !== 'raw';
@@ -352,6 +354,7 @@ function initEditor(initialDoc: TipTapDoc): void {
   attachModeToolbarHandlers();
   attachPasteHandler();
   attachRawEditorHandlers();
+  attachPreviewGuard();
   attachGfmTableClickHandler(initialDoc);
   setModeUi(editorMode);
 }
@@ -360,13 +363,44 @@ function applyExternalDoc(doc: TipTapDoc): void {
   if (!editor) {
     return;
   }
-  // Focus-safe: do not replace TipTap while the user is editing Markdown.
+  // Preview always reflects Document. Markdown skips while focused (TC-067).
   if (editorMode === 'markdown' && editor.isFocused) {
     return;
   }
   suppressUpdate = true;
   editor.commands.setContent(prepareDocForEditor(doc));
   suppressUpdate = false;
+}
+
+/** Block keyboard/paste/mouse edits while Preview is active (strict RO). */
+function attachPreviewGuard(): void {
+  const editorEl = document.getElementById('editor');
+  if (!editorEl || editorEl.dataset.previewGuard === '1') {
+    return;
+  }
+  editorEl.dataset.previewGuard = '1';
+
+  const blockWhenPreview = (event: Event): void => {
+    if (editorMode !== 'preview') {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  editorEl.addEventListener('keydown', blockWhenPreview, true);
+  editorEl.addEventListener('beforeinput', blockWhenPreview, true);
+  editorEl.addEventListener('paste', blockWhenPreview, true);
+  editorEl.addEventListener('drop', blockWhenPreview, true);
+  editorEl.addEventListener(
+    'mousedown',
+    (event) => {
+      if (editorMode === 'preview') {
+        event.preventDefault();
+      }
+    },
+    true,
+  );
 }
 
 function attachModeToolbarHandlers(): void {
@@ -570,10 +604,12 @@ window.addEventListener('message', (event) => {
       if (typeof message.docJson !== 'string') {
         break;
       }
-      // External / undo / Raw success — refresh Preview, idle Markdown, or TipTap under Raw.
-      if (editorMode === 'preview' || (editorMode === 'markdown' && editor && !editor.isFocused)) {
-        applyExternalDoc(JSON.parse(message.docJson));
-      } else if (editorMode === 'raw') {
+      // Document → Preview (always), idle Markdown, or TipTap while Raw is active.
+      if (
+        editorMode === 'preview' ||
+        (editorMode === 'markdown' && editor && !editor.isFocused) ||
+        editorMode === 'raw'
+      ) {
         applyExternalDoc(JSON.parse(message.docJson));
       }
       break;

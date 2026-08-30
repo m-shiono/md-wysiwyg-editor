@@ -154,12 +154,15 @@
 | TC-077 | Structural | marp-vs-preview | P0 | Custom Editor viewType と Marp Preview パネル/コマンドを比較 | Marp Preview（`vsc-md-editor.marpPreview` / `showMarpPreview`）は三点 Preview ではない。viewType `wysiwyg` と別責務 | AD-008 責務分離 | §1, §6 |
 | TC-078 | Corner | raw-parse-fail | P0 | Raw ソースをパース不能な文字列に変更して Document へ適用試行 | Document（直前の有効内容）非破壊、通知 + Output、`isRawParseFailed=true`、`save` ブロック | Raw 失敗時データ保全 | §1 例外系 2, §8 |
 | TC-079 | Happy | raw-parse-recover | P0 | TC-078 状態から有効な Raw ソースに修正して再適用 → `save` | `isRawParseFailed=false`、Document 更新、save 成功 | パース回復後の save 再開 | §1, §8 |
+| TC-080 | Happy | preview-mode-refresh | P0 | Preview または Markdown へモード切替 | Host が Document 最新を `docJson` + `markdownText` で再投影（Raw 離脱 flush 後を含む） | Preview 厳密 RO・切替時 refresh | §1 三者同期, 正常系 3–4 |
+| TC-081 | Happy | raw-mode-text-projection | P0 | Raw へモード切替 | Host が `markdownText` のみ投影（docJson なし） | Raw 面の Document 追随 | §1 三者同期 |
+| TC-082 | Happy | triple-sync-document | P0 | Markdown 編集 → Document；続けて Raw 編集 → Document | 正本 `MarkdownDocument` が唯一の真実。Preview 投影源の `docJson` / `markdownText` が同一 Document から導出 | Raw↔Markdown↔Preview 三者同期 | §1 三者同期 |
 
 ### Category Coverage
 
 | Category | Covered | N/A Reason |
 |----------|---------|------------|
-| Happy Path | TC-001–004, TC-010–012, TC-016–019, TC-025–027, TC-031, TC-033, TC-038–039, TC-043–044, TC-052–054, TC-057–058, TC-070–072, TC-074–076, TC-079 | — |
+| Happy Path | TC-001–004, TC-010–012, TC-016–019, TC-025–027, TC-031, TC-033, TC-038–039, TC-043–044, TC-052–054, TC-057–058, TC-070–072, TC-074–076, TC-079–082 | — |
 | Boundary | TC-008, TC-021–023 | — |
 | Structural | TC-014, TC-055, TC-077 | — |
 | Corner | TC-005–009, TC-015, TC-020, TC-024, TC-030, TC-034–037, TC-041–042, TC-047–051, TC-056, TC-059, TC-061, TC-064, TC-067–069, TC-073, TC-078 | — |
@@ -187,6 +190,9 @@
 | TC-067–068, TC-072, TC-074 | ユニット（MarkdownDocument + vscode mock） |
 | TC-070（viewType）, TC-075（readonly key）, TC-077 | ユニット（package.json / 定数 / readonly-state） |
 | TC-070（初期モード）, TC-071, TC-073, TC-076, TC-078–079 | ユニット（EditorModeState / MarkdownDocument + vscode mock） |
+| TC-080–081 | ユニット（editor-mode-sync / buildModeSwitchMessages） |
+| TC-082 | ユニット（MarkdownDocument 三者同期） |
+| TC-080/082 | 統合（Extension Host: Custom Editor 起動・Preview RO・Markdown/Raw 編集・Document 同期） |
 | TC-001–051, TC-057–064 | 統合（Extension Development Host） |
 | TC-065–066 | 統合 `@slow` |
 
@@ -216,6 +222,8 @@ P0 + P1 の机上トレース（実装前）。
 | TC-075 | setReadonly(true) → isReadonly；Preview 概念と独立 | ✅ ユニット |
 | TC-077 | customEditors viewType ≠ marpPreview panel / showMarpPreview は別コマンド | ✅ ユニット |
 | TC-071/073/076/078/079 | Preview 一方向・mode switch 非 I/O・RO 切替可・Raw 失敗/回復 | ✅ ユニット |
+| TC-080–081 | Preview/Markdown 切替時 docJson 再投影・Raw は markdownText のみ | ✅ ユニット |
+| TC-082 | Markdown / Raw 編集が同一 Document に収束 | ✅ ユニット |
 
 ### TC-067 (P0): Regression — webview edit must not echo setContent
 
@@ -302,3 +310,4 @@ P0 + P1 の机上トレース（実装前）。
 | 2026-08-29 | TC-067–069 追加 | 回帰: edit-display-break（webview echo 抑止 / 外部同期 / Mermaid 保持） |
 | 2026-08-29 | TC-070–079 追加 | Preview/Markdown/Raw 三点モード・同期・dirty/save・RO・Raw パース失敗契約。ユニット実装可能な TC をコード化、未実装 API は skip |
 | 2026-08-30 | TC-071/073/076/078/079 skip 記述を解除（ユニット実装済みに同期） |
+| 2026-08-30 | TC-080–082 追加 | Preview 厳密 RO・モード切替時 Document 再投影・三者同期（Raw↔Markdown↔Preview） |

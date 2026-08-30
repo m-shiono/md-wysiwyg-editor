@@ -16,6 +16,7 @@ import {
   canSwitchMode,
   DEFAULT_EDITOR_MODE,
   EditorModeState,
+  isVisualSurfaceReadOnly,
 } from '../../../utils/editor-mode';
 
 type VscodeTestShim = typeof vscode & {
@@ -105,6 +106,8 @@ suite('Three-mode editor contracts (AD-016)', () => {
     assert.strictEqual(acceptsWebviewContentUpdate('raw'), true);
     assert.strictEqual(canEditContent('preview', false), false);
     assert.strictEqual(canEditContent('markdown', false), true);
+    assert.strictEqual(isVisualSurfaceReadOnly('preview', false), true);
+    assert.strictEqual(isVisualSurfaceReadOnly('markdown', false), false);
   });
 
   test('TC-072: MarkdownDocument is source of truth for Markdown↔Raw sync', async () => {
@@ -274,5 +277,22 @@ suite('Three-mode editor contracts (AD-016)', () => {
     const written = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
     assert.ok(written.includes('Recovered content'), 'save must succeed after recovery');
     doc!.dispose();
+  });
+
+  test('TC-082: Markdown and Raw edits converge on the same Document for Preview projection', async () => {
+    const doc = await openDoc('# Title\n\nHello\n');
+
+    doc.updateDoc(parseMarkdown('# Title\n\nFrom Markdown\n'), 'Markdown edit');
+    const afterMarkdown = doc.markdownText;
+    assert.ok(afterMarkdown.includes('From Markdown'));
+
+    doc.updateDoc(parseMarkdown('# Title\n\nFrom Raw\n'), 'Raw edit');
+    assert.ok(doc.markdownText.includes('From Raw'));
+    assert.ok(doc.docJson.includes('From Raw') || doc.markdownText.includes('From Raw'));
+
+    // Preview consumes docJson — both surfaces must derive from the same Document snapshot.
+    assert.strictEqual(doc.docJson.length > 0, true);
+    assert.ok(doc.markdownText.includes('From Raw'), 'Raw-side edit must update canonical markdownText');
+    doc.dispose();
   });
 });

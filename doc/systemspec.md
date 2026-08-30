@@ -77,16 +77,29 @@ VS Code 拡張 **vsc-md-editor** の振る舞い仕様（WHAT）。実装詳細�
 
 | モード | 役割 | 編集可否 | Document との関係 |
 |--------|------|----------|-------------------|
-| **Preview** | 読み取り専用の描画表示（レンダリング結果） | 不可（RO 描画） | **Document → 一方表示**のみ。編集イベントを Document へ送らない |
+| **Preview** | 読み取り専用の描画表示（TipTap レンダリング、入力不可） | **不可（厳密 RO）** | **Document → 一方表示**のみ。キー入力・paste・ツールバー等の編集イベントを Document へ送らない |
 | **Markdown** | TipTap WYSIWYG 本文編集（§2） | 可（ファイル RO 時は不可 — §4） | Markdown 面 ↔ Document 双方向。変更で `dirty` |
 | **Raw** | Markdown ソース文字列の直接編集 | 可（ファイル RO 時は不可 — §4） | Raw 面 ↔ Document 双方向。変更で `dirty` |
+
+#### 三者同期（正本: `MarkdownDocument`）
+
+```text
+Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdown（TipTap WYSIWYG）
+                                    ↓
+                              Preview（TipTap RO 描画）
+```
+
+- **編集可能なのは Markdown / Raw のみ**。Preview は常に Document の投影を RO 表示する
+- Markdown 編集 → Document 更新 → Raw テキスト投影 + Preview 描画追随（Markdown フォーカス中は TipTap を破壊しない — TC-067）
+- Raw 編集（パース成功）→ Document 更新 → Markdown / Preview へ `docJson` 投影
+- **Preview 表示中**も Document 更新時は描画を追随する（一方通行）
 
 #### 正常系
 
 1. ユーザーが `.md` を開くと Custom Editor が起動し、ディスク内容を `MarkdownDocument` に読み込み、初期モード **Markdown** で Webview に表示する
 2. **Markdown ↔ Raw 相互リアルタイム同期:** 一方の編集は postMessage 経由で Document に反映され、他方面も Document から再投影される。正本は常に Extension Host の `MarkdownDocument`
-3. **Preview** は Document の現在内容を描画する一方通行。Preview 表示中に Document が更新されれば描画を追随する
-4. **モード切替**（Preview ↔ Markdown ↔ Raw）は表示面の切替のみであり、**ディスクへの書き込みを行わない**。内容に差分がなければ `dirty` も変化しない
+3. **Preview** は Document の現在内容を **厳密 RO** で描画する一方通行。Preview 表示中に Document が更新されれば描画を追随する。**Preview への切替時**は Host が Document 最新を `docJson` で再投影する（Raw 離脱時の flush 後を含む）
+4. **モード切替**（Preview ↔ Markdown ↔ Raw）は表示面の切替のみであり、**ディスクへの書き込みを行わない**。内容に差分がなければ `dirty` も変化しない。Preview / Markdown への切替時は Document から視覚面を refresh する
 5. Markdown / Raw での内容変更は既存の CustomDocument フローに乗り `dirty` となる。`save` / `saveAs` で Document 内容をシリアライズし UTF-8 で書き込む（§8）
 6. undo/redo は Document 経由で一貫して動作する（モードをまたいでも同一 Document 履歴）
 7. エディタを閉じる際、未保存変更があれば VS Code 標準の確認ダイアログが表示される
@@ -620,9 +633,10 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 | GFM パイプ表オープン時変換 | 初回編集時に HTML `<table>` へ変換（UD-001 整合） | TC-019 |
 | 非 Marp 文書の Marp プレビュー | **「No Marp slides detected」** ガイダンス表示 | TC-042 |
 | RO 未保存ワークスペース | 保存済み WS は `workspaceState` 永続化；未保存 WS はセッション内のみ | TC-027, TC-030 |
-| 三点モード・正本・dirty | 同一 Custom Editor、初期 Markdown、正本 `MarkdownDocument`、モード切替でディスク非書込 | 後続 TC（test-agent） |
-| Raw パース失敗 | Document 非破壊 + 通知 + 失敗中 save ブロック | 後続 TC（test-agent） |
-| Preview vs Marp Preview | §1 三点 Preview と §6 Marp Preview を別概念として明示 | 後続 TC / TC-038–042 |
+| 三点モード・正本・dirty | 同一 Custom Editor、初期 Markdown、正本 `MarkdownDocument`、モード切替でディスク非書込 | TC-070–074 |
+| Raw パース失敗 | Document 非破壊 + 通知 + 失敗中 save ブロック | TC-078–079 |
+| Preview vs Marp Preview | §1 三点 Preview と §6 Marp Preview を別概念として明示 | TC-077 |
+| Preview 厳密 RO・三者同期 | Preview 入力不可、Raw↔Markdown↔Preview が Document 経由で一致 | TC-080–082 |
 
 ---
 
@@ -633,3 +647,4 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 | 2026-08-29 | 全体 | 初版。Requirements Brief `vsc-md-wysiwyg` に基づく MVP 仕様 |
 | 2026-08-29 | §3, §4, §6, §7, Spec Gaps | Advisor defaults で Spec Gaps 解決。testspec-vsc-md-wysiwyg 連携 |
 | 2026-08-29 | 概要, AD-*, §1, §2, §4, §6, §8, Non-Goals, Spec Gaps | Preview / Markdown / Raw 三点モード・相互同期・dirty/save・ファイル RO 全編集面ロック・Marp 区別・Raw パース失敗時 save ブロックを契約化（AD-016）。viewType `vsc-md-editor.wysiwyg` を明示 |
+| 2026-08-30 | §1 三点モード | Preview 厳密 RO・三者同期モデル・モード切替時 Document 再投影を契約化 |

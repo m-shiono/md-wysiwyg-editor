@@ -225,6 +225,17 @@ body[data-readonly='true'] #toolbar {
   opacity: 0.95;
 }
 
+/* Preview: strict RO — block pointer interaction on the visual surface */
+body[data-mode='preview'] #editor {
+  pointer-events: none;
+  user-select: none;
+  cursor: default;
+}
+
+body[data-mode='preview'] #editor .ProseMirror {
+  caret-color: transparent;
+}
+
 body[data-mode='preview'] #toolbar {
   display: none;
 }

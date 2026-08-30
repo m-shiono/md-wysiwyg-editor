@@ -17,6 +17,11 @@ export function canEditContent(mode: EditorMode, fileReadonly: boolean): boolean
   return mode === 'markdown' || mode === 'raw';
 }
 
+/** True when the visual TipTap surface must reject user edits (Preview or file RO). */
+export function isVisualSurfaceReadOnly(mode: EditorMode, fileReadonly: boolean): boolean {
+  return fileReadonly || mode === 'preview';
+}
+
 /**
  * Preview must not push content mutations to Document (one-way Document → view).
  * Markdown / Raw may send update / updateRaw.

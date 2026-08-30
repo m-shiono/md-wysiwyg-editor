@@ -23,6 +23,7 @@ import {
   isEditorMode,
   type EditorMode,
 } from '../utils/editor-mode';
+import { buildModeSwitchMessages } from '../utils/editor-mode-sync';
 import type { WebviewInboundMessage, WebviewOutboundMessage } from '../webviews/messages';
 
 export class MarkdownEditorProvider implements vscode.CustomEditorProvider<MarkdownDocument> {
@@ -34,6 +35,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
   readonly onDidChangeCustomDocument = this._onDidChangeCustomDocument.event;
 
   private readonly _openPanels = new Map<string, vscode.WebviewPanel>();
+  private readonly _openDocuments = new Map<string, MarkdownDocument>();
   private readonly _modeStates = new Map<string, EditorModeState>();
 
   constructor(
@@ -60,6 +62,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
   ): Promise<void> {
     const key = document.uri.toString();
     this._openPanels.set(key, webviewPanel);
+    this._openDocuments.set(key, document);
     if (!this._modeStates.has(key)) {
       this._modeStates.set(key, new EditorModeState());
     }
@@ -110,6 +113,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
 
     webviewPanel.onDidDispose(() => {
       this._openPanels.delete(key);
+      this._openDocuments.delete(key);
       this._modeStates.delete(key);
     });
 
@@ -174,6 +178,25 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     return this._modeStates.get(uri.toString())?.mode ?? DEFAULT_EDITOR_MODE;
   }
 
+  /** Integration tests: open Document for a custom editor tab. */
+  getOpenDocumentForTest(uri: vscode.Uri): MarkdownDocument | undefined {
+    return this._openDocuments.get(uri.toString());
+  }
+
+  /** Integration tests: simulate an inbound webview postMessage. */
+  async deliverWebviewMessageForTest(
+    uri: vscode.Uri,
+    message: WebviewInboundMessage,
+  ): Promise<void> {
+    const key = uri.toString();
+    const panel = this._openPanels.get(key);
+    const document = this._openDocuments.get(key);
+    if (!panel || !document) {
+      throw new Error(`No open custom editor for ${key}`);
+    }
+    await this.handleMessage(document, panel, message);
+  }
+
   refreshReadonly(uri: vscode.Uri, readonly: boolean): void {
     const panel = this._openPanels.get(uri.toString());
     if (panel) {
@@ -234,7 +257,13 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
         }
         {
           const next = modeState.setMode(message.editorMode);
-          this.postMessage(panel.webview, { type: 'modeChanged', editorMode: next });
+          for (const outbound of buildModeSwitchMessages(
+            next,
+            document.docJson,
+            document.markdownText,
+          )) {
+            this.postMessage(panel.webview, outbound);
+          }
         }
         break;
       case 'update':

@@ -224000,6 +224000,7 @@ img.ProseMirror-separator {
     const formatToolbar = document.getElementById("toolbar");
     if (editorEl) {
       editorEl.classList.toggle("hidden", mode === "raw");
+      editorEl.setAttribute("aria-readonly", String(mode === "preview"));
     }
     if (rawEl) {
       rawEl.classList.toggle("hidden", mode !== "raw");
@@ -224011,6 +224012,7 @@ img.ProseMirror-separator {
     editor?.setEditable(mode === "markdown" && canEdit);
     if (mode === "preview") {
       editor?.setEditable(false);
+      editor?.commands.blur();
     }
     if (rawEl) {
       rawEl.readOnly = !canEdit || mode !== "raw";
@@ -224073,6 +224075,7 @@ img.ProseMirror-separator {
     attachModeToolbarHandlers();
     attachPasteHandler();
     attachRawEditorHandlers();
+    attachPreviewGuard();
     attachGfmTableClickHandler(initialDoc);
     setModeUi(editorMode);
   }
@@ -224086,6 +224089,33 @@ img.ProseMirror-separator {
     suppressUpdate = true;
     editor.commands.setContent(prepareDocForEditor(doc3));
     suppressUpdate = false;
+  }
+  function attachPreviewGuard() {
+    const editorEl = document.getElementById("editor");
+    if (!editorEl || editorEl.dataset.previewGuard === "1") {
+      return;
+    }
+    editorEl.dataset.previewGuard = "1";
+    const blockWhenPreview = (event3) => {
+      if (editorMode !== "preview") {
+        return;
+      }
+      event3.preventDefault();
+      event3.stopPropagation();
+    };
+    editorEl.addEventListener("keydown", blockWhenPreview, true);
+    editorEl.addEventListener("beforeinput", blockWhenPreview, true);
+    editorEl.addEventListener("paste", blockWhenPreview, true);
+    editorEl.addEventListener("drop", blockWhenPreview, true);
+    editorEl.addEventListener(
+      "mousedown",
+      (event3) => {
+        if (editorMode === "preview") {
+          event3.preventDefault();
+        }
+      },
+      true
+    );
   }
   function attachModeToolbarHandlers() {
     document.querySelectorAll("#mode-toolbar button[data-mode]").forEach((btn) => {
@@ -224270,9 +224300,7 @@ img.ProseMirror-separator {
         if (typeof message.docJson !== "string") {
           break;
         }
-        if (editorMode === "preview" || editorMode === "markdown" && editor && !editor.isFocused) {
-          applyExternalDoc(JSON.parse(message.docJson));
-        } else if (editorMode === "raw") {
+        if (editorMode === "preview" || editorMode === "markdown" && editor && !editor.isFocused || editorMode === "raw") {
           applyExternalDoc(JSON.parse(message.docJson));
         }
         break;
