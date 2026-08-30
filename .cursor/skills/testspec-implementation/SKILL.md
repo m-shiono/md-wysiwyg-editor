@@ -105,6 +105,7 @@ Trace Results 節に実行結果を追記（Pass/Fail、日付）。
 - [ ] テスト実行 Pass（stack.md の test runner）
 - [ ] testspec の Trace Results を更新
 - [ ] testspec にない `it()` がない
+- [ ] `temporary/workflow-state-<task-id>.yaml` が存在すれば [update-workflow-state.py](../../hooks/update-workflow-state.py) で `phases.tests: done` を disk 更新
 
 ---
 

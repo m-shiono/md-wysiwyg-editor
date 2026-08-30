@@ -573,7 +573,9 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
    - 既定 `false` のとき: 日本語 `InformationMessage` を表示し、エディタ内 **Preview / Markdown / Raw** 三点ボタンの利用を案内。ボタン **「WYSIWYG Editor で開く」** で `vsc-md-editor.openWithWysiwyg` を実行
    - タブが閉じられた、または別ファイルがアクティブの場合は何もしない
 5. コマンド `vsc-md-editor.openWithWysiwyg`: 引数 URI またはアクティブ `.md` に対し `vscode.openWith`（viewType `vsc-md-editor.wysiwyg`）を実行。ビルトイン Markdown エディタの editor/title に表示（`resourceExtname == .md` かつ Custom Editor 非アクティブ時）
-6. **拡張更新後の手動リロード:** コマンド `vsc-md-editor.reloadExtension`（editor/title・WYSIWYG Custom Editor アクティブ時）。確認ダイアログ後に `workbench.action.reloadWindow` を実行し、更新済み Extension Host と Webview バンドルを再読込する（Extension Host のみ再起動では Custom Editor Webview が古いまま残りうる）
+6. **拡張更新後の手動リロード:** コマンド `vsc-md-editor.reloadExtension`。確認ダイアログ後に `workbench.action.reloadWindow` を実行する
+   - **editor/title** に `$(refresh)` アイコン（`resourceExtname == .md` — WYSIWYG / ビルトインいずれの `.md` 表示中も表示）。Cursor Preview / Markdown 切替で Webview バーが消えてもリロード可能
+   - Cursor 組み込み Preview / Markdown トグルの**内部**には挿入不可（API 非提供）。タイトルバー navigation グループの先頭（`navigation@0`）に配置
 
 #### 設定
 

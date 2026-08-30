@@ -18,15 +18,21 @@
 
 | タイミング | 担当 | スキル / エージェント |
 |------------|------|------------------------|
-| spec-agent 着手前 | `verifier` | [requirements-gate-check/SKILL.md](../requirements-gate-check/SKILL.md) |
-| Task 委譲時（機械的） | Cursor Hooks | [`.cursor/hooks.json`](../../../hooks.json) — `gate-requirements-workflow.py` |
+| spec-agent 着手前 | Cursor Hooks + `verifier` | `gates.requirements: done` on disk |
+| test-agent 着手前（Middle+） | Cursor Hooks | phase + artifact + `gates.spec` |
+| test-agent 着手前（品質） | `verifier` | [spec-gate-check/SKILL.md](../spec-gate-check/SKILL.md) → `gates.spec: done` on disk |
+| build-agent 着手前（Middle+） | Cursor Hooks | testspec + **`phases.tests`** + `gates.testspec` |
+| build-agent 着手前（品質） | `verifier` | [testspec-gate-check/SKILL.md](../testspec-gate-check/SKILL.md) → `gates.testspec: done` on disk |
+| 中間ゲート委譲 | Cursor Hooks | [gate-verifier-workflow.py](../../hooks/gate-verifier-workflow.py) — 先行 phase / gate |
+| build-agent 後（Middle+） | main session | [tdd-red-green-loop/SKILL.md](../tdd-red-green-loop/SKILL.md) — Pass 時 Phase 0 / Fail 時ループ → `phases.implementation: done` |
+| Task 委譲時（要件・上流） | Cursor Hooks | [gate-requirements-workflow.py](../../hooks/gate-requirements-workflow.py) |
 | 実装完了後 | `review-agent` | project-security-review, project-design-review, project-code-review |
-| 最終受け入れ | `verifier` | 既存 Checks + spec alignment |
+| 最終受け入れ | `verifier` | 既存 Checks + spec alignment → `archive-workflow-state.py` |
 
 ## フィードバックループ
 
 1. `review-agent` が要件段階で拾えたはずの問題を検出
-2. handoff に `review_root_cause: requirements-gap` を付与（任意）
+2. handoff `## Review feedback` に `review_root_cause: requirements-gap` を設定（**Critical/High で要件漏れが疑われる場合は必須**）
 3. `meta-agent` が [self-improvement.yaml](../../../.cursor/self-improvement.yaml) 経由で requirements-advisory references を更新候補にする
 
 ## Requirements Brief との関係

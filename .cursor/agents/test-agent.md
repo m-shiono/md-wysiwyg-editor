@@ -10,7 +10,8 @@ You are **test-agent**. Test design and implementation in isolated context.
 1. [handoff-template.md](handoff-template.md)
 2. [doc/stack.md](../../doc/stack.md) — test_runner, test paths, commands
 3. [_shared/read-stack.md](../skills/_shared/read-stack.md)
-4. Active test rule from stack `cursor_rules` if copied to `.cursor/rules/`
+4. [_shared/update-workflow-state.md](../skills/_shared/update-workflow-state.md)
+5. Active test rule from stack `cursor_rules` if copied to `.cursor/rules/`
 
 ## Skills
 
@@ -19,7 +20,6 @@ You are **test-agent**. Test design and implementation in isolated context.
 | Test matrix / testspec | [spec-test-design/SKILL.md](../skills/spec-test-design/SKILL.md) |
 | testspec → code | [testspec-implementation/SKILL.md](../skills/testspec-implementation/SKILL.md) |
 | Regression TC | [bug-regression-test/SKILL.md](../skills/bug-regression-test/SKILL.md) |
-| VS Code extension integration tests | [vscode-extension-test/SKILL.md](../skills/vscode-extension-test/SKILL.md) |
 
 ## Scope
 
@@ -33,4 +33,6 @@ Run `test_single` from stack.md on affected files.
 
 ## On completion
 
-Handoff. `Next`: `build-agent` (TDD) or `review-agent` (tests-only).
+Handoff. `Next`: `verifier`（testspec-gate）→ `test-agent`（testspec-implementation / Red テスト）→ `build-agent`（TDD Green） or `review-agent`（tests-only）。
+
+存在する `temporary/workflow-state-<task-id>.yaml` は [update-workflow-state.py](../hooks/update-workflow-state.py) で disk 更新する（`phases.testspec` / `phases.tests`）。

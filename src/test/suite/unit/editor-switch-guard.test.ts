@@ -64,7 +64,7 @@ suite('Editor switch guard (Pattern A)', () => {
       contributes: {
         commands: Array<{ command: string }>;
         configuration: { properties: Record<string, unknown> };
-        menus: { 'editor/title': Array<{ command: string; when: string }> };
+        menus: { 'editor/title': Array<{ command: string; when: string; group?: string }> };
       };
     };
 
@@ -84,6 +84,7 @@ suite('Editor switch guard (Pattern A)', () => {
 
     const reloadMenu = titleMenu.find((m) => m.command === 'vsc-md-editor.reloadExtension');
     assert.ok(reloadMenu);
-    assert.ok(reloadMenu.when.includes('activeCustomEditorId == vsc-md-editor.wysiwyg'));
+    assert.ok(reloadMenu.when.includes('resourceExtname == .md'));
+    assert.strictEqual(reloadMenu.group, 'navigation@0');
   });
 });

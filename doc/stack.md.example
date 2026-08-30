@@ -58,39 +58,15 @@ Go 例:
 # source_glob: "**/*.go"
 ```
 
-VS Code Extension 例:
-
-```yaml
-# profile: vscode-extension
-# languages: [TypeScript]
-# runtime: VS Code Extension Host
-# package_manager: npm
-# source_roots: [src/]
-# layout: |
-#   src/extension.ts    — activate / deactivate
-#   src/commands/       — command handlers
-#   src/providers/      — Language Features, TreeDataProvider
-#   src/webviews/       — Webview panels
-#   src/test/           — @vscode/test-electron integration tests
-# test_roots: [src/test/]
-# test_file_glob: "src/test/suite/**/*.test.ts"
-# source_glob: "src/**/*.ts"
-# test_runner: "@vscode/test-electron"
-# test_all: "npm run test"
-# test_single: "npm run test -- --grep '{pattern}'"
-# typecheck: "npm run typecheck"
-# compile: "npm run compile"
-# cursor_rules:
-#   - templates/rules/vscode-extension.mdc
-#   - templates/rules/tests-vscode-extension.mdc
-```
-
 ## Test runner
 
 ```yaml
 test_runner: vitest     # vitest | jest | pytest | go test
 test_all: "npm test"
 test_single: "npx vitest run {file}"
+# Hook（P0 Red テスト検出）および testspec-implementation が参照:
+# テストコード内に testspec の TC ID（例: TC-001）を必ず含める
+test_tc_id_in_name: true
 ```
 
 Python / Go 例:
@@ -99,6 +75,8 @@ Python / Go 例:
 # test_runner: pytest
 # test_all: "uv run pytest"
 # test_single: "uv run pytest {file}"
+# test_tc_id_in_name: true   # false にすると P0 TC 文字列検索をスキップ（テストファイル存在のみ）
+# test_file_glob: "tests/**/test_*.py"
 #
 # test_runner: go test
 # test_all: "go test ./..."
@@ -162,4 +140,4 @@ cursor_rules:
 
 | 日付 | 変更 |
 |------|------|
-| 2026-08-29 | 初版。TS/Workers, Python, Go, VS Code Extension の例をコメントで記載 |
+| 2026-08-29 | 初版。TS/Workers, Python, Go の例をコメントで記載 |

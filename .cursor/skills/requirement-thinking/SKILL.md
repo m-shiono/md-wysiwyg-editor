@@ -19,8 +19,8 @@ description: >
 | レベル | 目安 | アクション |
 |--------|------|------------|
 | **Trivial** | typo、コピー、フォーマット、コメントのみ。振る舞い・仕様への影響なし | スキップ → 直接 `build-agent` または doc 修正 |
-| **Small** | 既存パターン内の単一モジュール変更、既知 repro のバグ修正、挙動不変リファクタ、doc のみ | スキップ → `spec-agent` / `build-agent` / `test-agent` へ |
-| **Middle** | 新機能・振る舞い追加、API 契約変更、認可・認証、外部連携、永続データモデル変更、本番運用への影響 | **本スキルを実行** |
+| **Small** | 既存パターン内の単一モジュール変更、既知 repro のバグ修正、挙動不変リファクタ、doc のみ | スキップ → 直接委譲。**workflow-state を作らない**（バグ修正分岐: [development.md](../../../doc/development.md#バグ修正のトリアージ分岐)） |
+| **Middle** | 新機能・振る舞い追加、API 契約変更、認可・認証、外部連携、永続データモデル変更、本番運用への影響 | **本スキルを実行** — Intent Brief の `triage: Middle` を必須 |
 | **Large** | 新システム、マルチサービス、コンプライアンス要件、大規模アーキテクチャ変更 | **本スキルを実行** |
 
 ### Middle 判定チェック（いずれか 1 つでも該当 → Middle 以上）
@@ -31,15 +31,19 @@ description: >
 - [ ] 外部サービス・ネットワーク・永続ストアを新たに使う
 - [ ] 本番の可用性・コスト・運用プロセスに影響する
 
-判定結果は質問開始前にユーザーへ 1 行で共有する。
+判定結果は質問開始前にユーザーへ 1 行で共有する。**Intent Brief の Metadata に `triage` を必ず記録**する（Hook が Middle/Large を検証）。
 
-## 2 層フロー
+### bypass（挙動不変リファクタ等）
+
+Middle 判定だが **振る舞い変更なし** で testspec / Red テストを省略する場合のみ、Phase C 完了後に workflow-state の `bypass.reason` を設定する（例: `refactor-no-behavior-change`）。詳細: [project-refactoring/SKILL.md](../project-refactoring/SKILL.md)。
+
+## 2 層フロー（Phase A/B/C）
 
 ```text
 Phase A: Intent Capture（メイン）→ intent-brief
 Phase B: Advisory Panel（requirements-agent 委譲）→ requirements-brief
 Phase C: Decision Gate（メイン）→ UD-* のみ質問
-完了 → spec-agent
+完了 → verifier（requirements-gate）→ spec-agent
 ```
 
 ---
@@ -64,7 +68,7 @@ Intent が十分なら **Phase B へ `requirements-agent` を委譲**する（ha
 
 | handoff 値 | メインの動き |
 |------------|-------------|
-| `user_decisions_required: 0` | Phase C をスキップし、Advisor Defaults の要約をユーザーに提示して確認 |
+| `user_decisions_required: 0` | Phase C をスキップし、Advisor Defaults の要約をユーザーに提示して確認 → **workflow-state 作成** → `verifier`（requirements-gate） |
 | `user_decisions_required: > 0` | Phase C へ |
 | `status: blocked` | ブロッカーをユーザーに提示 |
 
@@ -101,7 +105,24 @@ Class A（`AD-*`）についてユーザーに質問してはならない。Advi
 
 Phase C で確定した各 `UD-*` は Requirements Brief 上で `status: resolved` に更新する。
 
-Phase C 完了後、**`verifier`（requirements-gate）** を実行する。`pass` のときのみ `spec-agent` へ委譲する。
+Phase C 完了後、または Phase C をスキップした場合は Advisor Defaults 確認後、**`verifier`（requirements-gate）** を実行する。`pass` のときのみ `spec-agent` へ委譲する。
+
+### Workflow state（SDD フェーズ正本）
+
+Middle / Large では **要件フェーズ完了時**（Phase C 完了、または Phase C スキップ後の Advisor Defaults 確認後）に workflow-state を **disk 作成**する。**`verifier`（requirements-gate）より前**に必ず実行する（Hook が未作成を deny）。
+
+```bash
+python3 .cursor/hooks/init-workflow-state.py --task-id <task-id> --triage middle
+```
+
+テンプレート: [workflow-state-template.yaml](references/workflow-state-template.yaml)。以降の更新は [update-workflow-state.py](../../hooks/update-workflow-state.py)。
+
+- `phases.requirements: done`
+- `gates.requirements: pending`（init 時点。**verifier** が pass 後に `done` を disk 更新）
+- `artifacts.intent_brief` / `artifacts.requirements_brief` を Brief パスで埋める
+- Trivial / Small では **作成しない**（Hook バイパス想定）
+
+各 subagent は [_shared/update-workflow-state.md](../_shared/update-workflow-state.md) に従い、担当フェーズ完了時に **workflow-state ファイルを disk 更新**する（handoff 記載のみでは不十分）。
 
 ## Hook による強制（Phase 3）
 
@@ -112,6 +133,7 @@ Phase C 完了後、**`verifier`（requirements-gate）** を実行する。`pas
 | Phase B スキップ（Intent のみで spec-agent） | `preToolUse` で deny |
 | `UD-*` が open のまま spec-agent | `preToolUse` で deny |
 | Phase A スキップで requirements-agent | `preToolUse` で deny |
+| Middle+ で workflow-state 未作成のまま verifier（requirements-gate） | `preToolUse` で deny |
 | Intent のみでセッション終了 | `stop` で follow-up |
 
 Trivial / Small（Brief なし）は Hook を通過する。
@@ -138,8 +160,13 @@ Trivial / Small（Brief なし）は Hook を通過する。
 ### 成果物
 - `temporary/intent-brief-<task-id>.md`
 - `temporary/requirements-brief-<task-id>.md`
+- `temporary/workflow-state-<task-id>.yaml`（Middle / Large のみ）
 
 ### 次のステップ
-- agent: `verifier` — requirements-gate（UD-* resolved・Brief 整合）
+- disk: `init-workflow-state.py --task-id <task-id>`（Middle / Large — requirements-gate **より前**）
+- agent: `verifier` — requirements-gate（UD-* resolved・Brief 整合）→ `gates.requirements: done`
 - ゲート pass 後: `spec-agent` — Requirements Brief を入力に systemspec 執筆
+- spec-agent 完了後: `verifier` — spec-gate → `test-agent`（spec-test-design）
+- testspec-gate pass 後: `test-agent`（testspec-implementation / Red）→ `build-agent`
+- build-agent 後: main（`tdd-red-green-loop` — Pass Phase 0 / Fail ループ）→ `review-agent` → `verifier` → `archive-workflow-state.py`
 ```

@@ -63,6 +63,13 @@ description: >
 - `Next: main session (requirement-thinking Phase C)` — 未解決 `UD-*` を列挙
 - ユーザーまたはメインが Brief を更新するまで `spec-agent` へ進めない
 
+## pass 時（disk 更新必須）
+
+```bash
+python3 .cursor/hooks/update-workflow-state.py --task-id <slug> \
+  --gate requirements --gate-status done
+```
+
 ## 参照
 
 - [review-lifecycle.md](../_shared/review-lifecycle.md)

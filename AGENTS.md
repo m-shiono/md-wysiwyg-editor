@@ -25,7 +25,7 @@ While `doc/stack.md` has `status: template`, do not assume a runtime — activat
 | Main session | requirement-thinking, planning, delegate, summarize for user |
 | Subagents | spec / test / build / review / verify / meta work |
 
-Rules: [`.cursor/rules/orchestrator.mdc`](.cursor/rules/orchestrator.mdc) · Handoff: [`.cursor/agents/handoff-template.md`](.cursor/agents/handoff-template.md) · Hooks: [`.cursor/hooks/README.md`](.cursor/hooks/README.md)
+Rules: [`.cursor/rules/orchestrator.mdc`](.cursor/rules/orchestrator.mdc) · Handoff: [`.cursor/agents/handoff-template.md`](.cursor/agents/handoff-template.md) · Hooks: [`.cursor/hooks/README.md`](.cursor/hooks/README.md)（`gate-requirements-workflow` / `gate-specification-workflow` / `gate-verifier-workflow`）
 
 ## Canonical rules
 
@@ -43,39 +43,46 @@ Index: [`.cursor/rules/README.md`](.cursor/rules/README.md)
 | Subagent | Skills | Use for |
 |----------|--------|---------|
 | [requirements-agent](.cursor/agents/requirements-agent.md) | requirements-advisory | Security/cost/ops/design advisory before spec |
-| [spec-agent](.cursor/agents/spec-agent.md) | systemspec-authoring, spec-change-propagation, doc-coauthoring | Spec & docs |
+| [spec-agent](.cursor/agents/spec-agent.md) | project-systemspec-authoring, spec-change-propagation, doc-coauthoring | Spec & docs |
 | [test-agent](.cursor/agents/test-agent.md) | spec-test-design, testspec-implementation, bug-regression-test | Testspec & tests |
-| [build-agent](.cursor/agents/build-agent.md) | project-debugging, project-refactoring | Debug, implement, refactor |
-| [vscode-extension-agent](.cursor/agents/vscode-extension-agent.md) | vscode-extension-dev, vscode-extension-test, vscode-extension-publish | VS Code 拡張機能の実装・テスト・公開 |
+| [build-agent](.cursor/agents/build-agent.md) | project-debugging, project-implementation, project-refactoring | Debug, implement, refactor |
 | [review-agent](.cursor/agents/review-agent.md) | code/security/design review, doc-consistency-audit | Reviews & audit |
-| [verifier](.cursor/agents/verifier.md) | requirements-gate-check | Requirements gate + final acceptance |
+| [verifier](.cursor/agents/verifier.md) | requirements-gate-check, spec-gate-check, testspec-gate-check | Mid-pipeline gates + final acceptance |
 | [meta-agent](.cursor/agents/meta-agent.md) | self-retrospective, skill-triage, skill-creator | Cursor setup |
 
-**Main session only:** [requirement-thinking](.cursor/skills/requirement-thinking/SKILL.md).
+**Main session only:** [requirement-thinking](.cursor/skills/requirement-thinking/SKILL.md), [tdd-red-green-loop](.cursor/skills/tdd-red-green-loop/SKILL.md)（build-agent 後 — Pass 時 Phase 0 / Fail 時ループ。`phases.implementation: done` の単一 Owner）。
 
 All implementation skills read [doc/stack.md](doc/stack.md) via [_shared/read-stack.md](.cursor/skills/_shared/read-stack.md).
 
 ## Typical flows
 
-**New feature:** requirement-thinking Phase A → requirements-agent → requirement-thinking Phase C → verifier (requirements-gate) → spec-agent → test-agent → build-agent → review-agent → verifier
+フロー詳細・phase 更新担当・バグ修正分岐は [doc/development.md](doc/development.md#cursor-開発フロー) を正本とする（以下は要約）。
+
+**New feature:** requirement-thinking → requirements-agent → requirement-thinking Phase C → verifier (requirements-gate) → spec-agent → verifier (spec-gate) → test-agent (spec-test-design) → verifier (testspec-gate) → test-agent (testspec-implementation) → build-agent → main (tdd-red-green-loop) → review-agent → verifier → archive-workflow-state
 
 **Bugfix:** build-agent → test-agent → build-agent → review-agent → verifier
 
 **Refactor:** build-agent → review-agent (if large) → verifier
 
-**Spec change:** spec-agent → test-agent → build-agent → review-agent → verifier
+**Spec change:** spec-agent → verifier (spec-gate) → test-agent (spec-test-design) → verifier (testspec-gate) → test-agent (testspec-implementation) → build-agent → main (tdd-red-green-loop) → review-agent → verifier → archive-workflow-state
 
 **Security-sensitive:** above + review-agent (security) before deploy
-
-**VS Code extension:** spec-agent → test-agent → vscode-extension-agent → review-agent → verifier
-
-**VS Code extension release:** vscode-extension-agent → review-agent (security) → vscode-extension-agent (publish) → verifier
 
 **Template / Cursor setup:** meta-agent
 
 ## Task planning (main session)
 
 SMART steps · Dependencies: doc → spec-agent · testspec → test-agent · debug → build-agent · parallel when independent
+
+## Harness layers (DocDD / SDD / TDD)
+
+| Layer | Source of truth | Enforcement |
+|-------|-----------------|-------------|
+| DocDD | `doc/systemspec.md`, `doc/testspec-*.md`, `.cursor/rules/` | Specification-first, audits |
+| SDD | `temporary/workflow-state-<task-id>.yaml` | Hooks, orchestrator flows, handoff |
+| TDD | testspec Test Matrix → tests | test-agent, verifier |
+
+See [doc/development.md](doc/development.md#ハーネス-3-レイヤーdocdd--sdd--tdd).
 
 ## Specification-first
 

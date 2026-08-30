@@ -32,4 +32,8 @@ You are **requirements-agent**. Technical advisory before user-facing decisions.
 
 ## On completion
 
-Handoff with `decision_summary`. `Next`: main session (requirement-thinking Phase C) when `user_decisions_required` > 0; else main session (Advisor Defaults 要約確認) → `verifier` (requirements-gate).
+Handoff with `decision_summary`. `Next`:
+- `user_decisions_required > 0` → main session（requirement-thinking Phase C）
+- `user_decisions_required: 0` → main session（Advisor Defaults 要約確認 → **`init-workflow-state.py`** → `verifier` requirements-gate）
+
+メインは Phase C スキップ時も **workflow-state を disk 作成してから** verifier へ委譲する（[update-workflow-state.md](../skills/_shared/update-workflow-state.md)）。

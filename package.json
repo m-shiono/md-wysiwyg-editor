@@ -18,6 +18,7 @@
   ],
   "activationEvents": [
     "onCustomEditor:vsc-md-editor.wysiwyg",
+    "onLanguage:markdown",
     "onCommand:vsc-md-editor.openWithWysiwyg",
     "onCommand:vsc-md-editor.reloadExtension"
   ],
@@ -72,14 +73,15 @@
     "menus": {
       "editor/title": [
         {
+          "command": "vsc-md-editor.reloadExtension",
+          "when": "resourceExtname == .md",
+          "group": "navigation@0",
+          "icon": "$(refresh)"
+        },
+        {
           "command": "vsc-md-editor.toggleReadonly",
           "when": "activeCustomEditorId == vsc-md-editor.wysiwyg",
           "group": "navigation"
-        },
-        {
-          "command": "vsc-md-editor.reloadExtension",
-          "when": "activeCustomEditorId == vsc-md-editor.wysiwyg",
-          "group": "navigation@99"
         },
         {
           "command": "vsc-md-editor.openWithWysiwyg",

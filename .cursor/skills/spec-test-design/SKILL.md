@@ -1,11 +1,9 @@
 ---
 name: spec-test-design
 description: >
-  仕様・問題文から体系的にテストケースを設計し、境界値・エッジケース・ストレステストの漏れを防ぐ。
-  doc/ 配下にテスト仕様書を作成し、テストマトリクスとテストコード（Vitest 等）の両方を出力する。
-  アルゴリズム問題・API/Worker 仕様のいずれにも対応。
-  「テストケース」「境界値」「エッジケース」「仕様に沿ったテスト」「テスト仕様書」
-  「サンプルケース」「網羅性確認」と言われたとき、または新機能・アルゴリズム実装前に必ず使う。
+  仕様・問題文から体系的にテストケースを設計し、境界値・エッジケースの漏れを防ぐ。
+  doc/testspec-*.md を作成する（テストコードは testspec-implementation が担当）。
+  「テストケース」「境界値」「testspec」と言われたとき、または新機能実装前の設計時に使う。
 ---
 
 # Spec-Driven Test Design
@@ -14,10 +12,10 @@ description: >
 
 ## 適用範囲
 
-| ドメイン | 入力ソース例 | テストコード先 |
-|---------|-------------|--------------|
-| アルゴリズム / 競技プログラミング | 問題文、入出力制約 | `tests/` またはユーザー指定 |
-| API / Worker / アプリケーション | `doc/systemspec.md`、OpenAPI、機能仕様 | `test_file_glob` from [doc/stack.md](../../../doc/stack.md) |
+| ドメイン | 入力ソース例 | テストコード（後続） |
+|---------|-------------|-------------------|
+| アルゴリズム / 競技プログラミング | 問題文、入出力制約 | `testspec-implementation` → `tests/` |
+| API / Worker / アプリケーション | `doc/systemspec.md`、OpenAPI、機能仕様 | `testspec-implementation` → `test_file_glob` from [doc/stack.md](../../../doc/stack.md) |
 
 **Phase 1 と Phase 2 が完了するまで、テストコード・実装コード（本編）を出力してはならない。**
 
@@ -27,7 +25,7 @@ description: >
 [Phase 1: 仕様分解 & 制約抽出]
 [Phase 2: テストマトリクス & 計算量見積もり]
   └── ユーザー確認（仕様ギャップがある場合は必須）
-[Phase 3: テスト仕様書 + テストコード + セルフチェック]
+[Phase 3: テスト仕様書（doc/testspec-*.md）+ セルフチェック]
 ```
 
 ---
@@ -112,7 +110,7 @@ description: >
 
 ## Phase 3: Deliverables & Self-Check
 
-Phase 3 では **3 つの成果物** を必ず作成する。
+Phase 3 では **2 つの成果物** を必ず作成する（**テストコードは書かない** — [testspec-implementation](../testspec-implementation/SKILL.md) へ委譲）。
 
 ### 1. テスト仕様書（`doc/` 配下）
 
@@ -128,39 +126,23 @@ Phase 3 では **3 つの成果物** を必ず作成する。
 - テストマトリクス全文（Phase 2）
 - Self-Check Report（Phase 3 末尾）
 - 対象仕様へのリンク（`doc/systemspec.md` の節、または問題文）
+- **実行方針** — P2（`@slow` / nightly）の CI 扱い、想定テスト配置（`test_file_glob` 参照）
 
-### 2. テストコード
+testspec 内の TC 命名・配置の正本は [references/test-code-patterns.md](references/test-code-patterns.md)（実装は testspec-implementation が参照）。
 
-実装規約: [references/test-code-patterns.md](references/test-code-patterns.md)
-
-**配置ルール:**
-
-| ドメイン | 配置先 | フレームワーク |
-|---------|-------|--------------|
-| 本リポジトリ（TS） | `tests/<module>/<feature>.test.ts` | Vitest |
-| アルゴリズム（汎用） | ユーザー指定 or `tests/<feature>.test.ts` | Vitest / プロジェクト標準 |
-| 実行のみ（競プロ verify） | `scripts/verify-<feature>.ts` 等 | プロジェクトに合わせる |
-
-**命名規則:**
-- `describe` / テスト名は **What**（何を検証するか）を述べる
-- TC ID をコメントまたはテスト名に含める（例: `TC-003: returns -1 when no solution exists`）
-
-**P2（ストレス）の扱い:**
-- テストコードには `@slow` タグまたは `describe.skip` + コメントで CI 分離を明示
-- テスト仕様書の「実行方針」節に P2 の CI 扱いを記載
-
-### 3. セルフチェック
+### 2. セルフチェック
 
 [references/agent-check-matrix.md](references/agent-check-matrix.md) の A〜E を ✅ / N/A / ⚠️ で埋め、テスト仕様書末尾に貼る。
 
-**P0 + P1** について [references/output-templates/trace-template.md](references/output-templates/trace-template.md) で机上トレースまたは実行結果を提示する。
+**P0 + P1** について [references/output-templates/trace-template.md](references/output-templates/trace-template.md) で**机上トレース**を提示する（実行結果は testspec-implementation 以降）。
 
 ### Phase 3 完了ゲート
 
 - [ ] `doc/testspec-<feature-slug>.md` が作成・更新された
-- [ ] テストコードが P0 + P1 をカバーしている
+- [ ] Test Matrix に P0 TC が 1 件以上ある（P1 は推奨）
 - [ ] Self-Check Report が全項目記入済み
 - [ ] Spec Gaps が ⚠️ の項目は「未実装」または「要仕様確認」として明記
+- [ ] テストコードは **未実装**（`testspec-implementation` へ委譲）
 
 ---
 
@@ -183,12 +165,14 @@ Phase 3 では **3 つの成果物** を必ず作成する。
 
 1. Phase 1: Spec Digest（チャットに提示）
 2. Phase 2: テストマトリクス（チャットに提示 → Spec Gaps あれば確認）
-3. Phase 3:
+3. Phase 3（testspec ドキュメントのみ — テストコードは testspec-implementation へ）:
    - `doc/testspec-<feature-slug>.md` を書き込む
-   - テストコードを書き込む
-   - Self-Check Report + トレース結果をチャットに提示
+   - workflow-state がある場合 [update-workflow-state.py](../../hooks/update-workflow-state.py) で disk 更新:
+     - `phases.testspec: done`
+     - `artifacts.testspec: doc/testspec-<slug>.md`
+   - Self-Check Report をチャットに提示
 
-Phase 3 では **doc 作成をテストコードより先** に行う（仕様書が単一の正とする）。
+**Strict TDD:** テストコードは本スキルでは書かない。`test-agent`（testspec-implementation）→ `phases.tests: done` → `build-agent` の順。
 
 ---
 

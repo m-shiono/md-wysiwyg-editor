@@ -98,7 +98,10 @@ description: >
 ### 書き込み
 
 1. `doc/systemspec.md` を更新（新規節追加 or 既存節修正）
-2. チャットに **変更サマリ** と **次スキル提案** を提示:
+2. `temporary/workflow-state-<task-id>.yaml` が存在すれば [update-workflow-state.py](../../hooks/update-workflow-state.py) で disk 更新:
+   - `phases.spec: done`
+   - `artifacts.systemspec_section` に更新節（例: `§3.2 User API`）
+3. チャットに **変更サマリ** と **次スキル提案** を提示:
    - 新規/変更 → `spec-test-design` または `spec-change-propagation`
    - 軽微な typo → testspec 不要ならスキップ可
 

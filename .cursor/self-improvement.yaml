@@ -11,10 +11,16 @@ targets:
   skills:
     - .cursor/skills/_shared/read-stack.md
     - .cursor/skills/_shared/review-lifecycle.md
+    - .cursor/skills/_shared/update-workflow-state.md
     - .cursor/skills/requirements-gate-check/SKILL.md
+    - .cursor/skills/spec-gate-check/SKILL.md
+    - .cursor/skills/testspec-gate-check/SKILL.md
+    - .cursor/skills/tdd-red-green-loop/SKILL.md
     - .cursor/skills/requirement-thinking/SKILL.md
+    - .cursor/skills/requirement-thinking/references/workflow-state-template.yaml
     - .cursor/skills/requirements-advisory/SKILL.md
     - .cursor/skills/project-debugging/SKILL.md
+    - .cursor/skills/project-implementation/SKILL.md
     - .cursor/skills/project-refactoring/SKILL.md
     - .cursor/skills/project-code-review/SKILL.md
     - .cursor/skills/project-security-review/SKILL.md
@@ -36,6 +42,12 @@ targets:
     - .cursor/hooks.json
     - .cursor/hooks/README.md
     - .cursor/hooks/gate-requirements-workflow.py
+    - .cursor/hooks/gate-specification-workflow.py
+    - .cursor/hooks/gate-verifier-workflow.py
+    - .cursor/hooks/archive-workflow-state.py
+    - .cursor/hooks/init-workflow-state.py
+    - .cursor/hooks/update-workflow-state.py
+    - .cursor/hooks/session-requirements-reminder.sh
 
 signals:
   - user_correction

@@ -8,6 +8,17 @@ import re
 import sys
 from pathlib import Path
 
+HOOKS_DIR = Path(__file__).resolve().parent
+if str(HOOKS_DIR) not in sys.path:
+    sys.path.insert(0, str(HOOKS_DIR))
+
+from _workflow_state import (  # noqa: E402
+    blocks_spec_agent_workflow,
+    extract_task_id_from_prompt,
+    find_workflow_states,
+    parse_workflow_state,
+)
+
 ROOT = Path.cwd()
 TEMP = ROOT / "temporary"
 
@@ -93,13 +104,22 @@ def delegation_target(tool_input: dict) -> str | None:
     return None
 
 
+def filter_briefs_by_task(briefs: list[Path], task_id: str | None) -> list[Path]:
+    if not task_id:
+        return briefs
+    suffix = f"-{task_id}.md"
+    matched = [b for b in briefs if b.name.endswith(suffix)]
+    return matched if matched else briefs
+
+
 def main() -> None:
     payload = load_input()
     tool_input = payload.get("tool_input") or payload.get("input") or {}
     target = delegation_target(tool_input)
+    task_id = extract_task_id_from_prompt(tool_input)
 
-    intent_briefs = find_briefs("intent-brief-*.md")
-    req_briefs = find_briefs("requirements-brief-*.md")
+    intent_briefs = filter_briefs_by_task(find_briefs("intent-brief-*.md"), task_id)
+    req_briefs = filter_briefs_by_task(find_briefs("requirements-brief-*.md"), task_id)
 
     if target == "spec-agent":
         if intent_briefs and not req_briefs:
@@ -117,6 +137,15 @@ def main() -> None:
                     f"Requirements gate: {open_count} open UD item(s) in {brief.name}. "
                     "Complete requirement-thinking Phase C and verifier gate before spec-agent.",
                 )
+
+        state_paths = find_workflow_states(TEMP)
+        states = [parse_workflow_state(path) for path in state_paths]
+        should_deny, user_message = blocks_spec_agent_workflow(states, intent_briefs)
+        if should_deny:
+            deny(
+                user_message or "requirements workflow gate blocked spec-agent.",
+                user_message or "Requirements workflow gate blocked spec-agent.",
+            )
 
     if target == "requirements-agent":
         if not intent_briefs:

@@ -41,7 +41,7 @@ VS Code で **Run Extension**（F5）を実行し Extension Development Host を
 
 IDE タイトルバーの Preview / Markdown 切替でビルトインへ移った場合、拡張が検知して WYSIWYG への復帰を案内する（`vsc-md-editor.autoRestoreOnBuiltinSwitch` で自動復帰も可。既定はオフ）。エディタ内の **Preview / Markdown / Raw** 三点ボタンは WYSIWYG Custom Editor 専用。
 
-拡張機能を更新したあと、エディタ右上の **Reload Plugin**（$(refresh)）でウィンドウを再読み込みできる（WYSIWYG Custom Editor 表示中）。
+拡張機能を更新したあと、`.md` ファイル表示中のエディタタイトルバー（Cursor の Preview / Markdown 付近）の **Reload Plugin**（$(refresh) アイコン）でウィンドウを再読み込みできる。ビルトインエディタに切り替わって Webview バーが消えても利用可能。
 
 ## リポジトリ構成
 

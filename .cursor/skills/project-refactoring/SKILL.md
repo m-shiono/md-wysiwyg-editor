@@ -50,6 +50,15 @@ description: >
 
 - [ ] test_all + typecheck（あれば）Pass
 - [ ] 大規模 → `project-code-review`
+- [ ] workflow-state がある場合 [update-workflow-state.py](../../hooks/update-workflow-state.py) で `phases.implementation: done` を disk 更新（挙動不変リファクタ専用。bypass 時は TDD ループを経ずここで完了）
+
+### bypass（Middle+ で testspec / Red テストを省略）
+
+**条件（すべて）:** 挙動不変、既存 test_all Pass、公開 API / 契約変更なし。
+
+1. workflow-state 作成時に `bypass.reason: refactor-no-behavior-change` を YAML に設定（Phase C または refactor 開始前）
+2. Hook が `phases.testspec` / `phases.tests` / `gates.testspec` チェックをスキップし build-agent 委譲を許可
+3. **新機能・契約変更では bypass 不可**
 
 ## Guidelines
 

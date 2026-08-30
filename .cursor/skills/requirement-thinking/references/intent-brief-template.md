@@ -7,7 +7,7 @@
 | 項目 | 値 |
 |------|-----|
 | task_id | `<slug>` |
-| triage | Middle / Large |
+| triage | `Middle` / `Large` / `Small` / `Trivial`（Hook が Middle/Large を検証） |
 
 ## Problem & Users
 

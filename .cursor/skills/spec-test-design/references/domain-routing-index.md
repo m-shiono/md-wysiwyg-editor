@@ -3,6 +3,16 @@
 Phase 1 で仕様・問題文を読んだ後、この索引で追加参照ファイルを決める。
 **該当するファイルはすべて読む。** 複数該当はよくある。
 
+## テンプレート / アプリ開発のデフォルト
+
+`doc/systemspec.md` ベースの **API / Worker / アプリ機能** では、次のみをデフォルト読込とする:
+
+1. 必須: agent-check-matrix.md + category-catalog.md
+2. **domain-patterns/api-worker.md**（HTTP / Worker / REST 文脈）
+3. 非同期・冪等が仕様にあれば async-idempotency.md を追加
+
+競技プログラミング系（tree-graph, dp, binary-search 等）は **問題文・systemspec に該当キーワードがある場合のみ** 読む。通常のアプリ機能テスト設計では読まない。
+
 ## 判定フロー
 
 ```text

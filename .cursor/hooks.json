@@ -10,7 +10,17 @@
       {
         "command": ".cursor/hooks/gate-requirements-workflow.py",
         "matcher": "Task",
-        "failClosed": false
+        "failClosed": true
+      },
+      {
+        "command": ".cursor/hooks/gate-specification-workflow.py",
+        "matcher": "Task",
+        "failClosed": true
+      },
+      {
+        "command": ".cursor/hooks/gate-verifier-workflow.py",
+        "matcher": "Task",
+        "failClosed": true
       }
     ],
     "stop": [

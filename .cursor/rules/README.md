@@ -19,8 +19,6 @@ Enable by copying from [templates/rules/](../../templates/rules/) per [doc/stack
 | `python.mdc` | Python `src/**/*.py` |
 | `tests-python.mdc` | pytest `tests/**/*.py` |
 | `go.mdc` | Go `**/*.go` |
-| `vscode-extension.mdc` | VS Code extension `src/**/*.ts` |
-| `tests-vscode-extension.mdc` | Extension integration tests `src/test/**/*.ts` |
 
 ## Activation checklist
 
