@@ -223804,6 +223804,7 @@ img.ProseMirror-separator {
 
   // media/editor.ts
   init_purify_es();
+  var HTML_TO_GFM_CONFIRM_MESSAGE = "Rich content (line breaks, lists, checkboxes, etc.) will be flattened to plain text. Continue?";
   var vscode = acquireVsCodeApi();
   var lowlight = createLowlight(grammars);
   mermaid_default.initialize({ startOnLoad: false, securityLevel: "strict" });
@@ -223812,6 +223813,7 @@ img.ProseMirror-separator {
   var RAW_UPDATE_DEBOUNCE_MS = 250;
   var mermaidTimers = /* @__PURE__ */ new Map();
   var editor;
+  var insertTableFormat = "gfm";
   var readonly = false;
   var editorMode = "markdown";
   var suppressUpdate = false;
@@ -223827,9 +223829,12 @@ img.ProseMirror-separator {
         {
           types: ["table"],
           attributes: {
+            tableFormat: { default: "gfm" },
             html: { default: null },
             gfmSource: { default: false },
-            converted: { default: false }
+            converted: { default: false },
+            gfmSourceMarkdown: { default: null },
+            gfmContentFingerprint: { default: null }
           }
         }
       ];
@@ -224139,10 +224144,11 @@ img.ProseMirror-separator {
       attachToolbarHandlers();
       attachLinkInputHandlers();
       attachModeToolbarHandlers();
+      attachTableMenuHandlers();
       attachPasteHandler();
       attachRawEditorHandlers();
       attachPreviewGuard();
-      attachGfmTableClickHandler(initialDoc);
+      updateTableMenuButtonStyle();
       setModeUi(editorMode);
     } finally {
       suppressUpdate = false;
@@ -224251,13 +224257,230 @@ img.ProseMirror-separator {
           case "codeBlock":
             editor.chain().focus().toggleCodeBlock().run();
             break;
-          case "insertTable":
-            editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
-            checkTableLimitsFromEditor(editor);
-            break;
         }
       });
     });
+  }
+  function inferTableFormatFromAttrs(attrs) {
+    if (attrs.tableFormat === "gfm" || attrs.tableFormat === "html") {
+      return attrs.tableFormat;
+    }
+    if (attrs.gfmSource === true) {
+      return "gfm";
+    }
+    if (typeof attrs.html === "string" && attrs.html.length > 0) {
+      return "html";
+    }
+    if (attrs.gfmSource === false || attrs.converted === true) {
+      return "html";
+    }
+    return "gfm";
+  }
+  function getTableContext(ed) {
+    if (!ed.isActive("table")) {
+      return { inTable: false, tableIndex: -1, tableFormat: null };
+    }
+    const { $from } = ed.state.selection;
+    let tablePos = -1;
+    for (let depth = $from.depth; depth > 0; depth -= 1) {
+      if ($from.node(depth).type.name === "table") {
+        tablePos = $from.before(depth);
+        break;
+      }
+    }
+    if (tablePos < 0) {
+      return { inTable: false, tableIndex: -1, tableFormat: null };
+    }
+    let tableIndex = 0;
+    let tableFormat = "gfm";
+    ed.state.doc.descendants((node2, pos) => {
+      if (node2.type.name !== "table") {
+        return;
+      }
+      if (pos === tablePos) {
+        tableFormat = inferTableFormatFromAttrs(node2.attrs);
+        return false;
+      }
+      tableIndex += 1;
+    });
+    return { inTable: true, tableIndex, tableFormat };
+  }
+  function updateTableMenuButtonStyle() {
+    const btn = document.getElementById("table-menu-btn");
+    if (!btn) {
+      return;
+    }
+    btn.classList.toggle("table-format-html", insertTableFormat === "html");
+  }
+  function closeTableMenuPanel() {
+    document.getElementById("table-menu-panel")?.classList.add("hidden");
+  }
+  function openTableMenuPanel() {
+    updateTableMenuState();
+    document.getElementById("table-menu-panel")?.classList.remove("hidden");
+  }
+  function updateTableMenuState() {
+    const panel = document.getElementById("table-menu-panel");
+    if (!panel) {
+      return;
+    }
+    const disabled = readonly || editorMode !== "markdown";
+    const ctx = editor ? getTableContext(editor) : { inTable: false, tableIndex: -1, tableFormat: null };
+    panel.querySelectorAll("[data-table-op]").forEach((item) => {
+      const el = item;
+      const op2 = el.getAttribute("data-table-op");
+      let isDisabled = disabled;
+      if (op2 === "insert") {
+        isDisabled = disabled;
+      } else if (op2 === "addRowBefore" || op2 === "addRowAfter" || op2 === "deleteRow" || op2 === "addColumnBefore" || op2 === "addColumnAfter" || op2 === "deleteColumn" || op2 === "convertToGfm" || op2 === "convertToHtml") {
+        isDisabled = disabled || !ctx.inTable;
+        if (!isDisabled && op2 === "convertToGfm" && ctx.tableFormat === "gfm") {
+          isDisabled = true;
+        }
+        if (!isDisabled && op2 === "convertToHtml" && ctx.tableFormat === "html") {
+          isDisabled = true;
+        }
+      } else if (op2 === "setDefaultGfm" || op2 === "setDefaultHtml") {
+        isDisabled = disabled;
+      }
+      el.disabled = isDisabled;
+      el.classList.toggle("menu-checked", false);
+      if (op2 === "convertToGfm" && ctx.inTable && ctx.tableFormat === "gfm") {
+        el.classList.add("menu-checked");
+      }
+      if (op2 === "convertToHtml" && ctx.inTable && ctx.tableFormat === "html") {
+        el.classList.add("menu-checked");
+      }
+      if (op2 === "setDefaultGfm" && insertTableFormat === "gfm") {
+        el.classList.add("menu-checked");
+      }
+      if (op2 === "setDefaultHtml" && insertTableFormat === "html") {
+        el.classList.add("menu-checked");
+      }
+    });
+  }
+  function postDocUpdate() {
+    if (!editor || readonly || editorMode !== "markdown") {
+      return;
+    }
+    const json4 = editor.getJSON();
+    vscode.postMessage({ type: "update", docJson: JSON.stringify(json4) });
+    checkTableLimitsFromEditor(editor);
+  }
+  function handleTableOperation(op2) {
+    if (!editor || readonly || editorMode !== "markdown") {
+      return;
+    }
+    closeTableMenuPanel();
+    switch (op2) {
+      case "insert":
+        editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+        editor.chain().focus().updateAttributes("table", { tableFormat: insertTableFormat }).run();
+        postDocUpdate();
+        break;
+      case "addRowBefore":
+        editor.chain().focus().addRowBefore().run();
+        postDocUpdate();
+        break;
+      case "addRowAfter":
+        editor.chain().focus().addRowAfter().run();
+        postDocUpdate();
+        break;
+      case "deleteRow":
+        editor.chain().focus().deleteRow().run();
+        postDocUpdate();
+        break;
+      case "addColumnBefore":
+        editor.chain().focus().addColumnBefore().run();
+        postDocUpdate();
+        break;
+      case "addColumnAfter":
+        editor.chain().focus().addColumnAfter().run();
+        postDocUpdate();
+        break;
+      case "deleteColumn":
+        editor.chain().focus().deleteColumn().run();
+        postDocUpdate();
+        break;
+      case "convertToHtml": {
+        const ctx = getTableContext(editor);
+        if (!ctx.inTable || ctx.tableFormat === "html") {
+          return;
+        }
+        vscode.postMessage({
+          type: "tableOperation",
+          operation: "convertToHtml",
+          docJson: JSON.stringify(editor.getJSON()),
+          tableIndex: ctx.tableIndex
+        });
+        break;
+      }
+      case "convertToGfm": {
+        const ctx = getTableContext(editor);
+        if (!ctx.inTable || ctx.tableFormat === "gfm") {
+          return;
+        }
+        if (!window.confirm(HTML_TO_GFM_CONFIRM_MESSAGE)) {
+          return;
+        }
+        vscode.postMessage({
+          type: "tableOperation",
+          operation: "convertToGfm",
+          docJson: JSON.stringify(editor.getJSON()),
+          tableIndex: ctx.tableIndex
+        });
+        break;
+      }
+      case "setDefaultGfm":
+        insertTableFormat = "gfm";
+        updateTableMenuButtonStyle();
+        updateTableMenuState();
+        break;
+      case "setDefaultHtml":
+        insertTableFormat = "html";
+        updateTableMenuButtonStyle();
+        updateTableMenuState();
+        break;
+      default:
+        break;
+    }
+  }
+  function attachTableMenuHandlers() {
+    const btn = document.getElementById("table-menu-btn");
+    const panel = document.getElementById("table-menu-panel");
+    if (!btn || !panel || btn.dataset.bound === "1") {
+      return;
+    }
+    btn.dataset.bound = "1";
+    btn.addEventListener("click", (event3) => {
+      event3.stopPropagation();
+      if (readonly || editorMode !== "markdown") {
+        return;
+      }
+      if (panel.classList.contains("hidden")) {
+        openTableMenuPanel();
+      } else {
+        closeTableMenuPanel();
+      }
+    });
+    panel.querySelectorAll("[data-table-op]").forEach((item) => {
+      item.addEventListener("click", (event3) => {
+        event3.stopPropagation();
+        const op2 = item.getAttribute("data-table-op");
+        if (op2) {
+          handleTableOperation(op2);
+        }
+      });
+    });
+    if (!document.body.dataset.tableMenuBound) {
+      document.body.dataset.tableMenuBound = "1";
+      document.addEventListener("click", () => closeTableMenuPanel());
+      editor?.on("selectionUpdate", () => {
+        if (!panel.classList.contains("hidden")) {
+          updateTableMenuState();
+        }
+      });
+    }
   }
   var pasteHandlerAttached = false;
   function attachPasteHandler() {
@@ -224285,28 +224508,6 @@ img.ProseMirror-separator {
           };
           reader.readAsDataURL(file);
           return;
-        }
-      }
-    });
-  }
-  var gfmTableHandlerAttached = false;
-  function attachGfmTableClickHandler(initialDoc) {
-    const gfmTables = (initialDoc.content ?? []).filter(
-      (n2) => n2.type === "table" && n2.attrs?.gfmSource
-    );
-    if (gfmTables.length === 0 || gfmTableHandlerAttached) {
-      return;
-    }
-    gfmTableHandlerAttached = true;
-    document.getElementById("editor")?.addEventListener("click", (e3) => {
-      if (readonly || editorMode !== "markdown") {
-        return;
-      }
-      const target = e3.target;
-      if (target.closest("table")) {
-        const json4 = editor?.getJSON();
-        if (json4) {
-          vscode.postMessage({ type: "convertGfmTable", docJson: JSON.stringify(json4) });
         }
       }
     });

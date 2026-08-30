@@ -19,8 +19,17 @@ export interface TipTapDoc {
   content: TipTapNode[];
 }
 
+export type TableFormat = 'gfm' | 'html';
+
 export interface SerializeOptions {
   deterministic?: boolean;
+}
+
+export interface CreateInsertTableDocOptions {
+  insertTableFormat: TableFormat;
+  rows?: number;
+  cols?: number;
+  withHeaderRow?: boolean;
 }
 
 const DEFAULT_SERIALIZE_OPTIONS: SerializeOptions = {
@@ -52,7 +61,8 @@ export function parseMarkdown(markdown: string): TipTapDoc {
     extensions: [gfmTable()],
     mdastExtensions: [gfmTableFromMarkdown()],
   });
-  return mdastToTipTap(tree) as TipTapDoc;
+  const gfmTableSources = extractGfmTableSources(markdown);
+  return mdastToTipTap(tree, { gfmTableSources, gfmTableSourceIndex: 0 }) as TipTapDoc;
 }
 
 /** Serialize TipTap document model to deterministic Markdown. */
@@ -89,11 +99,43 @@ function normalizeOutput(text: string): string {
   return text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
 }
 
-function mdastToTipTap(node: Root | Content): TipTapNode | TipTapDoc {
+function extractGfmTableSources(markdown: string): string[] {
+  const sources: string[] = [];
+  const lines = markdown.split('\n');
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index]?.trim() ?? '';
+    if (/^\|.*\|$/.test(line)) {
+      const start = index;
+      index += 1;
+      while (index < lines.length && /^\|.*\|$/.test(lines[index]?.trim() ?? '')) {
+        index += 1;
+      }
+      sources.push(lines.slice(start, index).join('\n'));
+    } else {
+      index += 1;
+    }
+  }
+  return sources;
+}
+
+function tableContentFingerprint(node: TipTapNode): string {
+  return JSON.stringify(node.content ?? []);
+}
+
+interface MdastToTipTapContext {
+  gfmTableSources: string[];
+  gfmTableSourceIndex: number;
+}
+
+function mdastToTipTap(
+  node: Root | Content,
+  context: MdastToTipTapContext = { gfmTableSources: [], gfmTableSourceIndex: 0 },
+): TipTapNode | TipTapDoc {
   if (node.type === 'root') {
     const content: TipTapNode[] = [];
     for (const child of node.children) {
-      const converted = mdastToTipTap(child);
+      const converted = mdastToTipTap(child, context);
       if ('type' in converted && converted.type !== 'doc') {
         content.push(converted as TipTapNode);
       }
@@ -118,7 +160,7 @@ function mdastToTipTap(node: Root | Content): TipTapNode | TipTapDoc {
         type: 'blockquote',
         content: node.children
           .filter((c) => c.type === 'paragraph')
-          .map((c) => mdastToTipTap(c) as TipTapNode),
+          .map((c) => mdastToTipTap(c, context) as TipTapNode),
       };
     case 'code':
       return {
@@ -132,12 +174,23 @@ function mdastToTipTap(node: Root | Content): TipTapNode | TipTapDoc {
         type: listType,
         content: node.children.map((item) => ({
           type: 'listItem',
-          content: item.children.map((c) => mdastToTipTap(c) as TipTapNode),
+          content: item.children.map((c) => mdastToTipTap(c, context) as TipTapNode),
         })),
       };
     }
-    case 'table':
-      return gfmTableToHtmlTable(node);
+    case 'table': {
+      const tableNode = gfmTableToHtmlTable(node, context);
+      const source = context.gfmTableSources[context.gfmTableSourceIndex];
+      context.gfmTableSourceIndex += 1;
+      if (source) {
+        tableNode.attrs = {
+          ...tableNode.attrs,
+          gfmSourceMarkdown: source,
+          gfmContentFingerprint: tableContentFingerprint(tableNode),
+        };
+      }
+      return tableNode;
+    }
     case 'html':
       return htmlToTipTap(node);
     case 'thematicBreak':
@@ -205,19 +258,35 @@ function phrasingToTipTap(nodes: PhrasingContent[]): TipTapNode[] {
   return result;
 }
 
-function gfmTableToHtmlTable(table: Table): TipTapNode {
+function inferTableFormat(attrs?: Record<string, unknown>): TableFormat {
+  if (attrs?.tableFormat === 'gfm' || attrs?.tableFormat === 'html') {
+    return attrs.tableFormat;
+  }
+  if (attrs?.gfmSource === true) {
+    return 'gfm';
+  }
+  if (typeof attrs?.html === 'string' && attrs.html.length > 0) {
+    return 'html';
+  }
+  if (attrs?.gfmSource === false || attrs?.converted === true) {
+    return 'html';
+  }
+  return 'gfm';
+}
+
+function gfmTableToHtmlTable(table: Table, context: MdastToTipTapContext): TipTapNode {
   const rows = table.children.map((row: TableRow) => {
     const cells = row.children.map((cell: TableCell) => ({
       type: row.children.indexOf(cell) === 0 && table.align ? 'tableHeader' : 'tableCell',
       content: cell.children.length
-        ? cell.children.map((c) => mdastToTipTap(c) as TipTapNode)
+        ? cell.children.map((c) => mdastToTipTap(c, context) as TipTapNode)
         : [{ type: 'paragraph' }],
     }));
     return { type: 'tableRow', content: cells };
   });
   return {
     type: 'table',
-    attrs: { gfmSource: true, converted: false },
+    attrs: { tableFormat: 'gfm', gfmSource: true, converted: false },
     content: rows,
   };
 }
@@ -232,7 +301,7 @@ function htmlToTipTap(node: Html): TipTapNode {
     // Fallback: keep raw HTML only when structure cannot be recovered
     return {
       type: 'table',
-      attrs: { html: sanitized, gfmSource: false, converted: true },
+      attrs: { tableFormat: 'html', html: sanitized, gfmSource: false, converted: true },
       content: [],
     };
   }
@@ -274,7 +343,7 @@ function parseHtmlTableToTipTap(html: string): TipTapNode | null {
   }
   return {
     type: 'table',
-    attrs: { gfmSource: false, converted: true },
+    attrs: { tableFormat: 'html', gfmSource: false, converted: true },
     content: rows,
   };
 }
@@ -386,6 +455,20 @@ function tipTapNodeToMdast(node: TipTapNode): Content | undefined {
         })),
       };
     case 'table':
+      if (inferTableFormat(node.attrs) === 'gfm') {
+        const fingerprint = tableContentFingerprint(node);
+        const storedFingerprint = node.attrs?.gfmContentFingerprint as string | undefined;
+        const sourceMarkdown = node.attrs?.gfmSourceMarkdown as string | undefined;
+        if (
+          typeof sourceMarkdown === 'string' &&
+          typeof storedFingerprint === 'string' &&
+          fingerprint === storedFingerprint
+        ) {
+          const value = sourceMarkdown.endsWith('\n') ? sourceMarkdown : `${sourceMarkdown}\n`;
+          return { type: 'html', value };
+        }
+        return tipTapTableToMdast(node);
+      }
       return tableToHtmlBlock(node);
     case 'htmlBlock':
       return { type: 'html', value: (node.attrs?.html as string) ?? '' };
@@ -462,6 +545,86 @@ function tipTapPhrasingToMdast(nodes: TipTapNode[]): PhrasingContent[] {
   return result;
 }
 
+function tipTapTableToMdast(node: TipTapNode): Table {
+  const rows = (node.content ?? []).map((row) => ({
+    type: 'tableRow' as const,
+    children: (row.content ?? []).map((cell) => ({
+      type: 'tableCell' as const,
+      children: cellToPhrasing(cell.content ?? []),
+    })),
+  }));
+  return {
+    type: 'table',
+    align: null,
+    children: rows,
+  };
+}
+
+function cellToPhrasing(nodes: TipTapNode[]): PhrasingContent[] {
+  for (const node of nodes) {
+    if (node.type === 'paragraph') {
+      const phrasing = tipTapPhrasingToMdast(node.content ?? []);
+      if (phrasing.length > 0) {
+        return phrasing;
+      }
+    }
+  }
+  const text = flattenTipTapNodesToText(nodes);
+  return text ? [{ type: 'text', value: text }] : [];
+}
+
+function flattenTipTapNodesToText(nodes: TipTapNode[]): string {
+  const parts: string[] = [];
+  for (const n of nodes) {
+    if (n.type === 'text' && n.text) {
+      parts.push(n.text);
+    } else if (n.type === 'paragraph') {
+      const text = flattenTipTapNodesToText(n.content ?? []);
+      if (text) {
+        parts.push(text);
+      }
+    } else if (n.type === 'bulletList' || n.type === 'orderedList' || n.type === 'taskList') {
+      for (const item of n.content ?? []) {
+        const text = flattenTipTapNodesToText(item.content ?? []);
+        if (text) {
+          parts.push(text);
+        }
+      }
+    } else if (n.content) {
+      const text = flattenTipTapNodesToText(n.content);
+      if (text) {
+        parts.push(text);
+      }
+    }
+  }
+  return parts.join(' ');
+}
+
+function flattenCellContent(nodes: TipTapNode[]): TipTapNode[] {
+  const text = flattenTipTapNodesToText(nodes);
+  return [{ type: 'paragraph', content: text ? [{ type: 'text', text }] : [] }];
+}
+
+function mapTableAtIndex(
+  doc: TipTapDoc,
+  tableIndex: number,
+  transform: (table: TipTapNode) => TipTapNode,
+): TipTapDoc {
+  let index = 0;
+  const content = doc.content.map((node) => {
+    if (node.type !== 'table') {
+      return node;
+    }
+    if (index === tableIndex) {
+      index += 1;
+      return transform(node);
+    }
+    index += 1;
+    return node;
+  });
+  return { type: 'doc', content };
+}
+
 function tableToHtmlBlock(node: TipTapNode): Html {
   // Prefer live TipTap table content so WYSIWYG edits are persisted (AD-005).
   if (node.content && node.content.length > 0) {
@@ -513,21 +676,59 @@ function tipTapTableToHtml(node: TipTapNode): string {
   return sanitizeHtml(html);
 }
 
-/** Convert GFM table node to HTML-backed editable table on first edit (TC-019 / AD-005). */
-export function convertGfmTableToHtml(doc: TipTapDoc): TipTapDoc {
-  const content = doc.content.map((node) => {
-    if (node.type === 'table' && node.attrs?.gfmSource && !node.attrs?.converted) {
-      const html = tipTapTableToHtml(node);
-      return {
-        type: 'table',
-        attrs: { html, gfmSource: false, converted: true },
-        // Keep row/cell content so TipTap can edit; do not collapse to atom htmlBlock.
-        content: node.content ?? [],
-      };
+/** Create a 3×3 table document for insert operations (§3). */
+export function createInsertTableDoc(options: CreateInsertTableDocOptions): TipTapDoc {
+  const rowCount = options.rows ?? 3;
+  const colCount = options.cols ?? 3;
+  const withHeaderRow = options.withHeaderRow ?? true;
+  const tableRows: TipTapNode[] = [];
+  for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+    const cells: TipTapNode[] = [];
+    for (let colIndex = 0; colIndex < colCount; colIndex += 1) {
+      const isHeader = withHeaderRow && rowIndex === 0;
+      cells.push({
+        type: isHeader ? 'tableHeader' : 'tableCell',
+        content: [{ type: 'paragraph' }],
+      });
     }
-    return node;
+    tableRows.push({ type: 'tableRow', content: cells });
+  }
+  return {
+    type: 'doc',
+    content: [
+      {
+        type: 'table',
+        attrs: { tableFormat: options.insertTableFormat },
+        content: tableRows,
+      },
+    ],
+  };
+}
+
+/** Explicit GFM→HTML format conversion for one table (§3). */
+export function convertTableToHtml(doc: TipTapDoc, tableIndex = 0): TipTapDoc {
+  return mapTableAtIndex(doc, tableIndex, (table) => ({
+    ...table,
+    attrs: { ...table.attrs, tableFormat: 'html' },
+  }));
+}
+
+/** Explicit HTML→GFM format conversion with rich-cell flatten (§3). */
+export function convertTableToGfm(doc: TipTapDoc, tableIndex = 0): TipTapDoc {
+  return mapTableAtIndex(doc, tableIndex, (table) => {
+    const rows = (table.content ?? []).map((row) => ({
+      ...row,
+      content: (row.content ?? []).map((cell) => ({
+        ...cell,
+        content: flattenCellContent(cell.content ?? []),
+      })),
+    }));
+    return {
+      ...table,
+      attrs: { ...table.attrs, tableFormat: 'gfm' },
+      content: rows,
+    };
   });
-  return { type: 'doc', content };
 }
 
 /** Serialize TipTap doc to JSON string for webview transport. */

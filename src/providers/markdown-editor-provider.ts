@@ -3,7 +3,8 @@ import * as path from 'path';
 import { MarkdownDocument } from './markdown-document';
 import { MarpPreviewManager } from '../commands/marp-preview';
 import {
-  convertGfmTableToHtml,
+  convertTableToGfm,
+  convertTableToHtml,
   serializeMarkdown,
   type TipTapDoc,
 } from '../serializers/markdown-serializer';
@@ -312,14 +313,18 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
           }
         }
         break;
-      case 'convertGfmTable':
+      case 'tableOperation':
         if (readonly || typeof message.docJson !== 'string') {
           return;
         }
         {
           const doc = JSON.parse(message.docJson) as TipTapDoc;
-          const converted = convertGfmTableToHtml(doc);
-          document.updateDoc(converted, 'Convert GFM table');
+          const tableIndex = message.tableIndex ?? 0;
+          if (message.operation === 'convertToHtml') {
+            document.updateDoc(convertTableToHtml(doc, tableIndex), 'Convert table to HTML');
+          } else if (message.operation === 'convertToGfm') {
+            document.updateDoc(convertTableToGfm(doc, tableIndex), 'Convert table to GFM');
+          }
         }
         break;
       case 'checkTableLimits':
@@ -460,7 +465,25 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     <button data-cmd="orderedList" title="Ordered List">1. List</button>
     <button data-cmd="link" title="Link">Link</button>
     <button data-cmd="codeBlock" title="Code Block">Code</button>
-    <button data-cmd="insertTable" title="Insert Table">Table</button>
+    <div id="table-menu" class="toolbar-dropdown">
+      <button type="button" id="table-menu-btn" title="Table">Table ▼</button>
+      <div id="table-menu-panel" class="toolbar-dropdown-panel hidden" role="menu" aria-label="Table operations">
+        <button type="button" data-table-op="insert" role="menuitem">Insert table</button>
+        <hr class="toolbar-dropdown-sep" />
+        <button type="button" data-table-op="addRowBefore" role="menuitem">Add row above</button>
+        <button type="button" data-table-op="addRowAfter" role="menuitem">Add row below</button>
+        <button type="button" data-table-op="deleteRow" role="menuitem">Delete row</button>
+        <button type="button" data-table-op="addColumnBefore" role="menuitem">Add column left</button>
+        <button type="button" data-table-op="addColumnAfter" role="menuitem">Add column right</button>
+        <button type="button" data-table-op="deleteColumn" role="menuitem">Delete column</button>
+        <hr class="toolbar-dropdown-sep" />
+        <button type="button" data-table-op="convertToGfm" role="menuitem">Convert to GFM pipe table</button>
+        <button type="button" data-table-op="convertToHtml" role="menuitem">Convert to HTML table</button>
+        <hr class="toolbar-dropdown-sep" />
+        <button type="button" data-table-op="setDefaultGfm" role="menuitem">New tables default: GFM</button>
+        <button type="button" data-table-op="setDefaultHtml" role="menuitem">New tables default: HTML</button>
+      </div>
+    </div>
   </div>
   <div id="link-input-bar" class="hidden" role="group" aria-label="Link URL">
     <input type="url" id="link-url-input" placeholder="https://example.com" spellcheck="false" aria-label="Link URL" />

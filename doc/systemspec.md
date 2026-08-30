@@ -6,7 +6,7 @@ VS Code 拡張 **vsc-md-editor** の振る舞い仕様（WHAT）。実装詳細�
 
 ## 概要
 
-チーム向け技術ドキュメントを Git 管理しながら、Word/Excel に近い WYSIWYG 体験で Markdown（`.md`）を編集する VS Code 拡張機能。MVP では同一 Custom Editor 上の **Preview / Markdown / Raw 三点モード**、HTML 表編集、ファイル単位 Readonly 切替、Mermaid リアルタイム描画、**Marp プレビュー**（§6・AD-008 — 三点の Preview とは別）、クリップボード画像のローカル保存を提供する。リッチ表現（拡張記法・HTML 混在）を Markdown 厳密互換より優先する（UD-001）。
+チーム向け技術ドキュメントを Git 管理しながら、Word/Excel に近い WYSIWYG 体験で Markdown（`.md`）を編集する VS Code 拡張機能。MVP では同一 Custom Editor 上の **Preview / Markdown / Raw 三点モード**、**GFM / HTML 二形式表編集**（§3・AD-005）、ファイル単位 Readonly 切替、Mermaid リアルタイム描画、**Marp プレビュー**（§6・AD-008 — 三点の Preview とは別）、クリップボード画像のローカル保存を提供する。リッチ表現（拡張記法・HTML 混在）を Markdown 厳密互換より優先する（UD-001）。
 
 **feature-slug:** `vsc-md-wysiwyg`
 
@@ -20,7 +20,7 @@ VS Code 拡張 **vsc-md-editor** の振る舞い仕様（WHAT）。実装詳細�
 | AD-002 | `*.md` を Custom Editor（viewType `vsc-md-editor.wysiwyg`）で開く。Extension Host 上の `MarkdownDocument` が dirty・undo/redo・save および表示内容の正本 |
 | AD-003 | **Markdown モード**は Webview 内 TipTap（ProseMirror）WYSIWYG。見出し・太字・斜体・リスト・リンク・コードブロック等を MVP 対象ノードとする |
 | AD-004 | 編集内容 ↔ ディスク `.md` は remark/unified パイプラインで変換。HTML 混在・拡張ブロックを許容。出力は決定的（AD-013） |
-| AD-005 | 表は WYSIWYG 内部でリッチ編集、永続化は HTML `<table>` ブロックをデフォルトとする |
+| AD-005 | 表は per-table `tableFormat`（`gfm` \| `html`）で永続化する。新規挿入のデフォルトは GFM パイプ表。形式切替は Table メニューの明示操作のみ（§3） |
 | AD-006 | ファイル単位 Readonly は **全編集面**（Markdown / Raw）をロック。Preview モードとは別概念。状態はワークスペースに永続化 |
 | AD-007 | Mermaid はコードブロック + リアルタイム描画。編集はテキストのみ |
 | AD-008 | **Marp Preview** はサイド/パネルのスライド表示専用（§6）。三点モードの **Preview**（§1）とは別 UI・別責務。編集は Markdown / Raw 側 |
@@ -185,52 +185,81 @@ Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdow
 
 ### 概要
 
-Excel 的な表編集。セル直接編集、セル内改行・箇条書き・チェックボックスを WYSIWYG で表現し、永続化は HTML `<table>` ブロックとする（AD-005, UD-006）。
+Excel 的な表編集。各表は per-table `tableFormat`（`gfm` \| `html`）で永続化する。新規挿入のデフォルトは **GFM パイプ表**（GitHub 親和性）。HTML 形式ではセル内改行・箇条書き・チェックボックス等のリッチ表現を WYSIWYG で保持する（AD-005, UD-006）。形式変更は Table メニューの明示操作のみとし、編集操作による自動変換は行わない。
 
 ### Inputs & Types
 
 | 入力 | 型 | 必須 | 最小 | 最大 | 備考 |
 |------|-----|------|------|------|------|
-| `tableOperation` | 行/列/セル操作 | はい | 1 行 × 1 列 | ソフト上限 100 行 × 20 列 | 超過時 UI 警告、保存は許可 |
-| `cellContent` | リッチテキスト | 任意 | 空 | — | 改行・リスト・チェックボックス可 |
+| `tableFormat` | `'gfm'` \| `'html'` | はい（表ごと） | — | — | 当該表の永続化形式。読込時はソースから推論（既存 `gfmSource` / `html` 属性は互換推論に使用） |
+| `insertTableFormat` | `'gfm'` \| `'html'` | はい（セッション） | — | — | 新規挿入のデフォルト形式。Webview 内メモリのみ（VS Code 再起動で `gfm` にリセット）。ワークスペース / ユーザー設定への永続化は MVP 非対象 |
+| `tableOperation` | 列挙 | 操作ごと | — | — | `insert`、行/列追加・削除（`addRowBefore` / `addRowAfter` / `deleteRow` / `addColumnBefore` / `addColumnAfter` / `deleteColumn`）、`convertToGfm`、`convertToHtml`、`setInsertDefault` |
+| `cellContent` | テキスト / リッチ | 任意 | 空 | — | `gfm`: インラインマーク・プレーンテキストのみ。`html`: 改行・リスト・チェックボックス可 |
+| 表サイズ | 行 × 列 | はい | 1 × 1 | ソフト上限 100 行 × 20 列 | 超過時 UI 警告、保存は許可 |
 
 ### Outputs & Failure Returns
 
 | 条件 | 戻り値 / ステータス | 備考 |
 |------|-------------------|------|
-| 成功 | 表 UI 更新、保存時 HTML `<table>` 出力 | AD-005 |
-| ソフト上限超過 | UI 警告表示、編集・保存は継続可 | 100 行 × 20 列 |
-| RO 中 | 操作無効 | §5 |
+| 成功（`gfm`） | 表 UI 更新、保存時 GFM パイプ表出力 | AD-005, AD-013 |
+| 成功（`html`） | 表 UI 更新、保存時 HTML `<table>` ブロック出力 | AD-005, AD-010, AD-013 |
+| `convertToHtml` 成功 | 当該表の `tableFormat` を `html` に更新。確認なし即時実行（プレーンテキスト昇格、実質ロスレス） | Undo 1 段で復元可 |
+| `convertToGfm` 成功 | 当該表の `tableFormat` を `gfm` に更新。リッチ内容はプレーンテキストへ flatten | 実行前に確認ダイアログ必須 |
+| `convertToGfm` キャンセル | 変換なし、表・`tableFormat` 不変 | ユーザーが確認を拒否 |
+| `setInsertDefault` 成功 | `insertTableFormat` 更新、Table ボタン色を反映。既存表の `tableFormat` は不変 | AD-004 |
+| ソフト上限超過 | UI 警告表示、編集・保存は継続可 | 100 行 × 20 列、両形式共通 |
+| RO 中 | 全 Table メニュー項目無効 | §5 |
 | サニタイズ拒否 | 危険タグ/属性を除去して表示 | AD-010, RK-003 |
 
 ### Preconditions
 
-- 編集モードであること
+- 編集モードであること（Readonly 時は §5 に従い全操作無効）
 - 表は WYSIWYG 内部の表モデルとして存在すること
+- 行/列操作・形式変換はカーソルが当該表内にあること（挿入・セッションデフォルト切替を除く）
 
 ### Behavior
+
+#### Table ツールバー UI
+
+Table ボタン（▼ ドロップダウン）の構成:
+
+1. **Insert table** — 3×3・ヘッダ行あり。`insertTableFormat` に従い `tableFormat` を設定して挿入
+2. **行/列操作**（カーソルが表内のときのみ有効）— Add row above/below、Delete row、Add column left/right、Delete column
+3. **Convert to GFM pipe table** — 当該表が `html` のときのみ有効
+4. **Convert to HTML table** — 当該表が `gfm` のときのみ有効
+5. **New tables default: GFM / HTML** — `insertTableFormat` とボタン色を更新（既存表の `tableFormat` は変更しない）
+
+Table ボタンの色は **セッション挿入デフォルト**（`insertTableFormat`）を反映する。GFM = 通常ツールバースタイル、HTML = アクセント色。カーソルが表内にあるときはドロップダウン内チェックマークで **当該表の `tableFormat`** を示し、ボタン色とは分離する。
 
 #### 正常系
 
 1. 表の挿入、行/列の追加・削除、セル編集ができる
-2. セル内に複数行テキスト、箇条書き、チェックボックスを入力できる
-3. 保存後の `.md` には HTML `<table>` として記録される
-4. 既存 GFM パイプ表を開いた場合、初回は読み取り表示とし、**初回編集時**に HTML `<table>` モデルへ変換する（UD-001 リッチ優先）
-5. 行数が 100 を超える、または列数が 20 を超える場合、エディタ内にソフト上限警告を表示する（保存は拒否しない）
+2. `tableFormat: 'html'` の表では、セル内に複数行テキスト、箇条書き、チェックボックスを入力できる
+3. `tableFormat: 'gfm'` の表では、セル内容は GFM パイプ表が許容する範囲（インラインマーク・プレーンテキスト）に制限される
+4. 保存後の `.md` は当該表の `tableFormat` に応じて GFM パイプ表または HTML `<table>` として記録される
+5. 既存 GFM パイプ表の読込 → `tableFormat: 'gfm'`、既存 HTML `<table>` の読込 → `tableFormat: 'html'`（サニタイズ後）。属性欠落時は `gfmSource` / `html` 属性から推論する
+6. **GFM→HTML** 変換は確認なしで即時実行する。**HTML→GFM** 変換は実行前に確認ダイアログを表示する（例: 「リッチ内容（改行・リスト・チェックボックス等）はプレーンテキストに flatten されます。続行しますか？」）。MVP に「今後表示しない」オプションは設けない
+7. 行数が 100 を超える、または列数が 20 を超える場合、エディタ内にソフト上限警告を表示する（保存は拒否しない）
 
 #### 例外系
 
 1. 外部 HTML 表の読込時、サニタイズ後に表示する（RK-003）
 2. 手書き GFM 表と HTML 表が同一リポジトリに混在しうる（RK-006 — スタイルガイド推奨）
+3. Readonly（§5）時は Table メニュー全項目を無効化する
+
+#### 廃止（本機能以前の挙動）
+
+- 既存 GFM パイプ表の **初回編集時による自動 HTML 変換** は廃止する。形式変更はメニュー明示操作のみ
 
 ### Non-Goals
 
-- GFM パイプ表形式での永続化（デフォルト非採用）
 - 表内数式・ピボット等の Excel 高度機能
+- `insertTableFormat` のワークスペース / ユーザー設定への永続化（MVP）
+- HTML→GFM 変換確認ダイアログの「今後表示しない」オプション（MVP）
 
 ### Related Tests
 
-- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-016–024, TC-065
+- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-016–024, TC-065（既存）。**要追記:** 挿入デフォルト GFM、HTML 挿入、HTML→GFM 確認付き変換・flatten、GFM→HTML 変換、メニュー行/列操作、ボタン色 / セッションデフォルト切替、Readonly 無効、GFM/HTML round-trip（`table-gfm-html-mode`）
 
 ---
 
@@ -632,7 +661,7 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 
 | ドキュメント | 状態 |
 |-------------|------|
-| [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) | **作成済** — TC-001–068。三点モード・Raw 同期・Raw パース失敗は **要追記**（次: test-agent / spec-test-design） |
+| [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) | **作成済** — TC-001–068。三点モード・Raw 同期・Raw パース失敗・**GFM/HTML 二形式表**は **要追記**（次: test-agent / spec-test-design、`table-gfm-html-mode`） |
 | MVP 外項目 | [doc/backlog-vsc-md-wysiwyg.md](backlog-vsc-md-wysiwyg.md) |
 
 ---
@@ -645,7 +674,8 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 |------|---------|---------|
 | 表の行/列数上限 | ソフト上限 **100 行 × 20 列**。超過時 UI 警告、保存は許可 | TC-021–023 |
 | 未保存新規 `.md` への画像 paste | paste 拒否 + **「Save document first」** 通知 | TC-050 |
-| GFM パイプ表オープン時変換 | 初回編集時に HTML `<table>` へ変換（UD-001 整合） | TC-019 |
+| GFM パイプ表オープン時変換 | per-table `tableFormat` で永続化。初回編集時の自動 HTML 変換は廃止。形式切替は Table メニュー明示操作のみ | TC-019（更新予定）、`table-gfm-html-mode` |
+| 表の永続化形式 | per-table `tableFormat`（`gfm` \| `html`）。新規挿入デフォルト GFM。セッション `insertTableFormat` は再起動で `gfm` にリセット | `table-gfm-html-mode` |
 | 非 Marp 文書の Marp プレビュー | **「No Marp slides detected」** ガイダンス表示 | TC-042 |
 | RO 未保存ワークスペース | 保存済み WS は `workspaceState` 永続化；未保存 WS はセッション内のみ | TC-027, TC-030 |
 | 三点モード・正本・dirty | 同一 Custom Editor、初期 Markdown、正本 `MarkdownDocument`、モード切替でディスク非書込 | TC-070–074 |
@@ -665,3 +695,4 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 | 2026-08-30 | §1 三点モード | Preview 厳密 RO・三者同期モデル・モード切替時 Document 再投影を契約化 |
 | 2026-08-30 | §10 | Pattern A（IDE タイトルバー切替検知）・`autoRestoreOnBuiltinSwitch`・`openWithWysiwyg` コマンドを追加 |
 | 2026-08-30 | §10 | `reloadExtension` コマンド（拡張更新後の手動ウィンドウリロード）を追加 |
+| 2026-08-30 | AD-005, §3, Spec Gaps, Related Tests | GFM / HTML 二形式表編集。per-table `tableFormat`、Table メニュー（挿入・行/列操作・変換・セッションデフォルト）、初回編集時自動 GFM→HTML 変換廃止。Requirements Brief `table-gfm-html-mode` |

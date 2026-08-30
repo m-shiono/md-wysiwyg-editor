@@ -75,6 +75,64 @@ body[data-readonly='true'] #toolbar {
   pointer-events: none;
 }
 
+.toolbar-dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.toolbar-dropdown-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 20;
+  min-width: 220px;
+  margin-top: 2px;
+  padding: 4px 0;
+  background: var(--vscode-editorWidget-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 2px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.toolbar-dropdown-panel button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 6px 12px;
+}
+
+.toolbar-dropdown-panel button:hover:not(:disabled) {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.toolbar-dropdown-panel button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.toolbar-dropdown-panel button.menu-checked::before {
+  content: '✓ ';
+}
+
+.toolbar-dropdown-sep {
+  border: none;
+  border-top: 1px solid var(--vscode-panel-border);
+  margin: 4px 0;
+}
+
+#table-menu-btn.table-format-html {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border-color: var(--vscode-button-background);
+}
+
+#table-menu-btn.table-format-html:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
 #link-input-bar {
   display: flex;
   align-items: center;

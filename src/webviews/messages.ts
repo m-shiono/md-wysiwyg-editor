@@ -24,7 +24,12 @@ export type WebviewInboundMessage =
   | { type: 'update'; docJson: string }
   | { type: 'updateRaw'; markdown: string }
   | { type: 'setMode'; editorMode: EditorMode }
-  | { type: 'convertGfmTable'; docJson: string }
+  | {
+      type: 'tableOperation';
+      operation: 'convertToHtml' | 'convertToGfm';
+      docJson: string;
+      tableIndex: number;
+    }
   | { type: 'checkTableLimits'; rows: number; cols: number }
   | { type: 'pasteImage'; mime: string; dataBase64: string }
   | { type: 'mermaidError'; error: string }

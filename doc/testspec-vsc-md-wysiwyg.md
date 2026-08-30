@@ -20,7 +20,10 @@
 | `rawSourceEdit` | `string` | — | — | Raw 面からのソース。パース成功時のみ Document 反映 |
 | `isRawParseFailed` | `boolean` | — | — | true の間は save 拒否（§1, §8） |
 | `editOperation` | 編集コマンド / キー入力 | — | — | RO 時拒否；Preview 面からは送らない |
-| `tableOperation` | 行/列/セル操作 | 1×1 | ソフト上限 100行×20列 | 超過時 UI 警告、保存は許可 |
+| `tableFormat` | `'gfm' \| 'html'` | — | — | 表ごとの永続化形式（§3, AD-005） |
+| `insertTableFormat` | `'gfm' \| 'html'` | — | — | セッション挿入デフォルト。再起動で `gfm` にリセット |
+| `tableOperation` | 列挙 | — | — | `insert`、行/列追加・削除、`convertToGfm` / `convertToHtml`、`setInsertDefault` |
+| 表サイズ | 行 × 列 | 1×1 | ソフト上限 100行×20列 | 超過時 UI 警告、保存は許可 |
 | `toggleReadonlyCommand` | コマンド | — | — | `Toggle Readonly Mode`（三点 Preview とは別） |
 | `mermaidSource` | `string` | 0 文字 | — | debounce 300 ms 目安 |
 | `documentContent` | `string` | — | — | Marp front matter + 本文 |
@@ -40,7 +43,13 @@
 | Raw パース回復 | `isRawParseFailed=false`、save 再開可 | §1, §8 |
 | RO ON | Markdown / Raw 全編集面ロック、バッジ表示（三点 Preview とは別） | §4, AD-006 |
 | 表ソフト上限超過 | UI 警告表示、保存は許可 | §3（Advisor default） |
-| GFM パイプ表初回編集 | HTML `<table>` へ変換 | §3（Advisor default, UD-001） |
+| 表挿入（`gfm`） | 表 UI 更新、保存時 GFM パイプ表出力 | §3, AD-005 |
+| 表挿入（`html`） | 表 UI 更新、保存時 HTML `<table>` 出力 | §3, AD-005, AD-010 |
+| `convertToHtml` 成功 | 当該表 `tableFormat: 'html'`、確認なし即時 | §3 Outputs |
+| `convertToGfm` 成功 | 当該表 `tableFormat: 'gfm'`、リッチ内容 flatten | §3 Outputs |
+| `convertToGfm` キャンセル | 変換なし、`tableFormat` 不変 | §3 Outputs |
+| `setInsertDefault` 成功 | `insertTableFormat` 更新、Table ボタン色反映。既存表不変 | §3, AD-004 |
+| GFM 表セル編集 | `tableFormat` 維持（自動 HTML 変換なし） | §3 廃止挙動 |
 | 非 Marp 文書プレビュー | 「No Marp slides detected」ガイダンス | §6（Advisor default） |
 | 未保存新規 `.md` への画像 paste | paste 拒否、「Save document first」通知 | §7（Advisor default） |
 | RO（未保存 WS） | セッション内のみ有効 | §4（Advisor default） |
@@ -67,7 +76,7 @@
 ### Spec Gaps
 
 - （なし — Advisor defaults および AD-016 三点モード契約は systemspec に反映済み。詳細は [systemspec.md Spec Gaps（resolved）](systemspec.md#spec-gapsresolved)）
-- **実装ギャップ（テスト待ち）:** （なし — TC-071/073/076/078/079 はユニット実装済み）
+- **実装ギャップ（Red テスト済み）:** TC-016–019, TC-054, TC-086–087, TC-091–092 ユニット Red（`table-gfm-html-mode`）。TC-085, TC-089–090, TC-093–096 は未実装
 
 ---
 
@@ -90,15 +99,15 @@
 | TC-013 | Happy | theme-integration | P1 | VS Code テーマ切替（dark/light） | Webview が `var(--vscode-*)` で見た目更新 | テーマ統合 | §2 正常系 4 |
 | TC-014 | Structural | unsupported-syntax | P1 | 脚注等 MVP 未対応記法を含む `.md` を開く | 可能な限り原文保持、読取表示 | データ損失回避 | §2 例外系 1 |
 | TC-015 | Corner | serialize-block | P1 | シリアライズ不能構造（schema 外ノード）で save | 保存ブロック、エラー表示（AD-015） | 保存安全 | §2 例外系 2 |
-| TC-016 | Happy | table-insert | P0 | 3×3 表を挿入しセルにテキスト入力 | 表 UI 表示、dirty | 表編集基本 | §3 正常系 1 |
-| TC-017 | Happy | table-rich-cell | P0 | セル内に改行・箇条書き・チェックボックスを入力 | WYSIWYG でリッチ表示 | リッチセル | §3 正常系 2 |
-| TC-018 | Happy | table-html-save | P0 | TC-016 状態で save | `.md` に HTML `<table>` ブロックが出力 | AD-005 永続化 | §3 正常系 3 |
-| TC-019 | Happy | gfm-pipe-convert | P0 | GFM パイプ表のみの `.md` を開き、任意セルを初回編集 | 編集時点で HTML `<table>` モデルへ変換、以降 WYSIWYG 編集可 | Advisor default / UD-001 | §3 正常系 4 |
+| TC-016 | Happy | table-insert-gfm | P0 | 既定 `insertTableFormat='gfm'` で Insert table（3×3・ヘッダ行）→ セルにテキスト入力 → save | 表 UI 表示、`tableFormat:'gfm'`、`.md` に GFM パイプ表出力、dirty→save 成功 | デフォルト GFM 挿入 | §3 正常系 1, 4, AD-005 |
+| TC-017 | Happy | table-rich-cell-html | P0 | `tableFormat:'html'` の表でセル内に改行・箇条書き・チェックボックスを入力 → save | WYSIWYG でリッチ表示、保存時 HTML `<table>` に `<br/>` / `<ul>` / checkbox 相当が含まれる | HTML モードリッチセル | §3 正常系 2, AD-008 |
+| TC-018 | Happy | table-html-insert-save | P0 | `insertTableFormat='html'` で Insert table → セル編集 → save | `tableFormat:'html'`、`.md` に HTML `<table>` ブロック出力 | HTML 挿入永続化 | §3, AD-005 |
+| TC-019 | Happy | gfm-no-auto-convert | P0 | GFM パイプ表のみの `.md` を開き、任意セルを編集 → save | `tableFormat` は `'gfm'` のまま。自動 HTML 変換なし。保存出力は GFM パイプ表 | 初回編集時自動変換廃止 | §3 廃止挙動, 正常系 5 |
 | TC-020 | Corner | table-sanitize-load | P1 | `<script>` 含む外部 HTML 表を含む `.md` を開く | 危険要素除去後に表表示 | RK-003 | §3 例外系 1 |
 | TC-021 | Boundary | table-soft-limit-ok | P1 | 100行×20列の表（境界値） | 警告なし、編集・保存可 | ソフト上限境界（ inclusive ） | §3 Inputs |
 | TC-022 | Boundary | table-rows-exceed | P1 | 101行目を追加 | UI 警告表示、保存は成功 | 行超過警告 | §3 Behavior |
 | TC-023 | Boundary | table-cols-exceed | P1 | 21列目を追加 | UI 警告表示、保存は成功 | 列超過警告 | §3 Behavior |
-| TC-024 | Corner | table-readonly | P1 | RO ON 状態で表操作試行 | 操作無効、UI フィードバック | RO 連動 | §3 Outputs, §4 |
+| TC-024 | Corner | table-readonly | P1 | RO ON 状態で Table メニュー全項目（Insert、行/列操作、Convert、New tables default）を試行 | 全項目無効（`aria-disabled` または disabled）、UI フィードバック | RO 連動 | §3 例外系 3, §5 |
 | TC-025 | Happy | readonly-on | P0 | `Toggle Readonly Mode` 実行（編集可能 doc） | 編集不可、`editable: false`、RO バッジ | RO 有効化 | §4 正常系 1 |
 | TC-026 | Happy | readonly-off | P0 | RO ON 状態で再度トグル | 編集可、バッジ解除 | RO 解除 | §4 正常系 1 |
 | TC-027 | Happy | readonly-persist | P0 | 保存済み WS で RO ON → エディタ閉じる → 再オープン | RO 状態復元 | workspaceState 永続化 | §4 正常系 2, 5 |
@@ -159,15 +168,27 @@
 | TC-082 | Happy | triple-sync-document | P0 | Markdown 編集 → Document；続けて Raw 編集 → Document | 正本 `MarkdownDocument` が唯一の真実。Preview 投影源の `docJson` / `markdownText` が同一 Document から導出 | Raw↔Markdown↔Preview 三者同期 | §1 三者同期 |
 | TC-083 | Happy | builtin-switch-detect | P1 | dispose 後アクティブタブが同一 `.md` の `TabInputText` または非 wysiwyg `TabInputCustom` | `isBuiltinSwitchToSameMdFile` が true。タブ閉鎖・別 URI・wysiwyg タブは false | Pattern A 検知 | §10 正常系 4 |
 | TC-084 | Happy | open-with-wysiwyg-cmd | P1 | `activate` 後に `getCommands` | `vsc-md-editor.openWithWysiwyg` が登録。`package.json` に command・configuration・editor/title menu が存在 | Pattern A 復帰コマンド | §10 正常系 5 |
+| TC-085 | Happy | table-row-col-ops | P0 | `tableFormat:'gfm'` の表内で Add row above/below、Delete row、Add column left/right、Delete column を順に実行 | 行/列が増減し UI 反映。`tableFormat` 不変。save で GFM パイプ表 | メニュー行/列操作 | §3 正常系 1, Table UI #2 |
+| TC-086 | Happy | table-convert-gfm-to-html | P0 | `tableFormat:'gfm'` の表で Convert to HTML table を実行（確認なし） | 即時 `tableFormat:'html'`。save で HTML `<table>` 出力。Undo 1 段で復元可 | GFM→HTML 明示変換 | §3 Outputs, 正常系 6 |
+| TC-087 | Happy | table-convert-html-to-gfm | P0 | リッチ内容（改行・リスト・チェックボックス）を含む `tableFormat:'html'` の表で Convert to GFM pipe table → 確認ダイアログで OK | 確認後 `tableFormat:'gfm'`。リッチ内容はプレーンテキストへ flatten。save で GFM パイプ表 | HTML→GFM 確認付き変換 | §3 Outputs, 正常系 6, AD-006 |
+| TC-088 | Corner | table-convert-gfm-cancel | P1 | TC-087 同等の HTML 表で Convert to GFM → 確認ダイアログで Cancel | 変換なし。`tableFormat:'html'` 維持、リッチ内容保持 | 変換キャンセル | §3 Outputs |
+| TC-089 | Happy | table-insert-default-toggle | P0 | New tables default: HTML を選択 → Insert table → 既存 GFM 表は不変 | `insertTableFormat:'html'`、Table ボタンがアクセント色（`table-format-html` 等）。新規表は `html`、既存 GFM 表の `tableFormat` 不変 | セッションデフォルト + ボタン色 | §3, AD-004 |
+| TC-090 | Happy | table-format-menu-indicator | P1 | カーソルを GFM 表内に置き Table ドロップダウンを開く | 当該表の `tableFormat:'gfm'` にチェックマーク。ボタン色は `insertTableFormat`（セッションデフォルト）を反映し per-table と分離 | per-table vs セッション UI 分離 | §3 Table UI |
+| TC-091 | Happy | table-gfm-roundtrip | P0 | GFM パイプ表を含む `.md` を open → セル編集なしで save | 入出力が GFM パイプ表のまま。`tableFormat:'gfm'` 推論。構造 byte-identical（AD-013） | GFM round-trip | §3 正常系 4–5, §8 |
+| TC-092 | Happy | table-html-roundtrip | P0 | HTML `<table>` を含む `.md` を open → セル編集なしで save | 入出力が HTML `<table>` のまま。`tableFormat:'html'` 推論。構造保持（TC-054 補完） | HTML round-trip | §3 正常系 4–5, §8 |
+| TC-093 | Corner | table-row-col-outside-disabled | P1 | カーソルが表外のとき Table ドロップダウンを開く | 行/列操作・Convert 項目が無効。Insert table と New tables default は有効 | 表外 precondition | §3 Preconditions |
+| TC-094 | Corner | table-convert-menu-disabled | P1 | `tableFormat:'gfm'` の表で Convert to GFM を試行；`html` 表で Convert to HTML を試行 | 当該表形式と不一致の Convert 項目は無効 | 変換メニュー条件 | §3 Table UI #3–4 |
+| TC-095 | Corner | table-insert-default-reset | P1 | `insertTableFormat:'html'` に設定 → VS Code 再起動 → 同一 doc を開く | `insertTableFormat` は `'gfm'` にリセット。Table ボタンは通常色 | セッション非永続 | §3 Inputs |
+| TC-096 | Corner | table-gfm-rich-restricted | P1 | `tableFormat:'gfm'` の表セルに改行・リスト・チェックボックス入力を試行 | リッチ構造は入力不可または flatten（インラインマーク・プレーンテキストのみ） | GFM セル制限 | §3 正常系 3, AD-008 |
 
 ### Category Coverage
 
 | Category | Covered | N/A Reason |
 |----------|---------|------------|
-| Happy Path | TC-001–004, TC-010–012, TC-016–019, TC-025–027, TC-031, TC-033, TC-038–039, TC-043–044, TC-052–054, TC-057–058, TC-070–072, TC-074–076, TC-079–084 | — |
+| Happy Path | TC-001–004, TC-010–012, TC-016–019, TC-025–027, TC-031, TC-033, TC-038–039, TC-043–044, TC-052–054, TC-057–058, TC-070–072, TC-074–076, TC-079–092 | — |
 | Boundary | TC-008, TC-021–023 | — |
 | Structural | TC-014, TC-055, TC-077 | — |
-| Corner | TC-005–009, TC-015, TC-020, TC-024, TC-030, TC-034–037, TC-041–042, TC-047–051, TC-056, TC-059, TC-061, TC-064, TC-067–069, TC-073, TC-078 | — |
+| Corner | TC-005–009, TC-015, TC-020, TC-024, TC-030, TC-034–037, TC-041–042, TC-047–051, TC-056, TC-059, TC-061, TC-064, TC-067–069, TC-073, TC-078, TC-088, TC-093–096 | — |
 | Stress | TC-065–066 | — |
 
 ### Complexity Notes
@@ -187,7 +208,8 @@
 
 | TC 範囲 | 推奨テスト種別 |
 |---------|--------------|
-| TC-052–056, TC-053, TC-069 | ユニット（remark シリアライズ） |
+| TC-052–056, TC-053, TC-069, TC-091–092 | ユニット（remark シリアライズ / tableFormat 分岐） |
+| TC-085–090, TC-093–096 | ユニット（TipTap table コマンド / insertTableFormat / convert）+ 統合（Table メニュー UI） |
 | TC-044 | ユニット（採番ロジック） |
 | TC-067–068, TC-072, TC-074 | ユニット（MarkdownDocument + vscode mock） |
 | TC-070（viewType）, TC-075（readonly key）, TC-077 | ユニット（package.json / 定数 / readonly-state） |
@@ -208,7 +230,16 @@ P0 + P1 の机上トレース（実装前）。
 |----|-------|--------|
 | TC-001 | `sample.md` オープン → CustomEditorProvider が URI を受け取り parse → Webview postMessage で DOM 構築 | ✅ 期待どおり |
 | TC-003 | dirty doc → stringify → `workspace.fs.writeFile` → dirty=false | ✅ 期待どおり |
-| TC-019 | GFM `\| a \| b \|` を parse → 読取モード表示 → セル click で HTML table ノードへ mutate → save で `<table>` | ✅ UD-001 整合 |
+| TC-019 | GFM `\| a \| b \|` を parse → `tableFormat:'gfm'` → セル編集 → save もパイプ表、`tableFormat` 不変 | ✅ 自動 HTML 変換廃止 |
+| TC-016 | 既定 insert GFM → save で `\| --- \|` 形式パイプ表 | ✅ GFM デフォルト挿入 |
+| TC-018 | insertTableFormat html → save で `<table>` ブロック | ✅ HTML 挿入 |
+| TC-085 | 表内で addRowBefore 等 → 行/列数変化、GFM save | ✅ 行/列操作 |
+| TC-087 | HTML 表 + リッチセル → convertToGfm → confirm OK → flatten テキスト | ✅ HTML→GFM 確認+flatten |
+| TC-086 | GFM 表 → convertToHtml 即時、確認なし | ✅ GFM→HTML |
+| TC-089 | setInsertDefault html → ボタン accent クラス、新規 insert が html | ✅ セッションデフォルト+色 |
+| TC-024 | RO ON → Table メニュー全 disabled | ✅ Readonly 無効 |
+| TC-091 | GFM doc open→save byte-identical パイプ表 | ✅ GFM round-trip |
+| TC-092 | HTML doc open→save `<table>` 保持 | ✅ HTML round-trip |
 | TC-022 | 101 行目追加 → UI バナー「Table exceeds recommended size (100 rows × 20 columns)」→ save 成功 | ✅ 警告のみ |
 | TC-030 | 未保存 WS → workspaceState 未コミット → 再起動で globalState/workspaceState 空 → RO 復元なし | ✅ セッション限定 |
 | TC-042 | 通常 MD → Marp パーサがスライド 0 件 → プレビュー pane に固定文言表示 | ✅ ガイダンス |
@@ -226,6 +257,21 @@ P0 + P1 の机上トレース（実装前）。
 | TC-071/073/076/078/079 | Preview 一方向・mode switch 非 I/O・RO 切替可・Raw 失敗/回復 | ✅ ユニット |
 | TC-080–081 | Preview/Markdown 切替時 docJson 再投影・Raw は markdownText のみ | ✅ ユニット |
 | TC-082 | Markdown / Raw 編集が同一 Document に収束 | ✅ ユニット |
+
+### table-gfm-html-mode ユニット（2026-08-30）
+
+| TC | Trace | Result |
+|----|-------|--------|
+| TC-016 | `createInsertTableDoc({ insertTableFormat:'gfm' })` → serialize → GFM パイプ表 | ❌ Red — export 未実装 |
+| TC-018 | `createInsertTableDoc({ insertTableFormat:'html' })` → serialize → `<table>` | ❌ Red — export 未実装 |
+| TC-019 | GFM parse → セル編集 → `tableFormat:'gfm'` 維持、GFM 出力 | ❌ Red — `tableFormat` 未推論 |
+| TC-054 | HTML parse → `tableFormat:'html'`、round-trip HTML 保持 | ❌ Red — `tableFormat` 未推論 |
+| TC-086 | `convertTableToHtml` → `tableFormat:'html'`、HTML serialize | ❌ Red — export 未実装 |
+| TC-087 | リッチ HTML → `convertTableToGfm` → flatten GFM パイプ表 | ❌ Red — export 未実装 |
+| TC-091 | GFM open→save byte-identical、`tableFormat:'gfm'` | ❌ Red — GFM serialize 未分岐 |
+| TC-092 | HTML open→save `<table>` 保持、`tableFormat:'html'` | ❌ Red — `tableFormat` 未推論 |
+
+**Command:** `npm run test:unit -- --grep 'TC-0(16|18|19|54|86|87|91|92)'` — 8 failing / 0 passing（意図的 Red）
 
 ### TC-067 (P0): Regression — webview edit must not echo setContent
 
@@ -281,12 +327,13 @@ P0 + P1 の机上トレース（実装前）。
 
 ### B. Structural Patterns
 - [x] 未対応記法保持（TC-014）
-- [x] GFM/HTML 混在（TC-019, TC-020）
+- [x] GFM/HTML 混在（TC-019, TC-020, TC-091–092）
+- [x] GFM/HTML 二形式 per-table（TC-016–018, TC-085–089）
 - [x] 欠番連番（TC-044: 0003 次は 0004）
 - [x] Marp Preview ≠ 三点 Preview（TC-077）
 
 ### C. Corner & Failure
-- [x] 解なし/拒否: シリアライズ失敗（TC-006, TC-015, TC-056）、paste 拒否（TC-050）、Raw パース失敗（TC-078）
+- [x] 解なし/拒否: シリアライズ失敗（TC-006, TC-015, TC-056）、paste 拒否（TC-050）、Raw パース失敗（TC-078）、HTML→GFM キャンセル（TC-088）
 - [x] 先頭/末尾: 表 100 行/20 列境界（TC-021）、101/21 超過（TC-022, TC-023）
 - [x] 外部変更・FS 失敗（TC-007, TC-009, TC-048）
 - [x] モード切替 alone の非 I/O（TC-073）、パース回復（TC-079）
@@ -314,3 +361,5 @@ P0 + P1 の机上トレース（実装前）。
 | 2026-08-30 | TC-071/073/076/078/079 skip 記述を解除（ユニット実装済みに同期） |
 | 2026-08-30 | TC-080–082 追加 | Preview 厳密 RO・モード切替時 Document 再投影・三者同期（Raw↔Markdown↔Preview） |
 | 2026-08-30 | TC-083–084 追加 | Pattern A ビルトイン切替検知・`openWithWysiwyg` コマンド登録（§10） |
+| 2026-08-30 | TC-016–019, TC-024 更新；TC-085–096 追加 | GFM/HTML 二形式表（§3, AD-005）。デフォルト GFM 挿入、HTML 挿入、行/列操作、双方向変換（HTML→GFM 確認付き）、セッションデフォルト+ボタン色、Readonly 全無効、GFM/HTML round-trip。初回編集時自動 GFM→HTML 変換廃止（TC-019） |
+| 2026-08-30 | TC-016–019, TC-054, TC-086–087, TC-091–092 ユニット Red | `markdown-serializer.test.ts` に P0 表形式テスト追加。build-agent 向け TDD Red |
