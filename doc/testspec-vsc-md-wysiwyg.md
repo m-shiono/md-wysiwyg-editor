@@ -2,8 +2,8 @@
 
 ## 概要
 
-- **対象:** VS Code 拡張 vsc-md-editor の MVP 機能（Custom Editor、三点モード Preview/Markdown/Raw、WYSIWYG、表、Readonly、Mermaid、Marp、画像 paste、シリアライズ、セキュリティ、ログ・共存）
-- **対応仕様:** [doc/systemspec.md](systemspec.md) §1–§10（AD-016 三点モード含む）
+- **対象:** VS Code 拡張 vsc-md-editor の MVP 機能（Custom Editor、三点モード Preview/Markdown/Raw、WYSIWYG、**GFM 書式ツールバー**、表、Readonly、Mermaid、Marp、画像 paste、シリアライズ、セキュリティ、ログ・共存）
+- **対応仕様:** [doc/systemspec.md](systemspec.md) §1–§10（AD-016 三点モード、§2/§8/§9 GFM 書式ツールバー含む）
 - **テストコード:** `src/test/suite/unit/**/*.test.ts`（mocha + vscode mock）、`src/test/suite/integration/**/*.test.ts`（@vscode/test-electron）
 - **作成日:** 2026-08-29
 
@@ -20,6 +20,9 @@
 | `rawSourceEdit` | `string` | — | — | Raw 面からのソース。パース成功時のみ Document 反映 |
 | `isRawParseFailed` | `boolean` | — | — | true の間は save 拒否（§1, §8） |
 | `editOperation` | 編集コマンド / キー入力 | — | — | RO 時拒否；Preview 面からは送らない |
+| `formatToolbarCommand` | `data-cmd` 列挙 | — | — | `strike` / `inlineCode` / `heading`+`data-level` 1–6 / `taskList` / `blockquote` / `horizontalRule` 等（§2）。第一操作はツールバー |
+| GFM strikethrough 入力 | `~~text~~` または `<del>` / `<s>` | — | — | 出力は常に `~~text~~`（§8） |
+| GFM task list 入力 | `- [ ]` / `- [x]` / `- [X]` / `1. [ ]` | — | — | 出力 `- [ ]` / `- [x]`（小文字 `x`）。`1. [ ]` は unordered へ正規化 |
 | `tableFormat` | `'gfm' \| 'html'` | — | — | 表ごとの永続化形式（§3, AD-005） |
 | `insertTableFormat` | `'gfm' \| 'html'` | — | — | セッション挿入デフォルト。再起動で `gfm` にリセット |
 | `tableOperation` | 列挙 | — | — | `insert`、行/列追加・削除、`convertToGfm` / `convertToHtml`、`setInsertDefault` |
@@ -56,6 +59,12 @@
 | Mermaid 構文エラー | ブロック内エラー表示、ソース保持 | §5 |
 | 画像 paste 成功 | `img/image-NNNN.ext` 保存 + 参照挿入 | §7 |
 | XSS 要素 | サニタイズ除去 | §9 |
+| 書式適用成功（Markdown・非 RO） | UI 更新、Document dirty、Raw 投影 | §2 Outputs |
+| RO 中の新書式ボタン / タスク checkbox | 操作無効（`pointer-events: none` + ハンドラガード）。checkbox トグル不可 | §2, §4 |
+| Preview 中の書式ツールバー | 非表示。編集イベントを Document へ送らない | §2, §1 |
+| Raw 中の書式コマンド | ツールバー表示は維持、コマンドは no-op | §2 |
+| strike シリアライズ | 常に GFM `~~text~~`（`<del>` / `<s>` は出さない） | §8 |
+| sanitize `del` / `s` | 許可。`mark`（下線・highlight）は許可追加しない | §9 |
 
 ### Preconditions & Assumptions
 
@@ -76,7 +85,9 @@
 ### Spec Gaps
 
 - （なし — Advisor defaults および AD-016 三点モード契約は systemspec に反映済み。詳細は [systemspec.md Spec Gaps（resolved）](systemspec.md#spec-gapsresolved)）
+- 番号付きタスク `1. [ ]` の unordered 正規化・複合 mark のネスト順入れ替わりは仕様上の許容（§2 / §8）。本 testspec では意味保持を検証し byte 一致は要求しない
 - **実装ギャップ（Red テスト済み）:** TC-016–019, TC-054, TC-086–087, TC-091–092 ユニット（`table-gfm-html-mode`）。TC-085, TC-089–090, TC-093–096 は未実装
+- **実装ギャップ（Red テスト済み）:** TC-107–123 ユニット（`gfm-format-toolbar`）。build-agent 向け TDD Red
 
 ---
 
@@ -93,11 +104,11 @@
 | TC-007 | Corner | external-file-change | P1 | エディタ開放中に外部プロセスが同一 `.md` を変更 | VS Code 標準リロード/競合フロー | 外部同期 | §1 例外系 2 |
 | TC-008 | Boundary | large-file | P1 | 500 KB 超の `.md` を開く | 編集継続可、Output に大ファイル警告 | RK-004 警告のみ | §1 Outputs |
 | TC-009 | Corner | file-read-failure | P1 | 存在しない/権限なし URI で開く試行 | エディタ未表示、通知 + Output | FS エラー処理 | §1 Outputs |
-| TC-010 | Happy | wysiwyg-format | P0 | 選択テキストに太字をツールバー適用 | UI に `<strong>` 相当表示、dirty | WYSIWYG 書式 | §2 正常系 1 |
+| TC-010 | Happy | wysiwyg-format | P0 | 選択テキストに太字をツールバー適用。ツールバー In は Strike / H3–H6 / Inline Code / Task / Quote / HR を含む（詳細 TC-107–113） | UI に `<strong>` 相当表示、dirty。新 In コマンドも Markdown かつ非 RO で UI 更新 + dirty | WYSIWYG 書式（GFM ツールバー含む） | §2 正常系 1 |
 | TC-011 | Happy | realtime-model | P0 | キー入力で段落を編集 | 内部モデル即時更新、UI 反映 | リアルタイム編集 | §2 正常系 2 |
-| TC-012 | Happy | wysiwyg-serialize | P0 | 見出し・リスト・リンクを含む doc を save | remark パイプラインで Markdown（+許可 HTML）出力 | シリアライズ連携 | §2 正常系 3 |
+| TC-012 | Happy | wysiwyg-serialize | P0 | 見出し（h1–h6）・リスト・リンク・取り消し線（`~~`）・インラインコード・引用（非 paragraph 子含む）・タスクリスト（`- [ ]`/`- [x]`）・水平線（`---`）を含む doc を save | remark パイプラインで Markdown（+許可 HTML）出力。上記 GFM ノードが保持される（往復詳細は TC-107–113） | シリアライズ連携（§2 In ノード含む） | §2 正常系 3, §8 正常系 8 |
 | TC-013 | Happy | theme-integration | P1 | VS Code テーマ切替（dark/light） | Webview が `var(--vscode-*)` で見た目更新 | テーマ統合 | §2 正常系 4 |
-| TC-014 | Structural | unsupported-syntax | P1 | 脚注等 MVP 未対応記法を含む `.md` を開く | 可能な限り原文保持、読取表示 | データ損失回避 | §2 例外系 1 |
+| TC-014 | Structural | unsupported-syntax | P1 | 脚注（`[^1]`）・GitHub Alerts（`> [!NOTE]`）等 **Out** 記法を含む `.md` を開く | 可能な限り原文保持、読取表示。footnotes / Alerts は GFM 拡張として有効化しない。`~~` と `- [ ]` は **In**（本 TC 対象外 — TC-107, TC-111） | データ損失回避。脚注は引き続き Out | §2 例外系 1, Non-Goals, §8 正常系 10 |
 | TC-015 | Corner | serialize-block | P1 | シリアライズ不能構造（schema 外ノード）で save | 保存ブロック、エラー表示（AD-015） | 保存安全 | §2 例外系 2 |
 | TC-016 | Happy | table-insert-gfm | P0 | 既定 `insertTableFormat='gfm'` で Insert table（3×3・ヘッダ行）→ セルにテキスト入力 → save | 表 UI 表示、`tableFormat:'gfm'`、`.md` に GFM パイプ表出力、dirty→save 成功 | デフォルト GFM 挿入 | §3 正常系 1, 4, AD-005 |
 | TC-017 | Happy | table-rich-cell-html | P0 | `tableFormat:'html'` の表でセル内に改行・箇条書き・チェックボックスを入力 → save | WYSIWYG でリッチ表示、保存時 HTML `<table>` に `<br/>` / `<ul>` / checkbox 相当が含まれる | HTML モードリッチセル | §3 正常系 2, AD-008 |
@@ -186,22 +197,40 @@
 | TC-104 | Corner | regression-gfm-cell-linebreak-serialize | P0 | `tableFormat:'gfm'` の表セルに複数 paragraph（Enter 改行相当）を持つ Document を serialize | Raw/保存出力の当該パイプセルに `<br />`（または同等 hard break）が含まれ、両行テキストが残る | Regression: MD→Raw でセル内改行が落ちる（`cellToPhrasing`） | §3 Inputs cellContent, 正常系 3–4 |
 | TC-105 | Corner | regression-gfm-cell-br-parse | P0 | Raw `| a<br />b |` を含む GFM パイプ表を parse | セルは単一改行として復元。`htmlBlock`（`<br />`）による多重改行にならない。テキスト `a`/`b` を保持 | Regression: Raw→MD で br→htmlBlock の二重改行 | §3 正常系 3, 5 |
 | TC-106 | Corner | regression-gfm-cell-br-roundtrip | P0 | `| a<br />b |` を parse → serialize → 再 parse | serialize で `<br />`（または同等）が落ちない。再 parse で余分な改行ノード（htmlBlock / 空段落）が増えない | Regression: GFM セル改行往復不整合 | §3 正常系 3–5 |
+| TC-107 | Happy | gfm-strike-roundtrip | P0 | `~~hello~~` を parse → serialize。モデル上 strike mark からも serialize | parse で `hello` に strike。出力は常に `~~hello~~`。`<del>` / `<s>` は出さない。往復で strike 意味を保持 | GFM 取り消し線のディスク契約 | §2 In strike, §8 正常系 8 |
+| TC-108 | Happy | heading-h3-h6-toggle | P0 | 段落選択で H3 適用 → 同一 H3 再クリック → H6 適用（H4/H5 同契約） | H3 → heading level 3。再クリック → paragraph。H6 → level 6 に置き換え。serialize は `###` / 段落 / `######` | H3–H6 は既存 H1/H2 と同じ toggleHeading | §2 In heading |
+| TC-109 | Happy | inline-code-vs-codeblock | P0 | (a) 選択 `foo` に `inlineCode`。(b) 段落 `bar` に `codeBlock`。(c) ソース `` `~~notstrike~~` `` を parse | (a) 出力 `` `foo` ``（フェンスではない）。(b) フェンスコードブロック（インラインではない）。コマンドは別経路。(c) `~~` はコード文字。strike mark なし（code 優先） | インラインとフェンスの混同防止 | §2 In inlineCode / codeBlock, Behavior 8, §8 |
+| TC-110 | Structural | blockquote-block-children | P0 | 引用内に heading・list・taskList・codeBlock・入れ子 blockquote を含むソースを parse → serialize | 非 paragraph 子が落ちない。出力は GFM `>` プレフィックスで各子を保持（paragraph-only フィルタ禁止） | 引用子の保全（RK-006） | §2 In blockquote, §8 正常系 8 |
+| TC-111 | Happy | gfm-task-list-roundtrip | P0 | `- [ ] open` / `- [x] done` / `- [X] upper` を parse → serialize。チェックボックスをトグル | taskList/taskItem。出力 `- [ ] open` と `- [x] done` / `- [x] upper`（`[X]`→`[x]`、括弧内スペース必須）。番号リストにならない。checkbox トグルは編集であり Document を更新（dirty） | タスクリスト GFM ディスク契約 | §2 In taskList, Behavior 7, §8 正常系 8 |
+| TC-112 | Happy | task-list-exclusive | P0 | タスクリスト上で Bullet / Ordered。箇条書き上で Task | 同一リストに `listItem` と `taskItem` を混在させない。Bullet/Ordered 変換時 **checked は捨てる**。Task は `- [ ]` の unordered タスクへ | リスト種の排他 | §2 In Bullet/Ordered/Task |
+| TC-113 | Happy | horizontal-rule-insert | P0 | (a) ソース `---` を parse。(b) `horizontalRule` 挿入（2 回） | (a) thematicBreak。serialize は `---`（前後空行は AD-013）。(b) 挿入でありトグル削除ではない（2 回目は 2 本目を追加し、1 本目を消さない）。Marp スライド区切り（TC-038）とは別文脈 | HR 挿入と `---` 出力 | §2 In HR, §8 正常系 8 |
+| TC-114 | Corner | format-toolbar-readonly | P1 | ファイル RO ON で新ボタン（strike / H3–H6 / inlineCode / taskList / blockquote / HR）とタスク checkbox を操作 | 操作無効（`#toolbar` `pointer-events: none` + ハンドラ `readonly` ガード）。checkbox トグル不可。Document 不変。新例外なし | RO 既存契約の新ボタン適用 | §2 Outputs, §4 Behavior 3, 7 |
+| TC-115 | Corner | format-toolbar-preview-raw | P1 | Preview でツールバー表示と書式イベント。Raw でツールバー表示と書式コマンド | Preview: 書式ツールバー非表示、Document へ編集イベントを送らない。Raw: ツールバー表示は変えないが書式コマンドは no-op、Document 不変 | モードガード（新例外なし） | §2 Outputs, §1 |
+| TC-116 | Corner | ordered-task-normalizes-unordered | P1 | `1. [ ] a` / `2. [x] b` を parse → serialize | unordered タスクリスト `- [ ] a` / `- [x] b`。番号は保持しない（RK-001） | 番号付きタスクの正規化 | §2 In taskList, §8 正常系 8 |
+| TC-117 | Happy | html-del-s-to-gfm-strike | P1 | `<del>x</del>` および `<s>y</s>` を含む `.md` を parse → serialize | モデルは strike。出力 `~~x~~` / `~~y~~`。`<del>` / `<s>` は出さない | HTML 混在入力の GFM 正規化 | §2 In strike, §8 正常系 8 |
+| TC-118 | Structural | compound-marks-meaning | P1 | `~~**bold**~~` と `**~~bold~~**` を parse → serialize | いずれも strike+bold としてパース。保存は決定的な一方のネストでよい。意味（両 mark）を保持。byte 一致は要求しない（RK-004） | 複合 mark の意味保持 | §2 Behavior 9, §8 正常系 9 |
+| TC-119 | Corner | sanitize-del-s-not-mark | P1 | サニタイズ入力に `<del>` / `<s>` / `<mark>` / `<script>` | `del` / `s` は許可（落ちない）。`mark` は許可追加しない（highlight として残らない）。`<script>` は除去（TC-058 と両立）。CSP / `on*` 除去は不変 | XSS 面を広げずに strike HTML を通す | §9 正常系 2 |
+| TC-120 | Happy | toolbar-aria-pressed | P1 | Markdown・非 RO で strike / H3 / inlineCode / task / blockquote 選択時のボタン。HR ボタン。`#toolbar` ルート | `#toolbar` は `role="toolbar"` `aria-label="Formatting"`。トグル系は選択に連動して `aria-pressed` true/false。HR は挿入のため pressed なし。pressed 見た目は `var(--vscode-*)` | ツールバー a11y | §2 ツールバー構成 |
+| TC-121 | Boundary | single-tilde-not-strike | P1 | `~notstrike~` および単独 `~` を含む段落を parse | 取り消し線にしない。literal `~` として保持 | 単一チルダ誤認防止 | §2 In strike |
+| TC-122 | Corner | no-new-format-keybindings | P1 | `package.json` の `contributes.keybindings` と Webview キーマップ | 新項目の keybindings 追加なし。Strike 既定 `Mod-Shift-s` と Blockquote 既定 `Mod-Shift-b` は無効化。HR / Task に新ショートカットなし。既存 Heading `Mod-Alt-1..6` は不変 | ワークベンチコマンド衝突回避 | §2 Behavior 10, Non-Goals |
+| TC-123 | Structural | format-toolbar-composition | P1 | Markdown モードの `#toolbar` HTML を検査 | 個別ボタン（折りたたみ・見出しドロップダウンなし）。視覚セパレータで 4 群。Strike=`S` / `title=Strikethrough` / `data-cmd=strike`。H3–H6。Inline Code=`` ` `` / `inlineCode`。Task / Quote / HR=`―`。既存 Code は `codeBlock` / `title=Code Block` 維持。画像挿入・下線・highlight ボタンなし | UI 契約と Scope Out | §2 ツールバー構成, Non-Goals |
 
 ### Category Coverage
 
 | Category | Covered | N/A Reason |
 |----------|---------|------------|
-| Happy Path | TC-001–004, TC-010–012, TC-016–019, TC-025–027, TC-031, TC-033, TC-038–039, TC-043–044, TC-052–054, TC-057–058, TC-070–072, TC-074–076, TC-079–092, TC-101–102 | — |
-| Boundary | TC-008, TC-021–023 | — |
-| Structural | TC-014, TC-055, TC-077 | — |
-| Corner | TC-005–009, TC-015, TC-020, TC-024, TC-030, TC-034–037, TC-041–042, TC-047–051, TC-056, TC-059, TC-061, TC-064, TC-067–069, TC-073, TC-078, TC-088, TC-093–096, TC-103–106 | — |
-| Stress | TC-065–066 | — |
+| Happy Path | TC-001–004, TC-010–012, TC-016–019, TC-025–027, TC-031, TC-033, TC-038–039, TC-043–044, TC-052–054, TC-057–058, TC-070–072, TC-074–076, TC-079–092, TC-101–102, TC-107–109, TC-111–113, TC-117, TC-120 | — |
+| Boundary | TC-008, TC-021–023, TC-121 | — |
+| Structural | TC-014, TC-055, TC-077, TC-110, TC-118, TC-123 | — |
+| Corner | TC-005–009, TC-015, TC-020, TC-024, TC-030, TC-034–037, TC-041–042, TC-047–051, TC-056, TC-059, TC-061, TC-064, TC-067–069, TC-073, TC-078, TC-088, TC-093–096, TC-103–106, TC-114–116, TC-119, TC-122 | — |
+| Stress | TC-065–066 | 書式ツールバー自体の最悪計算量は N/A（既存大 doc TC でカバー） |
 
 ### Complexity Notes
 
 - 表ソフト上限 100×20 = 2000 セル — P2 TC-065 で編集+save 性能確認
 - 画像連番上限 9999 — MVP では P2 省略（単体テストで modulo 検証可）
 - Mermaid debounce 300 ms — TC-032 でタイマー mock または実時間計測
+- GFM 書式ノード往復は文書サイズ非依存の unit（TC-107–113）。P2 追加なし
 
 ---
 
@@ -217,6 +246,11 @@
 | TC-052–056, TC-053, TC-069, TC-091–092 | ユニット（remark シリアライズ / tableFormat 分岐） |
 | TC-085–090, TC-093–096 | ユニット（TipTap table コマンド / insertTableFormat / convert）+ 統合（Table メニュー UI） |
 | TC-104–106 | ユニット（remark シリアライズ / GFM セル `<br />` 往復） |
+| TC-107, TC-110–111, TC-113, TC-116–118, TC-121 | ユニット（`markdown-serializer` parse/serialize 往復） |
+| TC-108–109, TC-112 | ユニット（TipTap コマンド / heading・code・list 変換） |
+| TC-114–115, TC-120, TC-123 | ユニット（toolbar HTML / RO・モードガード / aria-pressed）+ 統合（任意） |
+| TC-119 | ユニット（`src/utils/sanitize.ts` 許可タグ） |
+| TC-122 | ユニット（`package.json` keybindings + Webview keymap） |
 | TC-044 | ユニット（採番ロジック） |
 | TC-067–068, TC-072, TC-074 | ユニット（MarkdownDocument + vscode mock） |
 | TC-070（viewType）, TC-075（readonly key）, TC-077 | ユニット（package.json / 定数 / readonly-state） |
@@ -264,6 +298,149 @@ P0 + P1 の机上トレース（実装前）。
 | TC-071/073/076/078/079 | Preview 一方向・mode switch 非 I/O・RO 切替可・Raw 失敗/回復 | ✅ ユニット |
 | TC-080–081 | Preview/Markdown 切替時 docJson 再投影・Raw は markdownText のみ | ✅ ユニット |
 | TC-082 | Markdown / Raw 編集が同一 Document に収束 | ✅ ユニット |
+
+### gfm-format-toolbar ユニット（2026-08-31、TDD Red）
+
+#### TC-107 (P0): Strike `~~` round-trip
+
+| Step | State / Action | Value |
+|------|----------------|-------|
+| Input | ソース | `~~hello~~` |
+| 1 | parse | text `hello` に strike mark |
+| 2 | serialize | `~~hello~~`（`<del>` / `<s>` なし） |
+| Output | 再 parse | strike 意味保持 |
+
+**Result:** ❌ Red — GFM strikethrough 未配線（`npm run test:unit -- --grep 'TC-107'`）
+
+#### TC-108 (P0): H3–H6 toggle
+
+| Step | State / Action | Value |
+|------|----------------|-------|
+| Input | 段落 | `Hello` |
+| 1 | H3 | heading level 3 → `### Hello` |
+| 2 | H3 再クリック | paragraph |
+| 3 | H6 | heading level 6 → `###### Hello` |
+
+**Result:** ❌ Red — `applyToggleHeading` / ツールバー H3–H6 未実装
+
+#### TC-109 (P0): inlineCode vs codeBlock
+
+| Step | State / Action | Value |
+|------|----------------|-------|
+| Input (a) | `inlineCode` on `foo` | `` `foo` `` |
+| Input (b) | `codeBlock` on `bar` | フェンスコードブロック |
+| Input (c) | `` `~~notstrike~~` `` parse | `~~` は code 文字、strike なし |
+
+**Result:** ❌ Red — `applyToggleInlineCode` / `inlineCode` ボタン未実装
+
+#### TC-110 (P0): blockquote non-paragraph children
+
+| Step | State / Action | Value |
+|------|----------------|-------|
+| Input | `>` + heading / list / taskList / codeBlock / nested quote | 複合引用 |
+| Output | serialize | 各子が `>` 付きで残る。paragraph 以外が落ちない |
+
+**Result:** ❌ Red — paragraph-only フィルタが残存
+
+#### TC-111 (P0): task list round-trip
+
+| Step | State / Action | Value |
+|------|----------------|-------|
+| Input | `- [ ] open` / `- [x] done` / `- [X] upper` | GFM task |
+| Output | serialize | `- [ ] open` / `- [x] done` / `- [x] upper` |
+
+**Result:** ❌ Red — GFM task-list 拡張・serialize 未配線
+
+#### TC-112 (P0): task exclusive with bullet/ordered
+
+| Step | State / Action | Value |
+|------|----------------|-------|
+| Input | task list + Bullet | bullet list。checked 捨てる |
+| Input | task list + Ordered | ordered list。checked 捨てる |
+| Constraint | 同一リスト | `listItem` と `taskItem` 混在なし |
+
+**Result:** ❌ Red — `convertExclusiveList` 未実装
+
+#### TC-113 (P0): HR `---`
+
+| Step | State / Action | Value |
+|------|----------------|-------|
+| Input (a) | parse `---` | thematicBreak → serialize `---` |
+| Input (b) | insert × 2 | 2 本。1 本目は消えない（非トグル） |
+
+**Result:** ❌ Red — `insertHorizontalRule` / ツールバー HR 未実装（parse `---` 自体は既存）
+
+#### TC-114–115 (P1): RO / Preview / Raw guards
+
+| Step | State / Action | Value |
+|------|----------------|-------|
+| RO ON | 新ボタン + checkbox | no-op、Document 不変 |
+| Preview | ツールバー | 非表示、編集イベントなし |
+| Raw | ツールバー | 表示維持、コマンド no-op |
+
+**Result:** TC-114 ❌ Red（新 `data-cmd` 未配線）。TC-115 ✅ Pass（Preview CSS / Raw 表示・mode ガード既存）
+
+#### TC-116 (P1): `1. [ ]` → unordered
+
+| Step | State / Action | Value |
+|------|----------------|-------|
+| Input | `1. [ ] a` / `2. [x] b` | 番号付きタスク |
+| Output | serialize | `- [ ] a` / `- [x] b`（番号非保持） |
+
+**Result:** ❌ Red — task-list 正規化未実装
+
+#### TC-117 (P1): `<del>` / `<s>` → `~~`
+
+| Step | State / Action | Value |
+|------|----------------|-------|
+| Input | `<del>x</del>` / `<s>y</s>` | HTML 混在 |
+| Output | serialize | `~~x~~` / `~~y~~` |
+
+**Result:** ❌ Red — HTML→strike 正規化未実装
+
+#### TC-118 (P1): compound marks
+
+| Step | State / Action | Value |
+|------|----------------|-------|
+| Input | `~~**bold**~~` / `**~~bold~~**` | ネスト差 |
+| Output | 両 mark 保持 | ネスト順の入れ替わりは許容 |
+
+**Result:** ❌ Red — strike 複合 mark 未実装
+
+#### TC-119 (P1): sanitize `del`/`s`、`mark` 非許可
+
+| Step | State / Action | Value |
+|------|----------------|-------|
+| Input | `<del>` `<s>` `<mark>` `<script>` | 混在 HTML |
+| Output | allowlist | `del`/`s` 残る。`mark` 残らない。`script` 除去 |
+
+**Result:** ❌ Red — `del`/`s` が ALLOWED_TAGS 未登録
+
+#### TC-120 (P1): toolbar `aria-pressed`
+
+| Step | State / Action | Value |
+|------|----------------|-------|
+| Input | 選択が strike / H3 等 | トグルボタン |
+| Output | `aria-pressed` | true/false 連動。HR は pressed なし。`role=toolbar` |
+
+**Result:** ❌ Red — `#toolbar` role / aria-pressed 未実装
+
+#### TC-121–123 (P1): single tilde / keybindings / ツールバー構成
+
+| ID | Expected | Result |
+|----|----------|--------|
+| TC-121 | 単独 `~` は strike にしない | ✅ Pass（現状 literal。strike 実装後も維持必須） |
+| TC-122 | 新 keybindings なし。`Mod-Shift-s` / `Mod-Shift-b` 無効 | ❌ Red — Strike/Blockquote ショートカット無効化未実装 |
+| TC-123 | 4 群・ラベル/`data-cmd`・画像/下線ボタンなし | ❌ Red — ツールバー構成未実装 |
+
+**Command:** `npm run test:unit -- --grep 'TC-10[7-9]|TC-11[0-9]|TC-12[0-3]'` — 15 failing / 2 passing（意図的 Red）
+
+### Summary（gfm-format-toolbar）
+
+| ID | Priority | Result | Notes |
+|----|----------|--------|-------|
+| TC-107–114, TC-116–120, TC-122–123 | P0/P1 | ❌ Red | `gfm-format-toolbar.test.ts` |
+| TC-115, TC-121 | P1 | ✅ Pass | 既存ガード / literal `~`。実装後も維持 |
 
 ### table-gfm-html-mode ユニット（2026-08-30）
 
@@ -361,27 +538,30 @@ P0 + P1 の机上トレース（実装前）。
 ## Self-Check Report
 
 ### A. Input & Constraints
-- [x] 最小値: 空 `.md`（TC-001）、空 Mermaid（TC-031）、1×1 表（TC-016）
+- [x] 最小値: 空 `.md`（TC-001）、空 Mermaid（TC-031）、1×1 表（TC-016）、単独 `~`（TC-121）
 - [x] 最大値: 500 KB 警告（TC-008）、表 100×20 境界（TC-021）、画像連番 9999（仕様定義、P2 省略理由明記）
-- [x] 型/形式: 各 MIME 画像（TC-045）、非画像 paste（TC-049）、`editorMode` 三値（TC-070–073）
+- [x] 型/形式: 各 MIME 画像（TC-045）、非画像 paste（TC-049）、`editorMode` 三値（TC-070–073）、GFM strike/task 入力（TC-107, TC-111, TC-116–117）
 
 ### B. Structural Patterns
-- [x] 未対応記法保持（TC-014）
+- [x] 未対応記法保持（TC-014 — 脚注/Alerts は Out のまま）
 - [x] GFM/HTML 混在（TC-019, TC-020, TC-091–092）
 - [x] GFM/HTML 二形式 per-table（TC-016–018, TC-085–089）
 - [x] GFM セル内改行 ↔ `<br />` 往復（TC-104–106）
 - [x] 欠番連番（TC-044: 0003 次は 0004）
 - [x] Marp Preview ≠ 三点 Preview（TC-077）
+- [x] 引用の非 paragraph 子（TC-110）、複合 mark（TC-118）、ツールバー 4 群（TC-123）
 
 ### C. Corner & Failure
-- [x] 解なし/拒否: シリアライズ失敗（TC-006, TC-015, TC-056）、paste 拒否（TC-050）、Raw パース失敗（TC-078）、HTML→GFM キャンセル（TC-088）
+- [x] 解なし/拒否: シリアライズ失敗（TC-006, TC-015, TC-056）、paste 拒否（TC-050）、Raw パース失敗（TC-078）、HTML→GFM キャンセル（TC-088）、RO/Preview/Raw 書式ガード（TC-114–115）
 - [x] 先頭/末尾: 表 100 行/20 列境界（TC-021）、101/21 超過（TC-022, TC-023）
 - [x] 外部変更・FS 失敗（TC-007, TC-009, TC-048）
 - [x] モード切替 alone の非 I/O（TC-073）、パース回復（TC-079）
+- [x] 番号付きタスク正規化（TC-116）、sanitize `mark` 非許可（TC-119）
 
 ### D. Complexity & Resources
 - [x] P2 ストレス TC-065, TC-066 定義
 - [x] Mermaid debounce（TC-032）、タイムアウト（TC-037）
+- [x] 書式ツールバー Stress: N/A（unit 往復。大 doc は TC-066）
 
 ### E. API / Worker
 - N/A — ローカル VS Code 拡張。HTTP/KV 該当なし
@@ -389,6 +569,8 @@ P0 + P1 の机上トレース（実装前）。
 ### Uncovered / Spec Gaps
 - （なし — TC-071/073/076/078/079 はユニット実装済み）
 - 画像サイズ上限は MVP 未定 — backlog（BL-008）で管理、本 testspec では MIME 検証のみ
+- TC-107–123 はユニット Red 実装済み（`gfm-format-toolbar.test.ts`）。Green は build-agent
+- 空選択 strike の stored mark は仕様「でよい」のため専用 TC なし（TipTap 既定）
 
 ---
 
@@ -396,6 +578,7 @@ P0 + P1 の机上トレース（実装前）。
 
 | 日付 | 変更内容 |
 |------|---------|
+| 2026-08-31 | TC-107–123 ユニット Red（`gfm-format-toolbar.test.ts`）。Trace / Spec Gaps を TDD Red に同期 |
 | 2026-08-29 | 初版。systemspec §1–§10 MVP カバー、Spec Gaps を Advisor defaults で解決 |
 | 2026-08-29 | TC-067–069 追加 | 回帰: edit-display-break（webview echo 抑止 / 外部同期 / Mermaid 保持） |
 | 2026-08-29 | TC-070–079 追加 | Preview/Markdown/Raw 三点モード・同期・dirty/save・RO・Raw パース失敗契約。ユニット実装可能な TC をコード化、未実装 API は skip |
@@ -407,3 +590,4 @@ P0 + P1 の机上トレース（実装前）。
 | 2026-08-30 | TC-101–103 追加 | HTML→GFM 変換後の Raw 正本更新、および確認ダイアログ中の stale `update` による HTML 巻き戻し防止 |
 | 2026-08-31 | TC-104–106 追加；TC-087・TC-096 Expected 更新 | 回帰: GFM セル内改行 ↔ Raw `<br />` 往復（serialize 落ち / htmlBlock 二重改行）。Behavioral fix: TC-096 はブロックリッチのみ制限、TC-087 flatten は改行保持（`gfm-table-linebreak-fix`） |
 | 2026-08-31 | TC-104–106 Result / Spec Gaps を Green に同期 | ユニット Pass 確認後、Red 表記を解除（Expected 本文は不変） |
+| 2026-08-31 | TC-107–123 追加；TC-010 / TC-012 Expected 拡張；TC-014 脚注 Out を明確化 | GFM 書式ツールバー（§2 / §8 / §9）。P0: strike `~~`、H3–H6、inlineCode vs codeBlock、blockquote 子保持、task list 往復+排他、HR `---`。P1: RO/Preview/Raw ガード、`1. [ ]` 正規化、`<del>`/`<s>`→`~~`、複合 mark、sanitize `del`/`s`（`mark` 非許可）、`aria-pressed`。既存三点モード・表 TC は不変（`gfm-format-toolbar`） |

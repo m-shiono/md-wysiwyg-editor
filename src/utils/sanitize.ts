@@ -6,6 +6,8 @@ const ALLOWED_TAGS = new Set([
   'b',
   'i',
   'u',
+  'del',
+  's',
   'a',
   'ul',
   'ol',

@@ -1,7 +1,11 @@
-import type { Root, Content, PhrasingContent, Table, TableCell, TableRow, Html, Code, BlockContent } from 'mdast';
+import type { Root, Content, PhrasingContent, Table, TableCell, TableRow, Html, Code, BlockContent, List, ListItem } from 'mdast';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfmTableFromMarkdown } from 'mdast-util-gfm-table';
 import { gfmTable } from 'micromark-extension-gfm-table';
+import { gfmStrikethrough } from 'micromark-extension-gfm-strikethrough';
+import { gfmStrikethroughFromMarkdown, gfmStrikethroughToMarkdown } from 'mdast-util-gfm-strikethrough';
+import { gfmTaskListItem } from 'micromark-extension-gfm-task-list-item';
+import { gfmTaskListItemFromMarkdown, gfmTaskListItemToMarkdown } from 'mdast-util-gfm-task-list-item';
 import { toMarkdown } from 'mdast-util-to-markdown';
 import { gfmTableToMarkdown } from 'mdast-util-gfm-table';
 import { sanitizeHtml } from '../utils/sanitize';
@@ -9,6 +13,9 @@ import {
   convertTableToGfmAtIndex,
   flattenTipTapNodesToText,
 } from '../utils/table-convert';
+
+/** mdast GFM delete node (strikethrough). */
+type DeleteNode = { type: 'delete'; children: PhrasingContent[] };
 
 export interface TipTapNode {
   type: string;
@@ -62,8 +69,17 @@ export function parseMarkdown(markdown: string): TipTapDoc {
     throw new Error('Invalid markdown: null byte');
   }
   const tree = fromMarkdown(markdown, {
-    extensions: [gfmTable()],
-    mdastExtensions: [gfmTableFromMarkdown()],
+    extensions: [
+      gfmTable(),
+      // singleTilde: false — 単独 ~ は取り消し線にしない（AD-002 / TC-121）
+      gfmStrikethrough({ singleTilde: false }),
+      gfmTaskListItem(),
+    ],
+    mdastExtensions: [
+      gfmTableFromMarkdown(),
+      gfmStrikethroughFromMarkdown(),
+      gfmTaskListItemFromMarkdown(),
+    ],
   });
   const gfmTableSources = extractGfmTableSources(markdown);
   return mdastToTipTap(tree, { gfmTableSources, gfmTableSourceIndex: 0 }) as TipTapDoc;
@@ -79,7 +95,7 @@ export function serializeMarkdown(
   }
   const mdast = tipTapToMdast(doc);
   const result = toMarkdown(mdast, {
-    extensions: [gfmTableToMarkdown()],
+    extensions: [gfmTableToMarkdown(), gfmStrikethroughToMarkdown(), gfmTaskListItemToMarkdown()],
     bullet: '-',
     emphasis: '*',
     strong: '*',
@@ -162,9 +178,8 @@ function mdastToTipTap(
     case 'blockquote':
       return {
         type: 'blockquote',
-        content: node.children
-          .filter((c) => c.type === 'paragraph')
-          .map((c) => mdastToTipTap(c, context) as TipTapNode),
+        // paragraph-only フィルタは引用内の見出し・リスト等を落とすため禁止（AD-006）
+        content: node.children.map((c) => mdastToTipTap(c, context) as TipTapNode),
       };
     case 'code':
       return {
@@ -173,10 +188,25 @@ function mdastToTipTap(
         content: node.value ? [{ type: 'text', text: node.value }] : [],
       };
     case 'list': {
-      const listType = node.ordered ? 'orderedList' : 'bulletList';
+      const listNode = node as List;
+      const isTaskList = listNode.children.some(
+        (item) => typeof (item as ListItem).checked === 'boolean',
+      );
+      if (isTaskList) {
+        // 1. [ ] も unordered taskList へ正規化（番号は保持しない — AD-003）
+        return {
+          type: 'taskList',
+          content: listNode.children.map((item) => ({
+            type: 'taskItem' as const,
+            attrs: { checked: (item as ListItem).checked === true },
+            content: item.children.map((c) => mdastToTipTap(c, context) as TipTapNode),
+          })),
+        };
+      }
+      const listType = listNode.ordered ? 'orderedList' : 'bulletList';
       return {
         type: listType,
-        content: node.children.map((item) => ({
+        content: listNode.children.map((item) => ({
           type: 'listItem',
           content: item.children.map((c) => mdastToTipTap(c, context) as TipTapNode),
         })),
@@ -209,64 +239,104 @@ function mdastToTipTap(
 
 function phrasingToTipTap(nodes: PhrasingContent[]): TipTapNode[] {
   const result: TipTapNode[] = [];
-  for (const node of nodes) {
-    switch (node.type) {
-      case 'text':
-        result.push({ type: 'text', text: node.value });
-        break;
-      case 'strong':
-        result.push({
-          type: 'text',
-          text: node.children.map((c) => (c.type === 'text' ? c.value : '')).join(''),
-          marks: [{ type: 'bold' }],
-        });
-        break;
-      case 'emphasis':
-        result.push({
-          type: 'text',
-          text: node.children.map((c) => (c.type === 'text' ? c.value : '')).join(''),
-          marks: [{ type: 'italic' }],
-        });
-        break;
-      case 'inlineCode':
-        result.push({
-          type: 'text',
-          text: node.value,
-          marks: [{ type: 'code' }],
-        });
-        break;
-      case 'link':
-        result.push({
-          type: 'text',
-          text: node.children.map((c) => (c.type === 'text' ? c.value : '')).join(''),
-          marks: [{ type: 'link', attrs: { href: node.url, target: '_blank' } }],
-        });
-        break;
-      case 'image':
-        result.push({
-          type: 'image',
-          attrs: {
-            src: node.url,
-            alt: node.alt ?? '',
-            title: node.title ?? null,
-          },
-        });
-        break;
-      case 'html':
-        // GFM セル内 <br /> を text にすると改行が落ち、htmlBlock にすると二重改行になる
-        if (isGfmBreakHtml(node.value)) {
-          const last = result[result.length - 1];
-          if (last?.type !== 'hardBreak') {
-            result.push({ type: 'hardBreak' });
+  let htmlStrikeDepth = 0;
+
+  const withHtmlStrike = (
+    marks: Array<{ type: string; attrs?: Record<string, unknown> }>,
+  ): Array<{ type: string; attrs?: Record<string, unknown> }> => {
+    if (htmlStrikeDepth > 0 && !marks.some((m) => m.type === 'strike')) {
+      return [...marks, { type: 'strike' }];
+    }
+    return marks;
+  };
+
+  const pushText = (
+    text: string,
+    marks: Array<{ type: string; attrs?: Record<string, unknown> }>,
+  ): void => {
+    if (!text) {
+      return;
+    }
+    const resolved = withHtmlStrike(marks);
+    result.push({
+      type: 'text',
+      text,
+      ...(resolved.length > 0 ? { marks: resolved } : {}),
+    });
+  };
+
+  const walk = (
+    children: PhrasingContent[],
+    marks: Array<{ type: string; attrs?: Record<string, unknown> }>,
+  ): void => {
+    for (const node of children) {
+      switch (node.type) {
+        case 'text':
+          pushText(node.value, marks);
+          break;
+        case 'strong':
+          walk(node.children, [...marks, { type: 'bold' }]);
+          break;
+        case 'emphasis':
+          walk(node.children, [...marks, { type: 'italic' }]);
+          break;
+        case 'inlineCode':
+          // code 優先 — strike と同時適用しない（AD-008）
+          result.push({
+            type: 'text',
+            text: node.value,
+            marks: [{ type: 'code' }],
+          });
+          break;
+        case 'link':
+          walk(node.children, [
+            ...marks,
+            { type: 'link', attrs: { href: node.url, target: '_blank' } },
+          ]);
+          break;
+        case 'image':
+          result.push({
+            type: 'image',
+            attrs: {
+              src: node.url,
+              alt: node.alt ?? '',
+              title: node.title ?? null,
+            },
+          });
+          break;
+        case 'html': {
+          const trimmed = node.value.trim();
+          if (/^<(del|s|strike)(\s[^>]*)?>$/i.test(trimmed)) {
+            htmlStrikeDepth += 1;
+            break;
+          }
+          if (/^<\/(del|s|strike)\s*>$/i.test(trimmed)) {
+            htmlStrikeDepth = Math.max(0, htmlStrikeDepth - 1);
+            break;
+          }
+          // GFM セル内 <br /> を text にすると改行が落ち、htmlBlock にすると二重改行になる
+          if (isGfmBreakHtml(node.value)) {
+            const last = result[result.length - 1];
+            if (last?.type !== 'hardBreak') {
+              result.push({ type: 'hardBreak' });
+            }
+            break;
+          }
+          pushText(node.value, marks);
+          break;
+        }
+        default: {
+          // GFM strikethrough (`delete`) は @types/mdast の PhrasingContent に含まれない
+          if ((node as { type: string }).type === 'delete') {
+            walk((node as unknown as DeleteNode).children, [...marks, { type: 'strike' }]);
           }
           break;
         }
-        result.push({ type: 'text', text: node.value });
-        break;
-      default:
-        break;
+      }
     }
-  }
+  };
+
+  walk(nodes, []);
   return result;
 }
 
@@ -445,11 +515,8 @@ function tipTapNodeToMdast(node: TipTapNode): Content | undefined {
       return {
         type: 'blockquote',
         children: (node.content ?? [])
-          .filter((c) => c.type === 'paragraph')
-          .map((c) => ({
-            type: 'paragraph' as const,
-            children: tipTapPhrasingToMdast(c.content ?? []),
-          })),
+          .map(tipTapNodeToMdast)
+          .filter((c): c is Content => c !== undefined) as BlockContent[],
       };
     case 'codeBlock': {
       const lang = (node.attrs?.language as string) ?? undefined;
@@ -508,15 +575,12 @@ function tipTapNodeToMdast(node: TipTapNode): Content | undefined {
         ordered: false,
         spread: false,
         children: (node.content ?? []).map((item) => ({
-          type: 'listItem',
+          type: 'listItem' as const,
           spread: false,
           checked: item.attrs?.checked === true,
-          children: [
-            {
-              type: 'paragraph',
-              children: tipTapPhrasingToMdast(item.content ?? []),
-            },
-          ],
+          children: (item.content ?? [])
+            .map(tipTapNodeToMdast)
+            .filter((c): c is Content => c !== undefined) as BlockContent[],
         })),
       };
     default:
@@ -559,15 +623,25 @@ function tipTapPhrasingToMdast(nodes: TipTapNode[]): PhrasingContent[] {
       continue;
     }
     const marks = node.marks ?? [];
+    // code 優先 — 他 mark と同時シリアライズしない（AD-008）
+    if (marks.some((m) => m.type === 'code')) {
+      result.push({ type: 'inlineCode', value: node.text });
+      continue;
+    }
     let content: PhrasingContent = { type: 'text', value: node.text };
-    for (const mark of marks) {
-      if (mark.type === 'bold') {
+    // 決定的ネスト: link → italic → bold → strike（外側へ）（AD-014）
+    for (const markType of ['link', 'italic', 'bold', 'strike'] as const) {
+      const mark = marks.find((m) => m.type === markType);
+      if (!mark) {
+        continue;
+      }
+      if (markType === 'bold') {
         content = { type: 'strong', children: [content] };
-      } else if (mark.type === 'italic') {
+      } else if (markType === 'italic') {
         content = { type: 'emphasis', children: [content] };
-      } else if (mark.type === 'code') {
-        content = { type: 'inlineCode', value: node.text };
-      } else if (mark.type === 'link') {
+      } else if (markType === 'strike') {
+        content = { type: 'delete', children: [content] } as PhrasingContent;
+      } else if (markType === 'link') {
         content = {
           type: 'link',
           url: (mark.attrs?.href as string) ?? '',
@@ -755,4 +829,139 @@ export const LARGE_FILE_THRESHOLD_BYTES = 500 * 1024;
 
 export function isLargeFile(content: string): boolean {
   return Buffer.byteLength(content, 'utf8') > LARGE_FILE_THRESHOLD_BYTES;
+}
+
+function cloneDoc(doc: TipTapDoc): TipTapDoc {
+  return JSON.parse(JSON.stringify(doc)) as TipTapDoc;
+}
+
+function flattenBlockText(node: TipTapNode): string {
+  if (node.type === 'text') {
+    return node.text ?? '';
+  }
+  return (node.content ?? []).map(flattenBlockText).join('');
+}
+
+/** TipTap heading toggle for unit tests (TC-108). */
+export function applyToggleHeading(doc: TipTapDoc, level: number): TipTapDoc {
+  const next = cloneDoc(doc);
+  const first = next.content[0];
+  if (!first) {
+    return next;
+  }
+  if (first.type === 'heading' && first.attrs?.level === level) {
+    next.content[0] = { type: 'paragraph', content: first.content ?? [] };
+    return next;
+  }
+  next.content[0] = {
+    type: 'heading',
+    attrs: { level },
+    content: first.content ?? [],
+  };
+  return next;
+}
+
+/** TipTap inline code toggle for unit tests (TC-109). */
+export function applyToggleInlineCode(doc: TipTapDoc): TipTapDoc {
+  const next = cloneDoc(doc);
+  const first = next.content[0];
+  if (!first || first.type !== 'paragraph') {
+    return next;
+  }
+  first.content = (first.content ?? []).map((node) => {
+    if (node.type !== 'text') {
+      return node;
+    }
+    const marks = [...(node.marks ?? [])];
+    const codeIndex = marks.findIndex((m) => m.type === 'code');
+    if (codeIndex >= 0) {
+      marks.splice(codeIndex, 1);
+    } else {
+      marks.push({ type: 'code' });
+    }
+    return { ...node, marks: marks.length > 0 ? marks : undefined };
+  });
+  return next;
+}
+
+/** TipTap code block toggle for unit tests (TC-109). */
+export function applyToggleCodeBlock(doc: TipTapDoc): TipTapDoc {
+  const next = cloneDoc(doc);
+  const first = next.content[0];
+  if (!first) {
+    return next;
+  }
+  if (first.type === 'codeBlock') {
+    next.content[0] = { type: 'paragraph', content: first.content ?? [] };
+    return next;
+  }
+  const text = flattenBlockText(first);
+  next.content[0] = {
+    type: 'codeBlock',
+    attrs: { language: null },
+    content: text ? [{ type: 'text', text }] : [],
+  };
+  return next;
+}
+
+/** Exclusive list conversion: bullet / ordered / task (TC-112). checked is dropped off-task. */
+export function convertExclusiveList(
+  doc: TipTapDoc,
+  target: 'bulletList' | 'orderedList' | 'taskList',
+): TipTapDoc {
+  const next = cloneDoc(doc);
+  const first = next.content[0];
+  if (!first || !['bulletList', 'orderedList', 'taskList'].includes(first.type)) {
+    return next;
+  }
+  next.content[0] = {
+    type: target,
+    content: (first.content ?? []).map((item) => {
+      if (target === 'taskList') {
+        return {
+          type: 'taskItem',
+          attrs: { checked: false },
+          content: item.content ?? [],
+        };
+      }
+      return {
+        type: 'listItem',
+        content: item.content ?? [],
+      };
+    }),
+  };
+  return next;
+}
+
+/** Insert horizontal rule (not a toggle) — TC-113. */
+export function insertHorizontalRule(doc: TipTapDoc): TipTapDoc {
+  const next = cloneDoc(doc);
+  next.content.push({ type: 'horizontalRule' });
+  return next;
+}
+
+/** Toggle taskItem checked at index within the first taskList (TC-111). */
+export function toggleTaskItemChecked(doc: TipTapDoc, itemIndex: number): TipTapDoc {
+  const next = cloneDoc(doc);
+  const walk = (nodes: TipTapNode[]): boolean => {
+    for (const node of nodes) {
+      if (node.type === 'taskList') {
+        const item = node.content?.[itemIndex];
+        if (item?.type === 'taskItem') {
+          item.attrs = {
+            ...item.attrs,
+            checked: !(item.attrs?.checked === true),
+          };
+          return true;
+        }
+        return false;
+      }
+      if (node.content && walk(node.content)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  walk(next.content);
+  return next;
 }

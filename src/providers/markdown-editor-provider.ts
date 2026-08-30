@@ -493,18 +493,30 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
 <body data-readonly="${readonly}" data-mode="markdown">
   <div id="mode-toolbar" role="toolbar" aria-label="Editor mode">
     <button type="button" data-mode="preview" title="Preview">Preview</button>
-    <button type="button" data-mode="markdown" class="active" title="Markdown (WYSIWYG)">Markdown</button>
-    <button type="button" data-mode="raw" title="Raw source">Raw</button>
+    <button type="button" data-mode="markdown" class="active" title="Edit Rich Editor">Edit Rich Editor</button>
+    <button type="button" data-mode="raw" title="Edit Raw Text">Edit Raw Text</button>
   </div>
-  <div id="toolbar">
-    <button data-cmd="bold" title="Bold"><b>B</b></button>
-    <button data-cmd="italic" title="Italic"><i>I</i></button>
-    <button data-cmd="heading" data-level="1" title="Heading 1">H1</button>
-    <button data-cmd="heading" data-level="2" title="Heading 2">H2</button>
-    <button data-cmd="bulletList" title="Bullet List">• List</button>
-    <button data-cmd="orderedList" title="Ordered List">1. List</button>
-    <button data-cmd="link" title="Link">Link</button>
-    <button data-cmd="codeBlock" title="Code Block">Code</button>
+  <div id="toolbar" role="toolbar" aria-label="Formatting">
+    <button type="button" data-cmd="bold" title="Bold" aria-pressed="false"><b>B</b></button>
+    <button type="button" data-cmd="italic" title="Italic" aria-pressed="false"><i>I</i></button>
+    <button type="button" data-cmd="strike" title="Strikethrough" aria-pressed="false"><span style="text-decoration:line-through">S</span></button>
+    <button type="button" data-cmd="inlineCode" title="Inline Code" aria-pressed="false">\`</button>
+    <span class="toolbar-sep" role="separator" aria-hidden="true"></span>
+    <button type="button" data-cmd="heading" data-level="1" title="Heading 1" aria-pressed="false">H1</button>
+    <button type="button" data-cmd="heading" data-level="2" title="Heading 2" aria-pressed="false">H2</button>
+    <button type="button" data-cmd="heading" data-level="3" title="H3" aria-pressed="false">H3</button>
+    <button type="button" data-cmd="heading" data-level="4" title="H4" aria-pressed="false">H4</button>
+    <button type="button" data-cmd="heading" data-level="5" title="H5" aria-pressed="false">H5</button>
+    <button type="button" data-cmd="heading" data-level="6" title="H6" aria-pressed="false">H6</button>
+    <span class="toolbar-sep" role="separator" aria-hidden="true"></span>
+    <button type="button" data-cmd="bulletList" title="Bullet List" aria-pressed="false">• List</button>
+    <button type="button" data-cmd="orderedList" title="Ordered List" aria-pressed="false">1. List</button>
+    <button type="button" data-cmd="taskList" title="Task List" aria-pressed="false">Task</button>
+    <button type="button" data-cmd="blockquote" title="Blockquote" aria-pressed="false">Quote</button>
+    <span class="toolbar-sep" role="separator" aria-hidden="true"></span>
+    <button type="button" data-cmd="link" title="Link" aria-pressed="false">Link</button>
+    <button type="button" data-cmd="codeBlock" title="Code Block" aria-pressed="false">Code</button>
+    <button type="button" data-cmd="horizontalRule" title="Horizontal rule">―</button>
     <div id="table-menu" class="toolbar-dropdown">
       <button type="button" id="table-menu-btn" title="Table">Table ▼</button>
       <div id="table-menu-panel" class="toolbar-dropdown-panel hidden" role="menu" aria-label="Table operations">

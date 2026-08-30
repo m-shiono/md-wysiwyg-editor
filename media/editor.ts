@@ -7,11 +7,27 @@ import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
+import Strike from '@tiptap/extension-strike';
+import Blockquote from '@tiptap/extension-blockquote';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import Image from '@tiptap/extension-image';
 import { common, createLowlight } from 'lowlight';
 import mermaid from 'mermaid';
 import DOMPurify from 'dompurify';
+
+/** AD-004: Strike 既定 Mod-Shift-s は Save All と衝突するため無効化。 */
+const StrikeWithoutShortcut = Strike.extend({
+  addKeyboardShortcuts() {
+    return {};
+  },
+});
+
+/** AD-004: Blockquote 既定 Mod-Shift-b は Run Build Task と衝突するため無効化。 */
+const BlockquoteWithoutShortcut = Blockquote.extend({
+  addKeyboardShortcuts() {
+    return {};
+  },
+});
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void;
@@ -222,7 +238,14 @@ function escapeHtml(text: string): string {
 
 function getEditorExtensions() {
   return [
-    StarterKit.configure({ codeBlock: false }),
+    StarterKit.configure({
+      codeBlock: false,
+      // StarterKit 同梱の Strike / Blockquote はショートカット付きのため差し替え（AD-004）
+      strike: false,
+      blockquote: false,
+    }),
+    StrikeWithoutShortcut,
+    BlockquoteWithoutShortcut,
     Link.configure({ openOnClick: false }),
     Table.configure({ resizable: true }),
     TableRow,
@@ -454,6 +477,9 @@ function initEditor(initialDoc: TipTapDoc): void {
     attachLinkInputHandlers();
     attachModeToolbarHandlers();
     attachTableMenuHandlers();
+    updateFormatToolbarPressedState();
+    editor.on('selectionUpdate', () => updateFormatToolbarPressedState());
+    editor.on('transaction', () => updateFormatToolbarPressedState());
     attachPasteHandler();
     attachRawEditorHandlers();
     attachPreviewGuard();
@@ -561,6 +587,12 @@ function attachToolbarHandlers(): void {
         case 'italic':
           editor.chain().focus().toggleItalic().run();
           break;
+        case 'strike':
+          editor.chain().focus().toggleStrike().run();
+          break;
+        case 'inlineCode':
+          editor.chain().focus().toggleCode().run();
+          break;
         case 'heading': {
           const level = parseInt(clone.getAttribute('data-level') ?? '1', 10) as
             | 1
@@ -578,14 +610,62 @@ function attachToolbarHandlers(): void {
         case 'orderedList':
           editor.chain().focus().toggleOrderedList().run();
           break;
+        case 'taskList':
+          editor.chain().focus().toggleTaskList().run();
+          break;
+        case 'blockquote':
+          editor.chain().focus().toggleBlockquote().run();
+          break;
         case 'link':
           showLinkInputBar();
           break;
         case 'codeBlock':
           editor.chain().focus().toggleCodeBlock().run();
           break;
+        case 'horizontalRule':
+          editor.chain().focus().setHorizontalRule().run();
+          break;
       }
+      updateFormatToolbarPressedState();
     });
+  });
+}
+
+function setToolbarPressed(btn: Element, pressed: boolean): void {
+  btn.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+  btn.classList.toggle('pressed', pressed);
+}
+
+/** Sync aria-pressed / pressed class with TipTap selection (AD-012). HR is insert-only. */
+function updateFormatToolbarPressedState(): void {
+  if (!editor) {
+    return;
+  }
+  document.querySelectorAll('#toolbar button[data-cmd]').forEach((btn) => {
+    const cmd = btn.getAttribute('data-cmd');
+    if (!cmd || cmd === 'horizontalRule') {
+      return;
+    }
+    if (cmd === 'heading') {
+      const level = parseInt(btn.getAttribute('data-level') ?? '0', 10);
+      setToolbarPressed(btn, editor!.isActive('heading', { level }));
+      return;
+    }
+    const activeMap: Record<string, boolean> = {
+      bold: editor.isActive('bold'),
+      italic: editor.isActive('italic'),
+      strike: editor.isActive('strike'),
+      inlineCode: editor.isActive('code'),
+      bulletList: editor.isActive('bulletList'),
+      orderedList: editor.isActive('orderedList'),
+      taskList: editor.isActive('taskList'),
+      blockquote: editor.isActive('blockquote'),
+      link: editor.isActive('link'),
+      codeBlock: editor.isActive('codeBlock'),
+    };
+    if (cmd in activeMap) {
+      setToolbarPressed(btn, activeMap[cmd] ?? false);
+    }
   });
 }
 

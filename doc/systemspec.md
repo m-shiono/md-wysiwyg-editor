@@ -6,7 +6,7 @@ VS Code 拡張 **vsc-md-editor** の振る舞い仕様（WHAT）。実装詳細�
 
 ## 概要
 
-チーム向け技術ドキュメントを Git 管理しながら、Word/Excel に近い WYSIWYG 体験で Markdown（`.md`）を編集する VS Code 拡張機能。MVP では同一 Custom Editor 上の **Preview / Markdown / Raw 三点モード**、**GFM / HTML 二形式表編集**（§3・AD-005）、ファイル単位 Readonly 切替、Mermaid リアルタイム描画、**Marp プレビュー**（§6・AD-008 — 三点の Preview とは別）、クリップボード画像のローカル保存を提供する。リッチ表現（拡張記法・HTML 混在）を Markdown 厳密互換より優先する（UD-001）。
+チーム向け技術ドキュメントを Git 管理しながら、Word/Excel に近い WYSIWYG 体験で Markdown（`.md`）を編集する VS Code 拡張機能。MVP では同一 Custom Editor 上の **Preview / Markdown / Raw 三点モード**、**GFM 書式ツールバー**（§2 — 取り消し線・H1–H6・インラインコード・引用・タスクリスト・水平線等）、**GFM / HTML 二形式表編集**（§3・アーキテクチャ AD-005）、ファイル単位 Readonly 切替、Mermaid リアルタイム描画、**Marp プレビュー**（§6・アーキテクチャ AD-008 — 三点の Preview とは別）、クリップボード画像のローカル保存を提供する。リッチ表現（拡張記法・HTML 混在）を Markdown 厳密互換より優先する（UD-001）。今回追加の書式ノードは GFM として往復できること（§8）。
 
 **feature-slug:** `vsc-md-wysiwyg`
 
@@ -18,7 +18,7 @@ VS Code 拡張 **vsc-md-editor** の振る舞い仕様（WHAT）。実装詳細�
 |----|-------------|
 | AD-001 | TypeScript / VS Code Extension Host / npm / `@vscode/test-electron` |
 | AD-002 | `*.md` を Custom Editor（viewType `vsc-md-editor.wysiwyg`）で開く。Extension Host 上の `MarkdownDocument` が dirty・undo/redo・save および表示内容の正本 |
-| AD-003 | **Markdown モード**は Webview 内 TipTap（ProseMirror）WYSIWYG。見出し・太字・斜体・リスト・リンク・コードブロック等を MVP 対象ノードとする |
+| AD-003 | **Markdown モード**は Webview 内 TipTap（ProseMirror）WYSIWYG。対象ノードは見出し（h1–h6）、太字、斜体、取り消し線（GFM `~~`）、箇条書き、番号リスト、タスクリスト、リンク、インラインコード、コードブロック、引用、水平線、表（§3）等（書式ツールバー契約は §2） |
 | AD-004 | 編集内容 ↔ ディスク `.md` は remark/unified パイプラインで変換。HTML 混在・拡張ブロックを許容。出力は決定的（AD-013） |
 | AD-005 | 表は per-table `tableFormat`（`gfm` \| `html`）で永続化する。新規挿入のデフォルトは GFM パイプ表。形式切替は Table メニューの明示操作のみ（§3） |
 | AD-006 | ファイル単位 Readonly は **全編集面**（Markdown / Raw）をロック。Preview モードとは別概念。状態はワークスペースに永続化 |
@@ -75,11 +75,23 @@ VS Code 拡張 **vsc-md-editor** の振る舞い仕様（WHAT）。実装詳細�
 
 同一 Custom Editor タブ内で次の 3 モードを切り替える。**Marp Preview（§6 / AD-008）は本節の Preview ではない。**
 
-| モード | 役割 | 編集可否 | Document との関係 |
-|--------|------|----------|-------------------|
-| **Preview** | 読み取り専用の描画表示（TipTap レンダリング、入力不可） | **不可（厳密 RO）** | **Document → 一方表示**のみ。キー入力・paste・ツールバー等の編集イベントを Document へ送らない |
-| **Markdown** | TipTap WYSIWYG 本文編集（§2） | 可（ファイル RO 時は不可 — §4） | Markdown 面 ↔ Document 双方向。変更で `dirty` |
-| **Raw** | Markdown ソース文字列の直接編集 | 可（ファイル RO 時は不可 — §4） | Raw 面 ↔ Document 双方向。変更で `dirty` |
+概念名（Preview / Markdown / Raw）は編集面・同期契約の記述に用いる。プロトコル・状態の正は **mode id**（`editorMode` / ボタン `data-mode`）。ツールバーの**表示ラベル**は mode id とは別契約であり、実装・テストは mode id をリネームしてはならない。
+
+| モード（概念） | mode id | 役割 | 編集可否 | Document との関係 |
+|----------------|---------|------|----------|-------------------|
+| **Preview** | `preview` | 読み取り専用の描画表示（TipTap レンダリング、入力不可） | **不可（厳密 RO）** | **Document → 一方表示**のみ。キー入力・paste・ツールバー等の編集イベントを Document へ送らない |
+| **Markdown** | `markdown` | TipTap WYSIWYG 本文編集（§2） | 可（ファイル RO 時は不可 — §4） | Markdown 面 ↔ Document 双方向。変更で `dirty` |
+| **Raw** | `raw` | Markdown ソース文字列の直接編集 | 可（ファイル RO 時は不可 — §4） | Raw 面 ↔ Document 双方向。変更で `dirty` |
+
+##### mode-toolbar 表示ラベル（UI）
+
+Webview モード切替バーのボタン文言および `title` 属性は次と一致させる（表示のみ。mode id / `editorMode` は変更しない）。
+
+| mode id | 表示ラベル（ボタン文言 = `title`） |
+|---------|-------------------------------------|
+| `preview` | `Preview` |
+| `markdown` | `Edit Rich Editor` |
+| `raw` | `Edit Raw Text` |
 
 #### 三者同期（正本: `MarkdownDocument`）
 
@@ -131,53 +143,110 @@ Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdow
 
 ### 概要
 
-三点モードのうち **Markdown モード**で、Webview 内 TipTap により Markdown 本文を WYSIWYG 編集する（AD-003）。MVP ノードは見出し（h1–h6）、太字、斜体、箇条書き、番号リスト、リンク、インラインコード、コードブロック。
+三点モードのうち **Markdown モード**で、Webview 内 TipTap により Markdown 本文を WYSIWYG 編集する（アーキテクチャ AD-003）。書式ツールバーは GFM 基本装飾を充足する（Requirements Brief `gfm-format-toolbar`）。対象ノードは見出し（h1–h6）、太字、斜体、取り消し線（GFM `~~`）、箇条書き、番号リスト、タスクリスト（`- [ ]` / `- [x]`）、リンク、インラインコード、コードブロック、引用（`>`）、水平線（`---`）、表（§3）。今回追加分は parse/serialize 往復できること（§8）。
 
 ### Inputs & Types
 
 | 入力 | 型 | 必須 | 最小 | 最大 | 備考 |
 |------|-----|------|------|------|------|
-| `editOperation` | 編集コマンド / キー入力 | はい | — | — | RO 時は拒否（§5） |
-| `documentSnapshot` | 内部ドキュメントモデル | はい | — | — | TipTap / ProseMirror 相当（AD-003） |
+| `editOperation` | 編集コマンド / キー入力 / ツールバー | はい | — | — | ファイル RO 時は拒否（§4）。Preview では Document へ送らない（§1） |
+| `formatToolbarCommand` | `data-cmd` 列挙 | 任意 | — | — | 下記「書式ツールバー」表。第一操作はツールバー |
+| `documentSnapshot` | 内部ドキュメントモデル | はい | — | — | TipTap / ProseMirror 相当（アーキテクチャ AD-003） |
+
+#### 書式ツールバー（In / Out）
+
+| 区分 | 項目 | `data-cmd` | 備考 |
+|------|------|------------|------|
+| **In** | Bold / Italic（既存） | 既存どおり | — |
+| **In** | Strikethrough | `strike` | シリアライズ正本は GFM `~~text~~`。HTML `<del>` / `<s>` は入力時 strike に正規化し、保存は `~~`（`<del>`/`<s>` は出さない）。単独 `~` は取り消し線にしない |
+| **In** | Inline Code | `inlineCode` | `` `code` `` mark（`toggleCode`）。フェンスコードブロックとは別コマンド |
+| **In** | Heading H1–H6 | `heading` + `data-level` 1–6 | `toggleHeading({ level })`。同一レベル再クリックで paragraph。別レベルは置き換え |
+| **In** | Bullet / Ordered（既存） | 既存どおり | タスクリスト上で実行すると当該リスト種へ変換し、**checked は捨てる** |
+| **In** | Task List | `taskList` | `toggleTaskList`。出力 `- [ ]`（未チェック）/ `- [x]`（チェック、小文字 `x`、括弧内スペース必須）。入力 `[ ]` / `[x]` / `[X]` を受け、出力は `[x]` に正規化。`1. [ ]` は **unordered タスクリストへ正規化**（番号非保持）。同一リストに `listItem` と `taskItem` を混在させない |
+| **In** | Blockquote | `blockquote` | `toggleBlockquote`。出力 GFM `>`。paragraph 以外のブロック子（heading, list, taskList, codeBlock, 入れ子 blockquote）を落とさない |
+| **In** | Link / Code Block（既存） | 既存どおり（Code Block は `codeBlock`） | 可視ラベル `Code` / `title="Code Block"` 維持。インラインとコマンドで区別 |
+| **In** | Horizontal rule | `horizontalRule` | `setHorizontalRule`（トグル削除ではない）。出力 `---`（mdast `thematicBreak`）。前後空行はアーキテクチャ AD-013 の決定的整形に従う |
+| **In** | Table（既存） | 既存どおり | §3。ドロップダウン契約は変更しない |
+| **Out** | 画像挿入ボタン | — | クリップボード paste（§7）は維持 |
+| **Out** | 下線・highlight（`mark`） | — | GFM にない装飾 |
+| **Out** | 脚注・GitHub Alerts（`> [!NOTE]` 等） | — | GFM 拡張として有効化しない |
+| **Out** | 絵文字ショートコード | — | Intent Out |
+
+#### ツールバー構成・ラベル（UI）
+
+個別ボタン（折りたたみ・見出しドロップダウン・overflow なし）。`#toolbar` は既存 `flex-wrap` で折り返す。視覚セパレータで 4 群:
+
+1. **インライン:** Bold, Italic, Strikethrough, Inline Code  
+2. **見出し:** H1, H2, H3, H4, H5, H6  
+3. **ブロック:** Bullet, Ordered, Task List, Blockquote  
+4. **挿入:** Link, Code Block, Horizontal rule, Table  
+
+| ボタン | 可視ラベル | `title` | `data-cmd` |
+|--------|------------|---------|------------|
+| Strikethrough | `S`（表示に line-through） | `Strikethrough` | `strike` |
+| H3–H6 | `H3`…`H6` | 同左 | `heading` + `data-level` |
+| Inline Code | `` ` `` | `Inline Code` | `inlineCode` |
+| Task List | `Task` | `Task List` | `taskList` |
+| Blockquote | `Quote` | `Blockquote` | `blockquote` |
+| Horizontal rule | `―` | `Horizontal rule` | `horizontalRule` |
+
+ラベルは英語（i18n は Non-Goal）。`#toolbar` に `role="toolbar"` `aria-label="Formatting"`。トグル系は `aria-pressed` と選択に連動する pressed 見た目（`var(--vscode-*)`）。HR は挿入のため pressed なし。ネイティブ `button` の Tab / Enter / Space で操作可能。
 
 ### Outputs & Failure Returns
 
 | 条件 | 戻り値 / ステータス | 備考 |
 |------|-------------------|------|
-| 成功 | UI 更新、Document dirty | — |
-| RO 中の編集試行 | 操作無効、UI フィードバック | §5 |
-| 未対応ノード | 読み取り表示または raw 保持 | データ損失を避ける |
+| 成功 | UI 更新、Document dirty、Raw 投影（§1） | Markdown かつ非 RO |
+| ファイル RO 中の編集試行 | 操作無効（`#toolbar` の `pointer-events: none` + ハンドラ `readonly` ガード）。タスクチェックボックスもトグル不可 | §4。新例外なし |
+| Preview モード | 書式ツールバー非表示、編集イベントを Document へ送らない | §1 |
+| Raw モード | ツールバー表示は変えないが、Markdown モード以外では書式コマンドは no-op | — |
+| 未対応ノード / 記法 | 読み取り表示または raw 保持 | データ損失を避ける。脚注・Alerts 等は本節 Out |
 
 ### Preconditions
 
-- Custom Editor が **Markdown モード**であり、かつファイル単位 RO でないこと（§1, §4）
+- Custom Editor が **Markdown モード**であり、かつファイル単位 RO でないこと（§1, §4）— 書式適用の実行条件
 - Webview がロード済みであること
 
 ### Behavior
 
 #### 正常系
 
-1. ツールバー・ショートカットで書式を適用できる
+1. ツールバー（および既存ショートカット）で書式を適用できる。新項目の第一操作はツールバー
 2. 編集内容はリアルタイムで内部モデルおよび `MarkdownDocument` に反映される（§1 同期）
-3. 保存時に remark パイプラインで Markdown（+ 許可 HTML）へシリアライズされる（AD-004）
-4. VS Code テーマ CSS 変数（`var(--vscode-*)`）で見た目を統合する
+3. 保存時に remark パイプラインで Markdown（+ 許可 HTML）へシリアライズされる（アーキテクチャ AD-004）。今回追加ノードの往復契約は §8
+4. VS Code テーマ CSS 変数（`var(--vscode-*)`）で見た目を統合する（blockquote / hr / strike / task list を含む）
 5. Markdown モードでの変更は Raw 面へ Document 経由でリアルタイム反映される（§1）
+6. **取り消し線:** パースは GFM strikethrough 拡張で `~~` → TipTap `strike`。HTML 混在の `<del>` / `<s>` は strike に正規化し保存は `~~`。空選択トグルは TipTap stored mark（次入力に適用）でよい
+7. **タスクリスト:** TipTap `taskList` / `taskItem`。ネストは `TaskItem.nested: true` を維持。エディタ内チェックボックス操作は編集であり Document を更新する。パース/シリアライズに GFM task-list 拡張を用いる（direct dependency）
+8. **インラインコード vs フェンス:** `inlineCode` は `toggleCode`、Code Block は既存 `toggleCodeBlock`。インラインコード内の `~~` はコード文字として扱い、strike と同時適用しない（code 優先）
+9. **複合 mark:** 同一 text ノードに複数 mark（例: strike+bold）。`~~**bold**~~` / `**~~bold~~**` は strike+bold としてパースし、保存は決定的な一方のネストでよい。見た目同等なら byte 一致は要求しない。既存 phrasing 平坦化の全面書き換えはしない
+10. **キーボード:** 新項目の `contributes.keybindings` は追加しない。Strike 既定 `Mod-Shift-s`（Save All）と Blockquote 既定 `Mod-Shift-b`（Run Build Task）は **無効化**。HR / Task に新ショートカットは付けない。既存 Bold/Italic および Heading `Mod-Alt-1..6`（StarterKit）は変更しない。ショートカットは Markdown モードかつ Webview フォーカス時のみ
+11. **レイヤ分割:** ツールバー HTML は `markdown-editor-provider`、コマンドは `media/editor.ts`、往復は `src/serializers/markdown-serializer.ts`、見た目は `media/editor.css`。Table メニュー・画像 paste・三点 mode-toolbar は触らない。新編集面は作らない
+12. **GFM 拡張の追加面:** strikethrough と task-list のみ（既存 `gfm-table` は維持）。footnotes / autolink-literal / GitHub Alerts / tagfilter 変更は有効化しない
 
 #### 例外系
 
 1. 既存 `.md` に本拡張未対応の記法がある場合、可能な限り原文を保持する
-2. シリアライズ不能な構造は保存をブロックしエラーを表示する（AD-015）
+2. シリアライズ不能な構造は保存をブロックしエラーを表示する（アーキテクチャ AD-015）
+3. 既存ファイルの `~~` および行頭 `- [ ]` は WYSIWYG で strike / task として解釈される（literal 表示からの変更。GFM 正の修正。ディスク記法は概ね維持）
 
 ### Non-Goals
 
-- CommonMark / GFM の厳密互換（UD-001 — リッチ優先）
-- 全 Markdown 拡張記法の WYSIWYG 対応
+- CommonMark / GFM の厳密互換（UD-001 — リッチ優先）。ただし本節 In の追加分は GFM 往復必須
+- 全 Markdown 拡張記法の WYSIWYG 対応（脚注・Alerts・下線・highlight・画像挿入ボタン等 — Scope Out）
+- 画像挿入ボタン（§7 クリップボード paste は維持）
 - i18n（UI 文言の多言語化 — backlog）
-- Raw / Preview モード中の TipTap 操作（当該モードでは Markdown 面は非表示または非アクティブ）
+- Raw / Preview モード中の TipTap 書式適用（Preview は非表示 / Raw は no-op）
+- `package.json` への新 keybindings 登録
+- 三点モード id・表契約（§3）の変更
 
 ### Related Tests
 
-- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-010–015
+- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-010–015 および GFM 書式ツールバー追記 TC（`gfm-format-toolbar` / 後続 `spec-test-design`）
+
+### Spec Gaps
+
+- なし（Scope In/Out・Advisor Defaults は Requirements Brief `gfm-format-toolbar` で確定。番号付きタスクリスト `1. [ ]` の unordered 正規化・複合 mark のネスト順は許容リスクとして本節・§8 に契約化）
 
 ---
 
@@ -295,10 +364,11 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 
 1. コマンド実行で当該ファイルの RO 状態がトグルされる
 2. RO 状態は `workspaceState` に `readonly:<uri>` として保存される
-3. RO 中は **Markdown モードの WYSIWYG・表編集・画像 paste** および **Raw モードのソース編集**が無効化される
+3. RO 中は **Markdown モードの WYSIWYG（書式ツールバー・タスクチェックボックス含む）・表編集・画像 paste** および **Raw モードのソース編集**が無効化される
 4. RO 中も三点の Preview 描画・Mermaid 描画・**Marp Preview（§6）** 等の閲覧系機能は利用できる
 5. RO 中でも三点モードの切替自体は可能（表示面の変更のみ。編集は不可のまま）
 6. 再オープン時に RO 状態が復元される
+7. 書式ツールバーの RO / Preview / Raw ガードは §2 Outputs に従い、本節に新例外を設けない（`gfm-format-toolbar`）
 
 #### 例外系
 
@@ -518,8 +588,17 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 3. Raw モード編集: ソース文字列 → パース成功時のみ Document 更新 → Markdown / Preview 面へ投影
 4. 保存時: Document → stringify（固定オプション）→ `.md`
 5. HTML 表・許可 HTML は raw HTML ノードまたは同等手段で保持する
-6. 同一内容に対し、連続保存で byte-identical 出力を目指す（AD-013）
+6. 同一内容に対し、連続保存で byte-identical 出力を目指す（アーキテクチャ AD-013）
 7. **モード切替だけでは本節の保存処理を起動しない**（§1）
+8. **GFM 書式ノードの往復（§2 In）:** 次を parse ↔ stringify で保持する（micromark/mdast の strikethrough・task-list を **direct dependency** として追加。既存 `gfm-table` は維持）
+   - 取り消し線: 入力 `~~` および HTML `<del>` / `<s>` → モデル `strike` → 出力 **常に** `~~text~~`（`<del>`/`<s>` は出さない）
+   - 見出し h1–h6: 既存スキーマどおり往復
+   - インラインコード: `` `code` `` mark ↔ 出力。フェンスコードブロックとは別経路
+   - 引用: GFM `>`。ブロック子（heading, list, taskList, codeBlock, 入れ子 blockquote）を落とさない（paragraph-only フィルタは禁止）
+   - タスクリスト: `- [ ]` / `- [x]`（出力のチェックは小文字 `x`）。入力 `[X]` は `[x]` に正規化。`1. [ ]` は unordered タスクリストへ正規化（番号非保持）
+   - 水平線: mdast `thematicBreak` ↔ 出力 `---`（既存 `toMarkdown` `rule: '-'`）。前後空行は決定的整形に従う
+9. **複合 mark:** strike+bold / strike+italic 等は意味を保持。ネスト順の入れ替わりは許容（見た目同等なら byte 一致は要求しない）
+10. **非対象 GFM 拡張:** footnotes / GitHub Alerts / autolink-literal / tagfilter の新規有効化はしない（§2 Out）
 
 #### 例外系
 
@@ -530,10 +609,11 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 
 - 他エディタとの完全な Markdown 相互変換（RK-002）
 - Raw 失敗中の「強制保存（Document 無視で Raw バッファをそのまま書く）」オプション（MVP 非採用）
+- 複合 mark のネスト順の byte-identical 保証（§2 Behavior）
 
 ### Related Tests
 
-- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-052–056、Raw パース失敗 TC（後続）
+- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-052–056、Raw パース失敗 TC、および GFM 書式往復追記 TC（`gfm-format-toolbar`）
 
 ---
 
@@ -566,8 +646,8 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 
 #### 正常系
 
-1. Webview に格 CSP を設定する（nonce 付き script/style）
-2. 表示前に HTML をサニタイズする（表・画像・基本書式・Mermaid SVG を許可）
+1. Webview に格 CSP を設定する（nonce 付き script/style）。CSP / `localResourceRoots` / `on*` 除去は本変更で不変
+2. 表示前に HTML をサニタイズする（表・画像・基本書式・Mermaid SVG を許可）。**許可タグに `del` / `s` を含める**（§2 取り消し線の HTML 混在入力を落とさない）。下線・highlight（`mark`）は許可追加しない。`input` checkbox は既存許可のまま
 3. 画像保存先はワークスペース内に限定する
 
 #### 例外系
@@ -578,10 +658,12 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 
 - ネットワーク経由のリモートコンテンツ取得
 - 秘密情報の収集・外部送信
+- CSP や `localResourceRoots` の緩和
+- 下線・highlight 用タグの許可追加
 
 ### Related Tests
 
-- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-057–061
+- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-057–061、および `del`/`s` 許可追記 TC（`gfm-format-toolbar`）
 
 ---
 
@@ -600,7 +682,7 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 3. `Reopen Editor With…` でビルトイン Markdown エディタへ切替可能とする（AD-014）
 4. **Pattern A（IDE タイトルバー切替の検知）:** Custom Editor（`vsc-md-editor.wysiwyg`）が dispose された直後、同一 `.md` URI がアクティブタブに残り、かつ WYSIWYG Custom Editor ではない場合（`TabInputText` または `TabInputCustom` で viewType が `vsc-md-editor.wysiwyg` 以外）を「ビルトインへ切替」と判定する
    - 設定 `vsc-md-editor.autoRestoreOnBuiltinSwitch`（boolean、**既定 `false`**）が `true` のとき: `vscode.openWith` で WYSIWYG を自動再オープン
-   - 既定 `false` のとき: 日本語 `InformationMessage` を表示し、エディタ内 **Preview / Markdown / Raw** 三点ボタンの利用を案内。ボタン **「WYSIWYG Editor で開く」** で `vsc-md-editor.openWithWysiwyg` を実行
+   - 既定 `false` のとき: 日本語 `InformationMessage` を表示し、エディタ内 **Preview / Edit Rich Editor / Edit Raw Text** 三点ボタンの利用を案内。ボタン **「WYSIWYG Editor で開く」** で `vsc-md-editor.openWithWysiwyg` を実行
    - タブが閉じられた、または別ファイルがアクティブの場合は何もしない
 5. コマンド `vsc-md-editor.openWithWysiwyg`: 引数 URI またはアクティブ `.md` に対し `vscode.openWith`（viewType `vsc-md-editor.wysiwyg`）を実行。ビルトイン Markdown エディタの editor/title に表示（`resourceExtname == .md` かつ Custom Editor 非アクティブ時）
 6. **拡張更新後の手動リロード:** コマンド `vsc-md-editor.reloadExtension`。確認ダイアログ後に `workbench.action.reloadWindow` を実行する
@@ -639,6 +721,8 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 | Preview / Markdown / Raw の同時分割表示 | §1 Non-Goals |
 | モード別の別 viewType / 別 Custom Editor | §1 Non-Goals / AD-016 |
 | Raw パース失敗中の強制ディスク書き込み | §8 Non-Goals |
+| 画像挿入ボタン・下線・highlight・脚注・GitHub Alerts | §2 Non-Goals / `gfm-format-toolbar` Scope Out |
+| 書式ツールバーの `package.json` keybindings 追加 | §2 Non-Goals |
 
 ---
 
@@ -655,6 +739,9 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 | RK-007 | Mermaid/Marp バージョン差異 | lockfile 固定推奨 |
 | RK-008 | Custom Editor と LSP 競合 | MVP 非対応、backlog |
 | RK-009 | stack 未確定時の CI 不明確 | AD-001 完了（`doc/stack.md` active 化） |
+| RK-010 | 番号付きタスク記法 `1. [ ]` の番号喪失 | unordered タスクへ正規化（§2 / §8）。GFM 往復優先 |
+| RK-011 | 複合 mark のネスト順入れ替わり | 意味保持・byte 一致非要求（§2 / §8） |
+| RK-012 | 引用の非 paragraph 子保持による初回保存 diff | データ保全側。paragraph-only フィルタ廃止（§2 / §8） |
 
 ---
 
@@ -662,7 +749,7 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 
 | ドキュメント | 状態 |
 |-------------|------|
-| [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) | **作成済** — TC-001–068。三点モード・Raw 同期・Raw パース失敗・**GFM/HTML 二形式表**は **要追記**（次: test-agent / spec-test-design、`table-gfm-html-mode`） |
+| [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) | **作成済** — TC-001–106。**GFM 書式ツールバー**（§2 / §8 / §9 `del`/`s`）は **要追記**（次: test-agent / spec-test-design、`gfm-format-toolbar`） |
 | MVP 外項目 | [doc/backlog-vsc-md-wysiwyg.md](backlog-vsc-md-wysiwyg.md) |
 
 ---
@@ -683,6 +770,7 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 | Raw パース失敗 | Document 非破壊 + 通知 + 失敗中 save ブロック | TC-078–079 |
 | Preview vs Marp Preview | §1 三点 Preview と §6 Marp Preview を別概念として明示 | TC-077 |
 | Preview 厳密 RO・三者同期 | Preview 入力不可、Raw↔Markdown↔Preview が Document 経由で一致 | TC-080–082 |
+| GFM 書式ツールバー | §2 In（strike / H3–H6 / inline code / quote / task / HR）往復、Out（画像ボタン・下線・highlight・脚注・Alerts）、RO/モード既存ガード、sanitize `del`/`s` | 後続 TC（`gfm-format-toolbar`） |
 
 ---
 
@@ -699,3 +787,5 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 | 2026-08-30 | AD-005, §3, Spec Gaps, Related Tests | GFM / HTML 二形式表編集。per-table `tableFormat`、Table メニュー（挿入・行/列操作・変換・セッションデフォルト）、初回編集時自動 GFM→HTML 変換廃止。Requirements Brief `table-gfm-html-mode` |
 | 2026-08-30 | §3 | Table メニューに **Delete table** を追加（カーソルが表内のときのみ有効） |
 | 2026-08-31 | §3 | GFM 表セル内改行を `<br />`（または同等 hard break）で永続化し、Markdown↔Raw で単一改行として往復する契約を追加。`convertToGfm` の flatten はブロックリッチ除去とし、セル内改行は保持。HTML リッチセル仕様は不変（`gfm-table-linebreak-fix` / ユーザー決定 A） |
+| 2026-08-31 | §1 三点モード, §10 | mode-toolbar 表示ラベルを `Preview` / `Edit Rich Editor` / `Edit Raw Text` と契約化。mode id（`preview` \| `markdown` \| `raw`）は不変（`mode-toolbar-labels`） |
+| 2026-08-31 | 概要, AD-003, §2, §4, §8, §9, Non-Goals, RK-*, Spec Gaps, Related Tests | Edit Rich Editor 書式ツールバーの GFM 充足（strike `~~`、H3–H6、inline code、blockquote 子保持、task list、HR）。Scope Out（画像ボタン・下線・highlight・脚注・Alerts）。sanitize `del`/`s`。Requirements Brief `gfm-format-toolbar` AD-001–AD-015 を契約化 |

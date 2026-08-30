@@ -124,7 +124,6 @@
     "prettier": "^3.4.0",
     "typescript": "^5.7.0"
   },
-
   "dependencies": {
     "@marp-team/marp-core": "^4.0.0",
     "@tiptap/core": "^2.11.0",
@@ -142,10 +141,14 @@
     "dompurify": "^3.4.14",
     "lowlight": "^3.1.0",
     "mdast-util-from-markdown": "^2.0.2",
+    "mdast-util-gfm-strikethrough": "^2.0.0",
     "mdast-util-gfm-table": "^2.0.0",
+    "mdast-util-gfm-task-list-item": "^2.0.0",
     "mdast-util-to-markdown": "^2.1.2",
     "mermaid": "^11.4.0",
+    "micromark-extension-gfm-strikethrough": "^2.1.0",
     "micromark-extension-gfm-table": "^2.1.0",
+    "micromark-extension-gfm-task-list-item": "^2.1.0",
     "rehype-raw": "^7.0.0",
     "rehype-stringify": "^10.0.0",
     "remark-gfm": "^4.0.0",

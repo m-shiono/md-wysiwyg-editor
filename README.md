@@ -6,8 +6,8 @@ VS Code 向け WYSIWYG Markdown エディタ拡張。チーム技術ドキュメ
 
 | 機能 | 説明 |
 |------|------|
-| 三点モード | 同一 Custom Editor で **Preview**（RO 描画）/ **Markdown**（TipTap WYSIWYG）/ **Raw**（ソース）を切替。正本は Document |
-| WYSIWYG 本文 | Markdown モードで見出し・太字・リスト・リンク・コードブロック等をビジュアル編集 |
+| 三点モード | 同一 Custom Editor で **Preview**（RO 描画）/ **Edit Rich Editor**（TipTap WYSIWYG）/ **Edit Raw Text**（ソース）を切替。正本は Document。内部 mode id は `preview` / `markdown` / `raw` |
+| WYSIWYG 本文 | Edit Rich Editor で見出し（H1–H6）・太字・斜体・取り消し線（`~~`）・リスト・タスクリスト・引用・リンク・インラインコード・コードブロック・水平線等をビジュアル編集 |
 | HTML 表編集 | セル内改行・箇条書き・チェックボックス対応の Excel 的表操作 |
 | Readonly モード | ファイル単位で全編集面（Markdown / Raw）をロック（三点 Preview とは別） |
 | Mermaid | ` ```mermaid ` ブロックのリアルタイム描画（テキスト編集） |
@@ -39,7 +39,7 @@ VS Code で **Run Extension**（F5）を実行し Extension Development Host を
 
 コマンドパレットの **Reopen Editor With…** で VS Code 標準 Markdown エディタへ切替可能。
 
-IDE タイトルバーの Preview / Markdown 切替でビルトインへ移った場合、拡張が検知して WYSIWYG への復帰を案内する（`vsc-md-editor.autoRestoreOnBuiltinSwitch` で自動復帰も可。既定はオフ）。エディタ内の **Preview / Markdown / Raw** 三点ボタンは WYSIWYG Custom Editor 専用。
+IDE タイトルバーの Preview / Markdown 切替でビルトインへ移った場合、拡張が検知して WYSIWYG への復帰を案内する（`vsc-md-editor.autoRestoreOnBuiltinSwitch` で自動復帰も可。既定はオフ）。エディタ内の **Preview / Edit Rich Editor / Edit Raw Text** 三点ボタンは WYSIWYG Custom Editor 専用。
 
 拡張機能を更新したあと、`.md` ファイル表示中のエディタタイトルバー（Cursor の Preview / Markdown 付近）の **Reload Plugin**（$(refresh) アイコン）でウィンドウを再読み込みできる。ビルトインエディタに切り替わって Webview バーが消えても利用可能。
 
@@ -68,3 +68,5 @@ IDE タイトルバーの Preview / Markdown 切替でビルトインへ移っ�
 | 2026-08-29 | テンプレート README から vsc-md-editor 製品説明へ更新 |
 | 2026-08-29 | 三点モード・Marp 区別を機能表に追記。`workbench.editorAssociations` の viewType を `vsc-md-editor.wysiwyg` に修正 |
 | 2026-08-30 | Pattern A（ビルトイン切替検知・WYSIWYG 復帰案内）と `autoRestoreOnBuiltinSwitch` 設定を追記 |
+| 2026-08-31 | 三点モードのツールバー表示名を Preview / Edit Rich Editor / Edit Raw Text に更新 |
+| 2026-08-31 | WYSIWYG 本文の機能表を GFM 書式（取り消し線・H1–H6・タスクリスト・引用・水平線等）に合わせて更新 |

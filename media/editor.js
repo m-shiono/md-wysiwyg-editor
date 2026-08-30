@@ -223804,6 +223804,16 @@ img.ProseMirror-separator {
 
   // media/editor.ts
   init_purify_es();
+  var StrikeWithoutShortcut = Strike.extend({
+    addKeyboardShortcuts() {
+      return {};
+    }
+  });
+  var BlockquoteWithoutShortcut = Blockquote.extend({
+    addKeyboardShortcuts() {
+      return {};
+    }
+  });
   var vscode = acquireVsCodeApi();
   var lowlight = createLowlight(grammars);
   mermaid_default.initialize({ startOnLoad: false, securityLevel: "strict" });
@@ -223953,7 +223963,14 @@ img.ProseMirror-separator {
   }
   function getEditorExtensions() {
     return [
-      StarterKit.configure({ codeBlock: false }),
+      StarterKit.configure({
+        codeBlock: false,
+        // StarterKit 同梱の Strike / Blockquote はショートカット付きのため差し替え（AD-004）
+        strike: false,
+        blockquote: false
+      }),
+      StrikeWithoutShortcut,
+      BlockquoteWithoutShortcut,
       Link.configure({ openOnClick: false }),
       Table.configure({ resizable: true }),
       TableRow,
@@ -224158,6 +224175,9 @@ img.ProseMirror-separator {
       attachLinkInputHandlers();
       attachModeToolbarHandlers();
       attachTableMenuHandlers();
+      updateFormatToolbarPressedState();
+      editor.on("selectionUpdate", () => updateFormatToolbarPressedState());
+      editor.on("transaction", () => updateFormatToolbarPressedState());
       attachPasteHandler();
       attachRawEditorHandlers();
       attachPreviewGuard();
@@ -224254,6 +224274,12 @@ img.ProseMirror-separator {
           case "italic":
             editor.chain().focus().toggleItalic().run();
             break;
+          case "strike":
+            editor.chain().focus().toggleStrike().run();
+            break;
+          case "inlineCode":
+            editor.chain().focus().toggleCode().run();
+            break;
           case "heading": {
             const level = parseInt(clone8.getAttribute("data-level") ?? "1", 10);
             editor.chain().focus().toggleHeading({ level }).run();
@@ -224265,14 +224291,59 @@ img.ProseMirror-separator {
           case "orderedList":
             editor.chain().focus().toggleOrderedList().run();
             break;
+          case "taskList":
+            editor.chain().focus().toggleTaskList().run();
+            break;
+          case "blockquote":
+            editor.chain().focus().toggleBlockquote().run();
+            break;
           case "link":
             showLinkInputBar();
             break;
           case "codeBlock":
             editor.chain().focus().toggleCodeBlock().run();
             break;
+          case "horizontalRule":
+            editor.chain().focus().setHorizontalRule().run();
+            break;
         }
+        updateFormatToolbarPressedState();
       });
+    });
+  }
+  function setToolbarPressed(btn, pressed) {
+    btn.setAttribute("aria-pressed", pressed ? "true" : "false");
+    btn.classList.toggle("pressed", pressed);
+  }
+  function updateFormatToolbarPressedState() {
+    if (!editor) {
+      return;
+    }
+    document.querySelectorAll("#toolbar button[data-cmd]").forEach((btn) => {
+      const cmd = btn.getAttribute("data-cmd");
+      if (!cmd || cmd === "horizontalRule") {
+        return;
+      }
+      if (cmd === "heading") {
+        const level = parseInt(btn.getAttribute("data-level") ?? "0", 10);
+        setToolbarPressed(btn, editor.isActive("heading", { level }));
+        return;
+      }
+      const activeMap = {
+        bold: editor.isActive("bold"),
+        italic: editor.isActive("italic"),
+        strike: editor.isActive("strike"),
+        inlineCode: editor.isActive("code"),
+        bulletList: editor.isActive("bulletList"),
+        orderedList: editor.isActive("orderedList"),
+        taskList: editor.isActive("taskList"),
+        blockquote: editor.isActive("blockquote"),
+        link: editor.isActive("link"),
+        codeBlock: editor.isActive("codeBlock")
+      };
+      if (cmd in activeMap) {
+        setToolbarPressed(btn, activeMap[cmd] ?? false);
+      }
     });
   }
   function inferTableFormatFromAttrs(attrs) {
