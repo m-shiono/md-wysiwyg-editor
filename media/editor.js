@@ -224009,9 +224009,9 @@ img.ProseMirror-separator {
       formatToolbar.classList.toggle("hidden", mode !== "markdown");
     }
     const canEdit = !readonly && (mode === "markdown" || mode === "raw");
-    editor?.setEditable(mode === "markdown" && canEdit);
+    editor?.setEditable(mode === "markdown" && canEdit, false);
     if (mode === "preview") {
-      editor?.setEditable(false);
+      editor?.setEditable(false, false);
       editor?.commands.blur();
     }
     if (rawEl) {
@@ -224055,29 +224055,34 @@ img.ProseMirror-separator {
       editor.destroy();
       editor = void 0;
     }
-    const content = prepareDocForEditor(initialDoc);
-    editor = new Editor({
-      element: document.getElementById("editor"),
-      extensions: getEditorExtensions(),
-      content,
-      editable: !readonly && editorMode === "markdown",
-      onUpdate: ({ editor: ed }) => {
-        if (suppressUpdate || readonly || editorMode !== "markdown") {
-          return;
+    suppressUpdate = true;
+    try {
+      const content = prepareDocForEditor(initialDoc);
+      editor = new Editor({
+        element: document.getElementById("editor"),
+        extensions: getEditorExtensions(),
+        content,
+        editable: !readonly && editorMode === "markdown",
+        onUpdate: ({ editor: ed }) => {
+          if (suppressUpdate || readonly || editorMode !== "markdown") {
+            return;
+          }
+          const json4 = ed.getJSON();
+          vscode.postMessage({ type: "update", docJson: JSON.stringify(json4) });
+          checkTableLimitsFromEditor(ed);
         }
-        const json4 = ed.getJSON();
-        vscode.postMessage({ type: "update", docJson: JSON.stringify(json4) });
-        checkTableLimitsFromEditor(ed);
-      }
-    });
-    isEditorInitialized = true;
-    attachToolbarHandlers();
-    attachModeToolbarHandlers();
-    attachPasteHandler();
-    attachRawEditorHandlers();
-    attachPreviewGuard();
-    attachGfmTableClickHandler(initialDoc);
-    setModeUi(editorMode);
+      });
+      isEditorInitialized = true;
+      attachToolbarHandlers();
+      attachModeToolbarHandlers();
+      attachPasteHandler();
+      attachRawEditorHandlers();
+      attachPreviewGuard();
+      attachGfmTableClickHandler(initialDoc);
+      setModeUi(editorMode);
+    } finally {
+      suppressUpdate = false;
+    }
   }
   function applyExternalDoc(doc3) {
     if (!editor) {
@@ -224284,7 +224289,7 @@ img.ProseMirror-separator {
         latestMarkdownText = message.markdownText ?? "";
         editorMode = message.editorMode ?? "markdown";
         if (isEditorInitialized && editor) {
-          editor.setEditable(!readonly && editorMode === "markdown");
+          editor.setEditable(!readonly && editorMode === "markdown", false);
           applyExternalDoc(JSON.parse(message.docJson));
           scheduleRawTextUpdate(latestMarkdownText);
           setModeUi(editorMode);
@@ -224292,7 +224297,6 @@ img.ProseMirror-separator {
         }
         initEditor(JSON.parse(message.docJson));
         scheduleRawTextUpdate(latestMarkdownText);
-        setModeUi(editorMode);
         break;
       case "docUpdated":
         latestMarkdownText = message.markdownText ?? latestMarkdownText;

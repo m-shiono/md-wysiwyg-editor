@@ -279,9 +279,10 @@ function setModeUi(mode: EditorMode): void {
   }
 
   const canEdit = !readonly && (mode === 'markdown' || mode === 'raw');
-  editor?.setEditable(mode === 'markdown' && canEdit);
+  // emitUpdate=false — UI-only; must not post Host update / dirty on open or mode switch.
+  editor?.setEditable(mode === 'markdown' && canEdit, false);
   if (mode === 'preview') {
-    editor?.setEditable(false);
+    editor?.setEditable(false, false);
     editor?.commands.blur();
   }
   if (rawEl) {
@@ -332,31 +333,36 @@ function initEditor(initialDoc: TipTapDoc): void {
     editor = undefined;
   }
 
-  const content = prepareDocForEditor(initialDoc);
+  suppressUpdate = true;
+  try {
+    const content = prepareDocForEditor(initialDoc);
 
-  editor = new Editor({
-    element: document.getElementById('editor')!,
-    extensions: getEditorExtensions(),
-    content,
-    editable: !readonly && editorMode === 'markdown',
-    onUpdate: ({ editor: ed }) => {
-      if (suppressUpdate || readonly || editorMode !== 'markdown') {
-        return;
-      }
-      const json = ed.getJSON();
-      vscode.postMessage({ type: 'update', docJson: JSON.stringify(json) });
-      checkTableLimitsFromEditor(ed);
-    },
-  });
+    editor = new Editor({
+      element: document.getElementById('editor')!,
+      extensions: getEditorExtensions(),
+      content,
+      editable: !readonly && editorMode === 'markdown',
+      onUpdate: ({ editor: ed }) => {
+        if (suppressUpdate || readonly || editorMode !== 'markdown') {
+          return;
+        }
+        const json = ed.getJSON();
+        vscode.postMessage({ type: 'update', docJson: JSON.stringify(json) });
+        checkTableLimitsFromEditor(ed);
+      },
+    });
 
-  isEditorInitialized = true;
-  attachToolbarHandlers();
-  attachModeToolbarHandlers();
-  attachPasteHandler();
-  attachRawEditorHandlers();
-  attachPreviewGuard();
-  attachGfmTableClickHandler(initialDoc);
-  setModeUi(editorMode);
+    isEditorInitialized = true;
+    attachToolbarHandlers();
+    attachModeToolbarHandlers();
+    attachPasteHandler();
+    attachRawEditorHandlers();
+    attachPreviewGuard();
+    attachGfmTableClickHandler(initialDoc);
+    setModeUi(editorMode);
+  } finally {
+    suppressUpdate = false;
+  }
 }
 
 function applyExternalDoc(doc: TipTapDoc): void {
@@ -587,7 +593,7 @@ window.addEventListener('message', (event) => {
       // ready must not force a second full init if already initialized —
       // apply content refresh instead of destroying a live editing session.
       if (isEditorInitialized && editor) {
-        editor.setEditable(!readonly && editorMode === 'markdown');
+        editor.setEditable(!readonly && editorMode === 'markdown', false);
         applyExternalDoc(JSON.parse(message.docJson));
         scheduleRawTextUpdate(latestMarkdownText);
         setModeUi(editorMode);
@@ -595,7 +601,6 @@ window.addEventListener('message', (event) => {
       }
       initEditor(JSON.parse(message.docJson));
       scheduleRawTextUpdate(latestMarkdownText);
-      setModeUi(editorMode);
       break;
     case 'docUpdated':
       latestMarkdownText = message.markdownText ?? latestMarkdownText;
