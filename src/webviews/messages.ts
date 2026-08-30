@@ -13,19 +13,24 @@ export type WebviewOutboundMessage =
     }
   /** docJson omitted for Markdown-originated sync (markdownText only — TC-067). */
   | { type: 'docUpdated'; docJson?: string; markdownText: string }
+  | { type: 'convertToGfmCancelled' }
   | { type: 'readonlyChanged'; readonly: boolean }
   | { type: 'tableLimitWarning'; exceeded: boolean; message?: string; rows: number; cols: number }
   | { type: 'imageInserted'; relativePath: string }
   | { type: 'rawParseFailed'; failed: boolean; message?: string }
-  | { type: 'modeChanged'; editorMode: EditorMode }
-  | { type: 'convertToGfmApproved' };
+  | { type: 'modeChanged'; editorMode: EditorMode };
 
 export type WebviewInboundMessage =
   | { type: 'ready' }
-  | { type: 'update'; docJson: string }
+  | { type: 'update'; docJson: string; epoch?: number }
   | { type: 'updateRaw'; markdown: string }
   | { type: 'setMode'; editorMode: EditorMode }
-  | { type: 'requestConvertToGfm' }
+  | {
+      type: 'requestConvertToGfm';
+      tableIndex: number;
+      docJson?: string;
+      epoch?: number;
+    }
   | {
       type: 'tableOperation';
       operation: 'convertToHtml' | 'convertToGfm';

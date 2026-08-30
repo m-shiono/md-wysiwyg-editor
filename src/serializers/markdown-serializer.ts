@@ -5,6 +5,10 @@ import { gfmTable } from 'micromark-extension-gfm-table';
 import { toMarkdown } from 'mdast-util-to-markdown';
 import { gfmTableToMarkdown } from 'mdast-util-gfm-table';
 import { sanitizeHtml } from '../utils/sanitize';
+import {
+  convertTableToGfmAtIndex,
+  flattenTipTapNodesToText,
+} from '../utils/table-convert';
 
 export interface TipTapNode {
   type: string;
@@ -573,38 +577,6 @@ function cellToPhrasing(nodes: TipTapNode[]): PhrasingContent[] {
   return text ? [{ type: 'text', value: text }] : [];
 }
 
-function flattenTipTapNodesToText(nodes: TipTapNode[]): string {
-  const parts: string[] = [];
-  for (const n of nodes) {
-    if (n.type === 'text' && n.text) {
-      parts.push(n.text);
-    } else if (n.type === 'paragraph') {
-      const text = flattenTipTapNodesToText(n.content ?? []);
-      if (text) {
-        parts.push(text);
-      }
-    } else if (n.type === 'bulletList' || n.type === 'orderedList' || n.type === 'taskList') {
-      for (const item of n.content ?? []) {
-        const text = flattenTipTapNodesToText(item.content ?? []);
-        if (text) {
-          parts.push(text);
-        }
-      }
-    } else if (n.content) {
-      const text = flattenTipTapNodesToText(n.content);
-      if (text) {
-        parts.push(text);
-      }
-    }
-  }
-  return parts.join(' ');
-}
-
-function flattenCellContent(nodes: TipTapNode[]): TipTapNode[] {
-  const text = flattenTipTapNodesToText(nodes);
-  return [{ type: 'paragraph', content: text ? [{ type: 'text', text }] : [] }];
-}
-
 function mapTableAtIndex(
   doc: TipTapDoc,
   tableIndex: number,
@@ -715,20 +687,7 @@ export function convertTableToHtml(doc: TipTapDoc, tableIndex = 0): TipTapDoc {
 
 /** Explicit HTML→GFM format conversion with rich-cell flatten (§3). */
 export function convertTableToGfm(doc: TipTapDoc, tableIndex = 0): TipTapDoc {
-  return mapTableAtIndex(doc, tableIndex, (table) => {
-    const rows = (table.content ?? []).map((row) => ({
-      ...row,
-      content: (row.content ?? []).map((cell) => ({
-        ...cell,
-        content: flattenCellContent(cell.content ?? []),
-      })),
-    }));
-    return {
-      ...table,
-      attrs: { ...table.attrs, tableFormat: 'gfm' },
-      content: rows,
-    };
-  });
+  return convertTableToGfmAtIndex(doc, tableIndex);
 }
 
 /** Serialize TipTap doc to JSON string for webview transport. */

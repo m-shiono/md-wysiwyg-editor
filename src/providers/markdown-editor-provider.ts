@@ -5,6 +5,7 @@ import { MarpPreviewManager } from '../commands/marp-preview';
 import {
   convertTableToGfm,
   convertTableToHtml,
+  jsonToDoc,
   serializeMarkdown,
   type TipTapDoc,
 } from '../serializers/markdown-serializer';
@@ -26,6 +27,7 @@ import {
 } from '../utils/editor-mode';
 import { buildModeSwitchMessages } from '../utils/editor-mode-sync';
 import { handleCustomEditorDisposed } from '../utils/editor-switch-guard';
+import { shouldAcceptWebviewUpdate } from '../utils/webview-update-epoch';
 import type { WebviewInboundMessage, WebviewOutboundMessage } from '../webviews/messages';
 
 export class MarkdownEditorProvider implements vscode.CustomEditorProvider<MarkdownDocument> {
@@ -39,6 +41,8 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
   private readonly _openPanels = new Map<string, vscode.WebviewPanel>();
   private readonly _openDocuments = new Map<string, MarkdownDocument>();
   private readonly _modeStates = new Map<string, EditorModeState>();
+  /** Convert bumps this; older webview `update` messages must not restore HTML. */
+  private readonly _minUpdateEpoch = new Map<string, number>();
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -82,9 +86,9 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
 
     // Init only after webview posts `ready` — messages sent before the script
     // loads are dropped by VS Code.
-    webviewPanel.webview.onDidReceiveMessage(async (raw: unknown) => {
+    webviewPanel.webview.onDidReceiveMessage((raw: unknown) => {
       const message = raw as WebviewInboundMessage;
-      await this.handleMessage(document, webviewPanel, message);
+      void this.handleMessage(document, webviewPanel, message);
     });
 
     document.onDidChange((event) => {
@@ -117,6 +121,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
       this._openPanels.delete(key);
       this._openDocuments.delete(key);
       this._modeStates.delete(key);
+      this._minUpdateEpoch.delete(key);
       handleCustomEditorDisposed(this.context, document.uri);
     });
 
@@ -277,6 +282,14 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
         ) {
           return;
         }
+        if (
+          !shouldAcceptWebviewUpdate(
+            message.epoch,
+            this._minUpdateEpoch.get(document.uri.toString()) ?? 0,
+          )
+        ) {
+          return;
+        }
         // Do not echo docJson — webview already has TipTap content (TC-067).
         document.updateFromJson(message.docJson, 'Edit', { syncWebview: false });
         // Markdown edit clears Raw-fail banner if it was showing.
@@ -314,7 +327,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
         }
         break;
       case 'requestConvertToGfm':
-        if (readonly) {
+        if (readonly || typeof message.tableIndex !== 'number') {
           return;
         }
         {
@@ -323,9 +336,21 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
             { modal: true },
             '変換',
           );
-          if (answer === '変換') {
-            this.postMessage(panel.webview, { type: 'convertToGfmApproved' });
+          if (answer !== '変換') {
+            this.postMessage(panel.webview, { type: 'convertToGfmCancelled' });
+            return;
           }
+          const key = document.uri.toString();
+          if (typeof message.epoch === 'number') {
+            this._minUpdateEpoch.set(key, message.epoch);
+          }
+          // Editor snapshot at click — not later document.doc (stale HTML update may have landed).
+          const source =
+            typeof message.docJson === 'string' ? jsonToDoc(message.docJson) : document.doc;
+          document.updateDoc(
+            convertTableToGfm(source, message.tableIndex),
+            'Convert table to GFM',
+          );
         }
         break;
       case 'tableOperation':

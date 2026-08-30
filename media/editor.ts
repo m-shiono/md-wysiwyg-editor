@@ -29,82 +29,6 @@ type TableContext = {
 };
 
 
-function flattenNodesToText(nodes: JSONContent[] | undefined): string {
-  if (!nodes) {
-    return '';
-  }
-  const parts: string[] = [];
-  for (const node of nodes) {
-    if (node.type === 'text' && node.text) {
-      parts.push(node.text);
-    } else if (node.type === 'paragraph') {
-      const text = flattenNodesToText(node.content as JSONContent[] | undefined);
-      if (text) {
-        parts.push(text);
-      }
-    } else if (
-      node.type === 'bulletList' ||
-      node.type === 'orderedList' ||
-      node.type === 'taskList'
-    ) {
-      for (const item of node.content ?? []) {
-        const text = flattenNodesToText(item.content as JSONContent[] | undefined);
-        if (text) {
-          parts.push(text);
-        }
-      }
-    } else if (node.content) {
-      const text = flattenNodesToText(node.content as JSONContent[]);
-      if (text) {
-        parts.push(text);
-      }
-    }
-  }
-  return parts.join(' ');
-}
-
-function convertTableToGfmInDoc(doc: JSONContent, tableIndex: number): JSONContent {
-  let index = 0;
-  const content = (doc.content ?? []).map((node) => {
-    if (node.type !== 'table') {
-      return node;
-    }
-    if (index !== tableIndex) {
-      index += 1;
-      return node;
-    }
-    index += 1;
-    const rows = (node.content ?? []).map((row) => ({
-      ...row,
-      content: (row.content ?? []).map((cell) => {
-        const text = flattenNodesToText(cell.content as JSONContent[] | undefined);
-        return {
-          ...cell,
-          content: [{ type: 'paragraph', content: text ? [{ type: 'text', text }] : [] }],
-        };
-      }),
-    }));
-    return {
-      ...node,
-      attrs: { ...node.attrs, tableFormat: 'gfm', html: null },
-      content: rows,
-    };
-  });
-  return { ...doc, content };
-}
-
-function applyConvertToGfmInEditor(ed: Editor): void {
-  const ctx = getTableContext(ed);
-  if (!ctx.inTable) {
-    return;
-  }
-  const converted = convertTableToGfmInDoc(ed.getJSON(), ctx.tableIndex);
-  suppressUpdate = true;
-  ed.commands.setContent(prepareDocForEditor(converted as TipTapDoc));
-  suppressUpdate = false;
-  updateTableMenuState();
-}
-
 const vscode = acquireVsCodeApi();
 const lowlight = createLowlight(common);
 
@@ -134,6 +58,9 @@ let isEditorInitialized = false;
 let latestMarkdownText = '';
 let rawSyncTimer: ReturnType<typeof setTimeout> | undefined;
 let rawUpdateTimer: ReturnType<typeof setTimeout> | undefined;
+/** Bumped on HTML→GFM convert so Host can drop pre-convert `update` messages. */
+let updateEpoch = 0;
+let gfmConvertPending = false;
 
 const HtmlTableExtension = Extension.create({
   name: 'htmlTable',
@@ -385,16 +312,13 @@ function isRawFocused(): boolean {
   return !!raw && document.activeElement === raw;
 }
 
-function scheduleRawTextUpdate(text: string): void {
+function syncRawTextFromHost(text: string, immediate = false): void {
   latestMarkdownText = text;
-  if (isRawFocused()) {
-    // Focus-safe: do not clobber in-progress Raw edits.
+  // Host 正本の full sync（変換・undo 等）は Raw フォーカス中でも反映する。
+  if (isRawFocused() && !immediate) {
     return;
   }
-  if (rawSyncTimer) {
-    clearTimeout(rawSyncTimer);
-  }
-  rawSyncTimer = setTimeout(() => {
+  const apply = (): void => {
     const raw = getRawEditor();
     if (!raw || isRawFocused()) {
       return;
@@ -404,7 +328,23 @@ function scheduleRawTextUpdate(text: string): void {
       raw.value = text;
       suppressRawUpdate = false;
     }
-  }, RAW_SYNC_DEBOUNCE_MS);
+  };
+  if (immediate) {
+    if (rawSyncTimer) {
+      clearTimeout(rawSyncTimer);
+      rawSyncTimer = undefined;
+    }
+    apply();
+    return;
+  }
+  if (rawSyncTimer) {
+    clearTimeout(rawSyncTimer);
+  }
+  rawSyncTimer = setTimeout(apply, RAW_SYNC_DEBOUNCE_MS);
+}
+
+function scheduleRawTextUpdate(text: string): void {
+  syncRawTextFromHost(text, false);
 }
 
 function setModeUi(mode: EditorMode): void {
@@ -472,7 +412,7 @@ function applyMode(mode: EditorMode, notifyHost: boolean): void {
   setModeUi(mode);
   if (mode === 'raw') {
     const raw = getRawEditor();
-    if (raw && !isRawFocused()) {
+    if (raw) {
       suppressRawUpdate = true;
       raw.value = latestMarkdownText;
       suppressRawUpdate = false;
@@ -500,11 +440,11 @@ function initEditor(initialDoc: TipTapDoc): void {
       content,
       editable: !readonly && editorMode === 'markdown',
       onUpdate: ({ editor: ed }) => {
-        if (suppressUpdate || readonly || editorMode !== 'markdown') {
+        if (suppressUpdate || gfmConvertPending || readonly || editorMode !== 'markdown') {
           return;
         }
         const json = ed.getJSON();
-        vscode.postMessage({ type: 'update', docJson: JSON.stringify(json) });
+        vscode.postMessage({ type: 'update', docJson: JSON.stringify(json), epoch: updateEpoch });
         checkTableLimitsFromEditor(ed);
       },
     });
@@ -670,30 +610,39 @@ function getTableContext(ed: Editor): TableContext {
     return { inTable: false, tableIndex: -1, tableFormat: null };
   }
 
-  const { $from } = ed.state.selection;
-  let tablePos = -1;
+  const $from = ed.state.selection.$from;
+  let tableDepth = -1;
   for (let depth = $from.depth; depth > 0; depth -= 1) {
     if ($from.node(depth).type.name === 'table') {
-      tablePos = $from.before(depth);
+      tableDepth = depth;
       break;
     }
   }
-  if (tablePos < 0) {
+  if (tableDepth < 0) {
     return { inTable: false, tableIndex: -1, tableFormat: null };
   }
 
+  const tableAttrs = ed.getAttributes('table') as Record<string, unknown>;
+  const tableFormat = inferTableFormatFromAttrs(tableAttrs);
+
+  // Index among top-level doc blocks only — must match convertTableToGfmAtIndex(doc.content).
+  const currentPos = $from.before(tableDepth);
   let tableIndex = 0;
-  let tableFormat: TableFormat = 'gfm';
-  ed.state.doc.descendants((node, pos) => {
-    if (node.type.name !== 'table') {
+  let matched = false;
+  ed.state.doc.forEach((node, offset) => {
+    if (matched || node.type.name !== 'table') {
       return;
     }
-    if (pos === tablePos) {
-      tableFormat = inferTableFormatFromAttrs(node.attrs as Record<string, unknown>);
-      return false;
+    if (offset === currentPos) {
+      matched = true;
+      return;
     }
     tableIndex += 1;
   });
+
+  if (!matched) {
+    return { inTable: false, tableIndex: -1, tableFormat: null };
+  }
 
   return { inTable: true, tableIndex, tableFormat };
 }
@@ -772,11 +721,11 @@ function updateTableMenuState(): void {
 }
 
 function postDocUpdate(): void {
-  if (!editor || readonly || editorMode !== 'markdown') {
+  if (!editor || readonly || editorMode !== 'markdown' || gfmConvertPending) {
     return;
   }
   const json = editor.getJSON();
-  vscode.postMessage({ type: 'update', docJson: JSON.stringify(json) });
+  vscode.postMessage({ type: 'update', docJson: JSON.stringify(json), epoch: updateEpoch });
   checkTableLimitsFromEditor(editor);
 }
 
@@ -835,8 +784,15 @@ function handleTableOperation(op: string): void {
       if (!ctx.inTable || ctx.tableFormat === 'gfm') {
         return;
       }
-      // window.confirm は VS Code Webview で動作しないため Host 側で確認する。
-      vscode.postMessage({ type: 'requestConvertToGfm' });
+      // Confirm on Host. Do not postDocUpdate first — that HTML snapshot races the convert.
+      gfmConvertPending = true;
+      updateEpoch += 1;
+      vscode.postMessage({
+        type: 'requestConvertToGfm',
+        tableIndex: ctx.tableIndex,
+        docJson: JSON.stringify(editor.getJSON()),
+        epoch: updateEpoch,
+      });
       break;
     }
     case 'setDefaultGfm':
@@ -979,13 +935,18 @@ window.addEventListener('message', (event) => {
       break;
     case 'docUpdated':
       latestMarkdownText = message.markdownText ?? latestMarkdownText;
-      scheduleRawTextUpdate(latestMarkdownText);
-      // Markdown-originated updates omit docJson (TC-067: do not re-apply TipTap).
       if (typeof message.docJson !== 'string') {
+        // Markdown-originated sync (TC-067): markdownText only.
+        scheduleRawTextUpdate(latestMarkdownText);
         break;
       }
-      // Host-initiated full doc (table convert, Raw parse, revert, undo/redo): always apply.
+      // Host-initiated full doc (table convert, Raw parse, revert, undo/redo).
+      gfmConvertPending = false;
+      syncRawTextFromHost(latestMarkdownText, true);
       applyExternalDoc(JSON.parse(message.docJson), { force: true });
+      break;
+    case 'convertToGfmCancelled':
+      gfmConvertPending = false;
       break;
     case 'modeChanged':
       if (message.editorMode && message.editorMode !== editorMode) {
@@ -1012,12 +973,6 @@ window.addEventListener('message', (event) => {
       }
       break;
     }
-    case 'convertToGfmApproved':
-      if (editor && !readonly && editorMode === 'markdown') {
-        applyConvertToGfmInEditor(editor);
-        postDocUpdate();
-      }
-      break;
     case 'imageInserted':
       if (editor && !readonly && editorMode === 'markdown') {
         editor.chain().focus().setImage({ src: message.relativePath, alt: message.relativePath }).run();

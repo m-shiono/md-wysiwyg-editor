@@ -1,6 +1,9 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { MarkdownDocument } from '../../../providers/markdown-document';
+import { convertTableToGfmAtIndex } from '../../../utils/table-convert';
 import { docToJson, parseMarkdown, serializeMarkdown } from '../../../serializers/markdown-serializer';
 
 type VscodeTestShim = typeof vscode & {
@@ -62,6 +65,36 @@ suite('MarkdownDocument content-change signaling', () => {
     assert.ok(undoFn, 'undo handler should be registered');
     await undoFn!();
     assert.strictEqual(contentChangeCount, 2, 'undo must notify webview sync listeners');
+    doc.dispose();
+  });
+
+  test('TC-101: updateDoc after html-to-gfm updates markdownText for Raw projection', async () => {
+    const testMdPath = join(__dirname, '../../../../../temporary/test.md');
+    let md: string;
+    try {
+      md = readFileSync(testMdPath, 'utf8');
+    } catch {
+      md =
+        '| a | a |\n| --- | --- |\n| x | y |\n\n' +
+        '<table><tr><th>h</th></tr><tr><td>html-cell</td></tr></table>\n\n' +
+        '| b | b |\n| --- | --- |\n| c | d |\n';
+    }
+
+    const doc = await openDoc(md);
+    const htmlIndex = doc.doc.content
+      .filter((n) => n.type === 'table')
+      .findIndex((t) => t.attrs?.tableFormat === 'html');
+    assert.strictEqual(htmlIndex, 1, 'HTML table index must be 1 in test.md layout');
+
+    assert.ok(doc.markdownText.includes('<table>'), 'precondition: Raw source contains HTML table');
+
+    doc.updateDoc(convertTableToGfmAtIndex(doc.doc, htmlIndex), 'Convert table to GFM');
+
+    assert.ok(
+      !doc.markdownText.includes('<table>'),
+      `markdownText must lose HTML table after convert; got:\n${doc.markdownText}`,
+    );
+    assert.ok(doc.markdownText.includes('html-cell') || doc.markdownText.includes('あああ'));
     doc.dispose();
   });
 });

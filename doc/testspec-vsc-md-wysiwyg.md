@@ -180,6 +180,9 @@
 | TC-094 | Corner | table-convert-menu-disabled | P1 | `tableFormat:'gfm'` の表で Convert to GFM を試行；`html` 表で Convert to HTML を試行 | 当該表形式と不一致の Convert 項目は無効 | 変換メニュー条件 | §3 Table UI #3–4 |
 | TC-095 | Corner | table-insert-default-reset | P1 | `insertTableFormat:'html'` に設定 → VS Code 再起動 → 同一 doc を開く | `insertTableFormat` は `'gfm'` にリセット。Table ボタンは通常色 | セッション非永続 | §3 Inputs |
 | TC-096 | Corner | table-gfm-rich-restricted | P1 | `tableFormat:'gfm'` の表セルに改行・リスト・チェックボックス入力を試行 | リッチ構造は入力不可または flatten（インラインマーク・プレーンテキストのみ） | GFM セル制限 | §3 正常系 3, AD-008 |
+| TC-101 | Happy | table-convert-updates-markdown-text | P0 | HTML 表を含む Document で `updateDoc(convertTableToGfmAtIndex)` | `markdownText` から `<table>` が消え GFM パイプ表になる（Raw 正本） | Host Raw 正本 | §3 正常系 6 |
+| TC-102 | Happy | table-convert-via-request-message | P0 | Custom editor 上で `requestConvertToGfm`（tableIndex=HTML 表、確認 OK） | Document `markdownText` から `<table>` が消える | Host ハンドラ経由変換 | §3 正常系 6 |
+| TC-103 | Corner | table-convert-stale-update-dropped | P0 | TC-102 の後に変換前の HTML `docJson` を epoch なし/`0` で `update` | `markdownText` は GFM のまま。stale update で HTML に戻らない | 確認ダイアログ中の上書き防止 | §3 正常系 6 |
 
 ### Category Coverage
 
@@ -363,3 +366,4 @@ P0 + P1 の机上トレース（実装前）。
 | 2026-08-30 | TC-083–084 追加 | Pattern A ビルトイン切替検知・`openWithWysiwyg` コマンド登録（§10） |
 | 2026-08-30 | TC-016–019, TC-024 更新；TC-085–096 追加 | GFM/HTML 二形式表（§3, AD-005）。デフォルト GFM 挿入、HTML 挿入、行/列操作、双方向変換（HTML→GFM 確認付き）、セッションデフォルト+ボタン色、Readonly 全無効、GFM/HTML round-trip。初回編集時自動 GFM→HTML 変換廃止（TC-019） |
 | 2026-08-30 | TC-016–019, TC-054, TC-086–087, TC-091–092 ユニット Red | `markdown-serializer.test.ts` に P0 表形式テスト追加。build-agent 向け TDD Red |
+| 2026-08-30 | TC-101–103 追加 | HTML→GFM 変換後の Raw 正本更新、および確認ダイアログ中の stale `update` による HTML 巻き戻し防止 |

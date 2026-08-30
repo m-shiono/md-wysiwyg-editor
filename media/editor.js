@@ -223804,75 +223804,6 @@ img.ProseMirror-separator {
 
   // media/editor.ts
   init_purify_es();
-  function flattenNodesToText(nodes5) {
-    if (!nodes5) {
-      return "";
-    }
-    const parts = [];
-    for (const node2 of nodes5) {
-      if (node2.type === "text" && node2.text) {
-        parts.push(node2.text);
-      } else if (node2.type === "paragraph") {
-        const text4 = flattenNodesToText(node2.content);
-        if (text4) {
-          parts.push(text4);
-        }
-      } else if (node2.type === "bulletList" || node2.type === "orderedList" || node2.type === "taskList") {
-        for (const item of node2.content ?? []) {
-          const text4 = flattenNodesToText(item.content);
-          if (text4) {
-            parts.push(text4);
-          }
-        }
-      } else if (node2.content) {
-        const text4 = flattenNodesToText(node2.content);
-        if (text4) {
-          parts.push(text4);
-        }
-      }
-    }
-    return parts.join(" ");
-  }
-  function convertTableToGfmInDoc(doc3, tableIndex) {
-    let index = 0;
-    const content = (doc3.content ?? []).map((node2) => {
-      if (node2.type !== "table") {
-        return node2;
-      }
-      if (index !== tableIndex) {
-        index += 1;
-        return node2;
-      }
-      index += 1;
-      const rows = (node2.content ?? []).map((row) => ({
-        ...row,
-        content: (row.content ?? []).map((cell) => {
-          const text4 = flattenNodesToText(cell.content);
-          return {
-            ...cell,
-            content: [{ type: "paragraph", content: text4 ? [{ type: "text", text: text4 }] : [] }]
-          };
-        })
-      }));
-      return {
-        ...node2,
-        attrs: { ...node2.attrs, tableFormat: "gfm", html: null },
-        content: rows
-      };
-    });
-    return { ...doc3, content };
-  }
-  function applyConvertToGfmInEditor(ed) {
-    const ctx = getTableContext(ed);
-    if (!ctx.inTable) {
-      return;
-    }
-    const converted = convertTableToGfmInDoc(ed.getJSON(), ctx.tableIndex);
-    suppressUpdate = true;
-    ed.commands.setContent(prepareDocForEditor(converted));
-    suppressUpdate = false;
-    updateTableMenuState();
-  }
   var vscode = acquireVsCodeApi();
   var lowlight = createLowlight(grammars);
   mermaid_default.initialize({ startOnLoad: false, securityLevel: "strict" });
@@ -223890,6 +223821,8 @@ img.ProseMirror-separator {
   var latestMarkdownText = "";
   var rawSyncTimer;
   var rawUpdateTimer;
+  var updateEpoch = 0;
+  var gfmConvertPending = false;
   var HtmlTableExtension = Extension.create({
     name: "htmlTable",
     addGlobalAttributes() {
@@ -224101,15 +224034,12 @@ img.ProseMirror-separator {
     const raw = getRawEditor();
     return !!raw && document.activeElement === raw;
   }
-  function scheduleRawTextUpdate(text4) {
+  function syncRawTextFromHost(text4, immediate = false) {
     latestMarkdownText = text4;
-    if (isRawFocused()) {
+    if (isRawFocused() && !immediate) {
       return;
     }
-    if (rawSyncTimer) {
-      clearTimeout(rawSyncTimer);
-    }
-    rawSyncTimer = setTimeout(() => {
+    const apply6 = () => {
       const raw = getRawEditor();
       if (!raw || isRawFocused()) {
         return;
@@ -224119,7 +224049,22 @@ img.ProseMirror-separator {
         raw.value = text4;
         suppressRawUpdate = false;
       }
-    }, RAW_SYNC_DEBOUNCE_MS);
+    };
+    if (immediate) {
+      if (rawSyncTimer) {
+        clearTimeout(rawSyncTimer);
+        rawSyncTimer = void 0;
+      }
+      apply6();
+      return;
+    }
+    if (rawSyncTimer) {
+      clearTimeout(rawSyncTimer);
+    }
+    rawSyncTimer = setTimeout(apply6, RAW_SYNC_DEBOUNCE_MS);
+  }
+  function scheduleRawTextUpdate(text4) {
+    syncRawTextFromHost(text4, false);
   }
   function setModeUi(mode) {
     editorMode = mode;
@@ -224176,7 +224121,7 @@ img.ProseMirror-separator {
     setModeUi(mode);
     if (mode === "raw") {
       const raw = getRawEditor();
-      if (raw && !isRawFocused()) {
+      if (raw) {
         suppressRawUpdate = true;
         raw.value = latestMarkdownText;
         suppressRawUpdate = false;
@@ -224200,11 +224145,11 @@ img.ProseMirror-separator {
         content,
         editable: !readonly && editorMode === "markdown",
         onUpdate: ({ editor: ed }) => {
-          if (suppressUpdate || readonly || editorMode !== "markdown") {
+          if (suppressUpdate || gfmConvertPending || readonly || editorMode !== "markdown") {
             return;
           }
           const json4 = ed.getJSON();
-          vscode.postMessage({ type: "update", docJson: JSON.stringify(json4) });
+          vscode.postMessage({ type: "update", docJson: JSON.stringify(json4), epoch: updateEpoch });
           checkTableLimitsFromEditor(ed);
         }
       });
@@ -224349,29 +224294,35 @@ img.ProseMirror-separator {
     if (!ed.isActive("table")) {
       return { inTable: false, tableIndex: -1, tableFormat: null };
     }
-    const { $from } = ed.state.selection;
-    let tablePos = -1;
+    const $from = ed.state.selection.$from;
+    let tableDepth = -1;
     for (let depth = $from.depth; depth > 0; depth -= 1) {
       if ($from.node(depth).type.name === "table") {
-        tablePos = $from.before(depth);
+        tableDepth = depth;
         break;
       }
     }
-    if (tablePos < 0) {
+    if (tableDepth < 0) {
       return { inTable: false, tableIndex: -1, tableFormat: null };
     }
+    const tableAttrs = ed.getAttributes("table");
+    const tableFormat = inferTableFormatFromAttrs(tableAttrs);
+    const currentPos = $from.before(tableDepth);
     let tableIndex = 0;
-    let tableFormat = "gfm";
-    ed.state.doc.descendants((node2, pos) => {
-      if (node2.type.name !== "table") {
+    let matched = false;
+    ed.state.doc.forEach((node2, offset) => {
+      if (matched || node2.type.name !== "table") {
         return;
       }
-      if (pos === tablePos) {
-        tableFormat = inferTableFormatFromAttrs(node2.attrs);
-        return false;
+      if (offset === currentPos) {
+        matched = true;
+        return;
       }
       tableIndex += 1;
     });
+    if (!matched) {
+      return { inTable: false, tableIndex: -1, tableFormat: null };
+    }
     return { inTable: true, tableIndex, tableFormat };
   }
   function updateTableMenuButtonStyle() {
@@ -224429,11 +224380,11 @@ img.ProseMirror-separator {
     });
   }
   function postDocUpdate() {
-    if (!editor || readonly || editorMode !== "markdown") {
+    if (!editor || readonly || editorMode !== "markdown" || gfmConvertPending) {
       return;
     }
     const json4 = editor.getJSON();
-    vscode.postMessage({ type: "update", docJson: JSON.stringify(json4) });
+    vscode.postMessage({ type: "update", docJson: JSON.stringify(json4), epoch: updateEpoch });
     checkTableLimitsFromEditor(editor);
   }
   function handleTableOperation(op2) {
@@ -224489,7 +224440,14 @@ img.ProseMirror-separator {
         if (!ctx.inTable || ctx.tableFormat === "gfm") {
           return;
         }
-        vscode.postMessage({ type: "requestConvertToGfm" });
+        gfmConvertPending = true;
+        updateEpoch += 1;
+        vscode.postMessage({
+          type: "requestConvertToGfm",
+          tableIndex: ctx.tableIndex,
+          docJson: JSON.stringify(editor.getJSON()),
+          epoch: updateEpoch
+        });
         break;
       }
       case "setDefaultGfm":
@@ -224622,11 +224580,16 @@ img.ProseMirror-separator {
         break;
       case "docUpdated":
         latestMarkdownText = message.markdownText ?? latestMarkdownText;
-        scheduleRawTextUpdate(latestMarkdownText);
         if (typeof message.docJson !== "string") {
+          scheduleRawTextUpdate(latestMarkdownText);
           break;
         }
+        gfmConvertPending = false;
+        syncRawTextFromHost(latestMarkdownText, true);
         applyExternalDoc(JSON.parse(message.docJson), { force: true });
+        break;
+      case "convertToGfmCancelled":
+        gfmConvertPending = false;
         break;
       case "modeChanged":
         if (message.editorMode && message.editorMode !== editorMode) {
@@ -224653,12 +224616,6 @@ img.ProseMirror-separator {
         }
         break;
       }
-      case "convertToGfmApproved":
-        if (editor && !readonly && editorMode === "markdown") {
-          applyConvertToGfmInEditor(editor);
-          postDocUpdate();
-        }
-        break;
       case "imageInserted":
         if (editor && !readonly && editorMode === "markdown") {
           editor.chain().focus().setImage({ src: message.relativePath, alt: message.relativePath }).run();
