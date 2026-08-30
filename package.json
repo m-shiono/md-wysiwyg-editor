@@ -17,7 +17,8 @@
     "Other"
   ],
   "activationEvents": [
-    "onCustomEditor:vsc-md-editor.wysiwyg"
+    "onCustomEditor:vsc-md-editor.wysiwyg",
+    "onCommand:vsc-md-editor.openWithWysiwyg"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -43,13 +44,34 @@
         "command": "vsc-md-editor.showMarpPreview",
         "title": "Show Marp Preview",
         "category": "MD WYSIWYG Editor"
+      },
+      {
+        "command": "vsc-md-editor.openWithWysiwyg",
+        "title": "Open with WYSIWYG Editor",
+        "category": "MD WYSIWYG Editor",
+        "icon": "$(open-preview)"
       }
     ],
+    "configuration": {
+      "title": "MD WYSIWYG Editor",
+      "properties": {
+        "vsc-md-editor.autoRestoreOnBuiltinSwitch": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically reopen the WYSIWYG editor when switching from it to the built-in Markdown editor via the IDE title bar."
+        }
+      }
+    },
     "menus": {
       "editor/title": [
         {
           "command": "vsc-md-editor.toggleReadonly",
           "when": "activeCustomEditorId == vsc-md-editor.wysiwyg",
+          "group": "navigation"
+        },
+        {
+          "command": "vsc-md-editor.openWithWysiwyg",
+          "when": "resourceExtname == .md && activeCustomEditorId != vsc-md-editor.wysiwyg",
           "group": "navigation"
         }
       ]

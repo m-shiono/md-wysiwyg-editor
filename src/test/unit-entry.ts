@@ -7,3 +7,4 @@ import './suite/unit/image-numbering.test';
 import './suite/unit/markdown-document.test';
 import './suite/unit/editor-modes.test';
 import './suite/unit/editor-mode-sync.test';
+import './suite/unit/editor-switch-guard.test';

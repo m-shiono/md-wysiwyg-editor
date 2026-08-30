@@ -4,6 +4,7 @@ import { registerMarpPreviewCommand, MarpPreviewManager } from './commands/marp-
 import { MarkdownEditorProvider } from './providers/markdown-editor-provider';
 import { setExtensionContext } from './utils/extension-context';
 import { setMarkdownEditorProvider } from './utils/editor-provider-hook';
+import { registerEditorSwitchGuard } from './utils/editor-switch-guard';
 import { getOutputChannel } from './utils/logger';
 
 export { getExtensionContext } from './utils/extension-context';
@@ -26,6 +27,7 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     registerToggleReadonlyCommand(context, provider),
     registerMarpPreviewCommand(context, marpManager),
+    registerEditorSwitchGuard(context),
     output,
   );
 }

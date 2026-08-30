@@ -19,6 +19,7 @@ suite('Extension integration tests', () => {
     const commands = await vscode.commands.getCommands(true);
     assert.ok(commands.includes('vsc-md-editor.toggleReadonly'));
     assert.ok(commands.includes('vsc-md-editor.showMarpPreview'));
+    assert.ok(commands.includes('vsc-md-editor.openWithWysiwyg'));
   });
 
   test('TC-025/TC-026: readonly toggle via workspaceState', async () => {

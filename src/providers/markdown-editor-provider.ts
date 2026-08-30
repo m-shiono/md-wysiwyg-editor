@@ -24,6 +24,7 @@ import {
   type EditorMode,
 } from '../utils/editor-mode';
 import { buildModeSwitchMessages } from '../utils/editor-mode-sync';
+import { handleCustomEditorDisposed } from '../utils/editor-switch-guard';
 import type { WebviewInboundMessage, WebviewOutboundMessage } from '../webviews/messages';
 
 export class MarkdownEditorProvider implements vscode.CustomEditorProvider<MarkdownDocument> {
@@ -115,6 +116,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
       this._openPanels.delete(key);
       this._openDocuments.delete(key);
       this._modeStates.delete(key);
+      handleCustomEditorDisposed(this.context, document.uri);
     });
 
     void this.marpManager.updatePreview(document.uri, document.markdownText);

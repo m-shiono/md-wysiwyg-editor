@@ -83,13 +83,35 @@ const workspace = {
   },
 };
 
+class TabInputText {
+  constructor(readonly uri: Uri) {}
+}
+
+class TabInputCustom {
+  readonly uri: Uri;
+  readonly viewType: string;
+
+  constructor(uri: Uri, viewType: string) {
+    this.uri = uri;
+    this.viewType = viewType;
+  }
+}
+
 const window = {
   showErrorMessage: async (_message: string): Promise<undefined> => undefined,
+  showInformationMessage: async (_message: string): Promise<undefined> => undefined,
+  showWarningMessage: async (_message: string): Promise<undefined> => undefined,
   createOutputChannel: (_name: string) => ({
     appendLine: (_line: string): void => undefined,
     name: _name,
     dispose: (): void => undefined,
   }),
+  tabGroups: {
+    activeTabGroup: {
+      activeTab: undefined as { input: unknown } | undefined,
+    },
+  },
+  activeTextEditor: undefined as { document: { uri: Uri } } | undefined,
 };
 
-export { EventEmitter, Uri, workspace, window };
+export { EventEmitter, Uri, TabInputText, TabInputCustom, workspace, window };

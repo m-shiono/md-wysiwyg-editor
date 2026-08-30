@@ -39,6 +39,8 @@ VS Code で **Run Extension**（F5）を実行し Extension Development Host を
 
 コマンドパレットの **Reopen Editor With…** で VS Code 標準 Markdown エディタへ切替可能。
 
+IDE タイトルバーの Preview / Markdown 切替でビルトインへ移った場合、拡張が検知して WYSIWYG への復帰を案内する（`vsc-md-editor.autoRestoreOnBuiltinSwitch` で自動復帰も可。既定はオフ）。エディタ内の **Preview / Markdown / Raw** 三点ボタンは WYSIWYG Custom Editor 専用。
+
 ## リポジトリ構成
 
 | パス | 役割 |
@@ -63,3 +65,4 @@ VS Code で **Run Extension**（F5）を実行し Extension Development Host を
 |------|------|
 | 2026-08-29 | テンプレート README から vsc-md-editor 製品説明へ更新 |
 | 2026-08-29 | 三点モード・Marp 区別を機能表に追記。`workbench.editorAssociations` の viewType を `vsc-md-editor.wysiwyg` に修正 |
+| 2026-08-30 | Pattern A（ビルトイン切替検知・WYSIWYG 復帰案内）と `autoRestoreOnBuiltinSwitch` 設定を追記 |

@@ -567,7 +567,18 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 
 1. Output チャンネル `MD WYSIWYG Editor` にシリアライズエラー・描画失敗を記録する（ファイル全文は含めない）
 2. README に `workbench.editorAssociations` 設定例を記載し、本拡張を `.md` デフォルトにする手順を示す
-3. `Reopen Editor With…` でビルトイン Markdown エディタへ切替可能とする
+3. `Reopen Editor With…` でビルトイン Markdown エディタへ切替可能とする（AD-014）
+4. **Pattern A（IDE タイトルバー切替の検知）:** Custom Editor（`vsc-md-editor.wysiwyg`）が dispose された直後、同一 `.md` URI がアクティブタブに残り、かつ WYSIWYG Custom Editor ではない場合（`TabInputText` または `TabInputCustom` で viewType が `vsc-md-editor.wysiwyg` 以外）を「ビルトインへ切替」と判定する
+   - 設定 `vsc-md-editor.autoRestoreOnBuiltinSwitch`（boolean、**既定 `false`**）が `true` のとき: `vscode.openWith` で WYSIWYG を自動再オープン
+   - 既定 `false` のとき: 日本語 `InformationMessage` を表示し、エディタ内 **Preview / Markdown / Raw** 三点ボタンの利用を案内。ボタン **「WYSIWYG Editor で開く」** で `vsc-md-editor.openWithWysiwyg` を実行
+   - タブが閉じられた、または別ファイルがアクティブの場合は何もしない
+5. コマンド `vsc-md-editor.openWithWysiwyg`: 引数 URI またはアクティブ `.md` に対し `vscode.openWith`（viewType `vsc-md-editor.wysiwyg`）を実行。ビルトイン Markdown エディタの editor/title に表示（`resourceExtname == .md` かつ Custom Editor 非アクティブ時）
+
+#### 設定
+
+| キー | 型 | 既定 | 説明 |
+|------|-----|------|------|
+| `vsc-md-editor.autoRestoreOnBuiltinSwitch` | `boolean` | `false` | Pattern A 検知時に WYSIWYG を自動再オープン。`false` では AD-014 の意図的なビルトイン切替（Reopen Editor With… 等）を妨げない |
 
 ### Non-Goals
 
@@ -575,7 +586,7 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 
 ### Related Tests
 
-- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-062–064
+- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-062–064, TC-083–084
 
 ---
 
@@ -648,3 +659,4 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 | 2026-08-29 | §3, §4, §6, §7, Spec Gaps | Advisor defaults で Spec Gaps 解決。testspec-vsc-md-wysiwyg 連携 |
 | 2026-08-29 | 概要, AD-*, §1, §2, §4, §6, §8, Non-Goals, Spec Gaps | Preview / Markdown / Raw 三点モード・相互同期・dirty/save・ファイル RO 全編集面ロック・Marp 区別・Raw パース失敗時 save ブロックを契約化（AD-016）。viewType `vsc-md-editor.wysiwyg` を明示 |
 | 2026-08-30 | §1 三点モード | Preview 厳密 RO・三者同期モデル・モード切替時 Document 再投影を契約化 |
+| 2026-08-30 | §10 | Pattern A（IDE タイトルバー切替検知）・`autoRestoreOnBuiltinSwitch`・`openWithWysiwyg` コマンドを追加 |

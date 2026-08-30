@@ -157,12 +157,14 @@
 | TC-080 | Happy | preview-mode-refresh | P0 | Preview または Markdown へモード切替 | Host が Document 最新を `docJson` + `markdownText` で再投影（Raw 離脱 flush 後を含む） | Preview 厳密 RO・切替時 refresh | §1 三者同期, 正常系 3–4 |
 | TC-081 | Happy | raw-mode-text-projection | P0 | Raw へモード切替 | Host が `markdownText` のみ投影（docJson なし） | Raw 面の Document 追随 | §1 三者同期 |
 | TC-082 | Happy | triple-sync-document | P0 | Markdown 編集 → Document；続けて Raw 編集 → Document | 正本 `MarkdownDocument` が唯一の真実。Preview 投影源の `docJson` / `markdownText` が同一 Document から導出 | Raw↔Markdown↔Preview 三者同期 | §1 三者同期 |
+| TC-083 | Happy | builtin-switch-detect | P1 | dispose 後アクティブタブが同一 `.md` の `TabInputText` または非 wysiwyg `TabInputCustom` | `isBuiltinSwitchToSameMdFile` が true。タブ閉鎖・別 URI・wysiwyg タブは false | Pattern A 検知 | §10 正常系 4 |
+| TC-084 | Happy | open-with-wysiwyg-cmd | P1 | `activate` 後に `getCommands` | `vsc-md-editor.openWithWysiwyg` が登録。`package.json` に command・configuration・editor/title menu が存在 | Pattern A 復帰コマンド | §10 正常系 5 |
 
 ### Category Coverage
 
 | Category | Covered | N/A Reason |
 |----------|---------|------------|
-| Happy Path | TC-001–004, TC-010–012, TC-016–019, TC-025–027, TC-031, TC-033, TC-038–039, TC-043–044, TC-052–054, TC-057–058, TC-070–072, TC-074–076, TC-079–082 | — |
+| Happy Path | TC-001–004, TC-010–012, TC-016–019, TC-025–027, TC-031, TC-033, TC-038–039, TC-043–044, TC-052–054, TC-057–058, TC-070–072, TC-074–076, TC-079–084 | — |
 | Boundary | TC-008, TC-021–023 | — |
 | Structural | TC-014, TC-055, TC-077 | — |
 | Corner | TC-005–009, TC-015, TC-020, TC-024, TC-030, TC-034–037, TC-041–042, TC-047–051, TC-056, TC-059, TC-061, TC-064, TC-067–069, TC-073, TC-078 | — |
@@ -311,3 +313,4 @@ P0 + P1 の机上トレース（実装前）。
 | 2026-08-29 | TC-070–079 追加 | Preview/Markdown/Raw 三点モード・同期・dirty/save・RO・Raw パース失敗契約。ユニット実装可能な TC をコード化、未実装 API は skip |
 | 2026-08-30 | TC-071/073/076/078/079 skip 記述を解除（ユニット実装済みに同期） |
 | 2026-08-30 | TC-080–082 追加 | Preview 厳密 RO・モード切替時 Document 再投影・三者同期（Raw↔Markdown↔Preview） |
+| 2026-08-30 | TC-083–084 追加 | Pattern A ビルトイン切替検知・`openWithWysiwyg` コマンド登録（§10） |
