@@ -114,4 +114,15 @@ const window = {
   activeTextEditor: undefined as { document: { uri: Uri } } | undefined,
 };
 
-export { EventEmitter, Uri, TabInputText, TabInputCustom, workspace, window };
+const commands = {
+  executeCommand: async (_command: string, ..._args: unknown[]): Promise<undefined> => undefined,
+  registerCommand: (
+    _id: string,
+    _handler: (...args: unknown[]) => unknown,
+  ): { dispose: () => void } => ({
+    dispose: (): void => undefined,
+  }),
+  getCommands: async (_filterInternal?: boolean): Promise<string[]> => [],
+};
+
+export { EventEmitter, Uri, TabInputText, TabInputCustom, workspace, window, commands };

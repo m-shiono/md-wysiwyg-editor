@@ -18,7 +18,8 @@
   ],
   "activationEvents": [
     "onCustomEditor:vsc-md-editor.wysiwyg",
-    "onCommand:vsc-md-editor.openWithWysiwyg"
+    "onCommand:vsc-md-editor.openWithWysiwyg",
+    "onCommand:vsc-md-editor.reloadExtension"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -50,6 +51,12 @@
         "title": "Open with WYSIWYG Editor",
         "category": "MD WYSIWYG Editor",
         "icon": "$(open-preview)"
+      },
+      {
+        "command": "vsc-md-editor.reloadExtension",
+        "title": "Reload Plugin",
+        "category": "MD WYSIWYG Editor",
+        "icon": "$(refresh)"
       }
     ],
     "configuration": {
@@ -68,6 +75,11 @@
           "command": "vsc-md-editor.toggleReadonly",
           "when": "activeCustomEditorId == vsc-md-editor.wysiwyg",
           "group": "navigation"
+        },
+        {
+          "command": "vsc-md-editor.reloadExtension",
+          "when": "activeCustomEditorId == vsc-md-editor.wysiwyg",
+          "group": "navigation@99"
         },
         {
           "command": "vsc-md-editor.openWithWysiwyg",

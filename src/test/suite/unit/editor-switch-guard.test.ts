@@ -70,6 +70,7 @@ suite('Editor switch guard (Pattern A)', () => {
 
     const commands = pkg.contributes.commands.map((c) => c.command);
     assert.ok(commands.includes('vsc-md-editor.openWithWysiwyg'));
+    assert.ok(commands.includes('vsc-md-editor.reloadExtension'));
 
     assert.ok(
       pkg.contributes.configuration.properties['vsc-md-editor.autoRestoreOnBuiltinSwitch'],
@@ -80,5 +81,9 @@ suite('Editor switch guard (Pattern A)', () => {
     assert.ok(openMenu);
     assert.ok(openMenu.when.includes('resourceExtname == .md'));
     assert.ok(openMenu.when.includes('activeCustomEditorId != vsc-md-editor.wysiwyg'));
+
+    const reloadMenu = titleMenu.find((m) => m.command === 'vsc-md-editor.reloadExtension');
+    assert.ok(reloadMenu);
+    assert.ok(reloadMenu.when.includes('activeCustomEditorId == vsc-md-editor.wysiwyg'));
   });
 });

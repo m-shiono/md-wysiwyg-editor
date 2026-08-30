@@ -573,6 +573,7 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
    - 既定 `false` のとき: 日本語 `InformationMessage` を表示し、エディタ内 **Preview / Markdown / Raw** 三点ボタンの利用を案内。ボタン **「WYSIWYG Editor で開く」** で `vsc-md-editor.openWithWysiwyg` を実行
    - タブが閉じられた、または別ファイルがアクティブの場合は何もしない
 5. コマンド `vsc-md-editor.openWithWysiwyg`: 引数 URI またはアクティブ `.md` に対し `vscode.openWith`（viewType `vsc-md-editor.wysiwyg`）を実行。ビルトイン Markdown エディタの editor/title に表示（`resourceExtname == .md` かつ Custom Editor 非アクティブ時）
+6. **拡張更新後の手動リロード:** コマンド `vsc-md-editor.reloadExtension`（editor/title・WYSIWYG Custom Editor アクティブ時）。確認ダイアログ後に `workbench.action.reloadWindow` を実行し、更新済み Extension Host と Webview バンドルを再読込する（Extension Host のみ再起動では Custom Editor Webview が古いまま残りうる）
 
 #### 設定
 
@@ -582,11 +583,12 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 
 ### Non-Goals
 
+- IDE タイトルバーの Preview / Markdown トグル自体の非表示・上書き（VS Code / Cursor API 非提供）
 - Marketplace 公開手順の詳細（`vscode-extension-publish` スキル / deployment.md で扱う）
 
 ### Related Tests
 
-- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-062–064, TC-083–084
+- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-062–064, TC-083–085
 
 ---
 
@@ -660,3 +662,4 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 | 2026-08-29 | 概要, AD-*, §1, §2, §4, §6, §8, Non-Goals, Spec Gaps | Preview / Markdown / Raw 三点モード・相互同期・dirty/save・ファイル RO 全編集面ロック・Marp 区別・Raw パース失敗時 save ブロックを契約化（AD-016）。viewType `vsc-md-editor.wysiwyg` を明示 |
 | 2026-08-30 | §1 三点モード | Preview 厳密 RO・三者同期モデル・モード切替時 Document 再投影を契約化 |
 | 2026-08-30 | §10 | Pattern A（IDE タイトルバー切替検知）・`autoRestoreOnBuiltinSwitch`・`openWithWysiwyg` コマンドを追加 |
+| 2026-08-30 | §10 | `reloadExtension` コマンド（拡張更新後の手動ウィンドウリロード）を追加 |

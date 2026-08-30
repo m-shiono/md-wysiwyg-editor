@@ -20,6 +20,7 @@ suite('Extension integration tests', () => {
     assert.ok(commands.includes('vsc-md-editor.toggleReadonly'));
     assert.ok(commands.includes('vsc-md-editor.showMarpPreview'));
     assert.ok(commands.includes('vsc-md-editor.openWithWysiwyg'));
+    assert.ok(commands.includes('vsc-md-editor.reloadExtension'));
   });
 
   test('TC-025/TC-026: readonly toggle via workspaceState', async () => {
