@@ -476,6 +476,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
         <button type="button" data-table-op="addColumnBefore" role="menuitem">Add column left</button>
         <button type="button" data-table-op="addColumnAfter" role="menuitem">Add column right</button>
         <button type="button" data-table-op="deleteColumn" role="menuitem">Delete column</button>
+        <button type="button" data-table-op="deleteTable" role="menuitem">Delete table</button>
         <hr class="toolbar-dropdown-sep" />
         <button type="button" data-table-op="convertToGfm" role="menuitem">Convert to GFM pipe table</button>
         <button type="button" data-table-op="convertToHtml" role="menuitem">Convert to HTML table</button>

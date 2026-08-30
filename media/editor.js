@@ -224154,16 +224154,17 @@ img.ProseMirror-separator {
       suppressUpdate = false;
     }
   }
-  function applyExternalDoc(doc3) {
+  function applyExternalDoc(doc3, options2) {
     if (!editor) {
       return;
     }
-    if (editorMode === "markdown" && editor.isFocused) {
+    if (editorMode === "markdown" && editor.isFocused && !options2?.force) {
       return;
     }
     suppressUpdate = true;
     editor.commands.setContent(prepareDocForEditor(doc3));
     suppressUpdate = false;
+    updateTableMenuState();
   }
   function attachPreviewGuard() {
     const editorEl = document.getElementById("editor");
@@ -224332,7 +224333,7 @@ img.ProseMirror-separator {
       let isDisabled = disabled;
       if (op2 === "insert") {
         isDisabled = disabled;
-      } else if (op2 === "addRowBefore" || op2 === "addRowAfter" || op2 === "deleteRow" || op2 === "addColumnBefore" || op2 === "addColumnAfter" || op2 === "deleteColumn" || op2 === "convertToGfm" || op2 === "convertToHtml") {
+      } else if (op2 === "addRowBefore" || op2 === "addRowAfter" || op2 === "deleteRow" || op2 === "addColumnBefore" || op2 === "addColumnAfter" || op2 === "deleteColumn" || op2 === "deleteTable" || op2 === "convertToGfm" || op2 === "convertToHtml") {
         isDisabled = disabled || !ctx.inTable;
         if (!isDisabled && op2 === "convertToGfm" && ctx.tableFormat === "gfm") {
           isDisabled = true;
@@ -224402,17 +224403,17 @@ img.ProseMirror-separator {
         editor.chain().focus().deleteColumn().run();
         postDocUpdate();
         break;
+      case "deleteTable":
+        editor.chain().focus().deleteTable().run();
+        postDocUpdate();
+        break;
       case "convertToHtml": {
         const ctx = getTableContext(editor);
         if (!ctx.inTable || ctx.tableFormat === "html") {
           return;
         }
-        vscode.postMessage({
-          type: "tableOperation",
-          operation: "convertToHtml",
-          docJson: JSON.stringify(editor.getJSON()),
-          tableIndex: ctx.tableIndex
-        });
+        editor.chain().focus().updateAttributes("table", { tableFormat: "html" }).run();
+        postDocUpdate();
         break;
       }
       case "convertToGfm": {
@@ -224565,9 +224566,7 @@ img.ProseMirror-separator {
         if (typeof message.docJson !== "string") {
           break;
         }
-        if (editorMode === "preview" || editorMode === "markdown" && editor && !editor.isFocused || editorMode === "raw") {
-          applyExternalDoc(JSON.parse(message.docJson));
-        }
+        applyExternalDoc(JSON.parse(message.docJson), { force: true });
         break;
       case "modeChanged":
         if (message.editorMode && message.editorMode !== editorMode) {

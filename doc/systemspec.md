@@ -193,7 +193,7 @@ Excel 的な表編集。各表は per-table `tableFormat`（`gfm` \| `html`）�
 |------|-----|------|------|------|------|
 | `tableFormat` | `'gfm'` \| `'html'` | はい（表ごと） | — | — | 当該表の永続化形式。読込時はソースから推論（既存 `gfmSource` / `html` 属性は互換推論に使用） |
 | `insertTableFormat` | `'gfm'` \| `'html'` | はい（セッション） | — | — | 新規挿入のデフォルト形式。Webview 内メモリのみ（VS Code 再起動で `gfm` にリセット）。ワークスペース / ユーザー設定への永続化は MVP 非対象 |
-| `tableOperation` | 列挙 | 操作ごと | — | — | `insert`、行/列追加・削除（`addRowBefore` / `addRowAfter` / `deleteRow` / `addColumnBefore` / `addColumnAfter` / `deleteColumn`）、`convertToGfm`、`convertToHtml`、`setInsertDefault` |
+| `tableOperation` | 列挙 | 操作ごと | — | — | `insert`、行/列追加・削除（`addRowBefore` / `addRowAfter` / `deleteRow` / `addColumnBefore` / `addColumnAfter` / `deleteColumn`）、`deleteTable`、`convertToGfm`、`convertToHtml`、`setInsertDefault` |
 | `cellContent` | テキスト / リッチ | 任意 | 空 | — | `gfm`: インラインマーク・プレーンテキストのみ。`html`: 改行・リスト・チェックボックス可 |
 | 表サイズ | 行 × 列 | はい | 1 × 1 | ソフト上限 100 行 × 20 列 | 超過時 UI 警告、保存は許可 |
 
@@ -224,7 +224,7 @@ Excel 的な表編集。各表は per-table `tableFormat`（`gfm` \| `html`）�
 Table ボタン（▼ ドロップダウン）の構成:
 
 1. **Insert table** — 3×3・ヘッダ行あり。`insertTableFormat` に従い `tableFormat` を設定して挿入
-2. **行/列操作**（カーソルが表内のときのみ有効）— Add row above/below、Delete row、Add column left/right、Delete column
+2. **行/列操作**（カーソルが表内のときのみ有効）— Add row above/below、Delete row、Add column left/right、Delete column、**Delete table**
 3. **Convert to GFM pipe table** — 当該表が `html` のときのみ有効
 4. **Convert to HTML table** — 当該表が `gfm` のときのみ有効
 5. **New tables default: GFM / HTML** — `insertTableFormat` とボタン色を更新（既存表の `tableFormat` は変更しない）
@@ -696,3 +696,4 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 | 2026-08-30 | §10 | Pattern A（IDE タイトルバー切替検知）・`autoRestoreOnBuiltinSwitch`・`openWithWysiwyg` コマンドを追加 |
 | 2026-08-30 | §10 | `reloadExtension` コマンド（拡張更新後の手動ウィンドウリロード）を追加 |
 | 2026-08-30 | AD-005, §3, Spec Gaps, Related Tests | GFM / HTML 二形式表編集。per-table `tableFormat`、Table メニュー（挿入・行/列操作・変換・セッションデフォルト）、初回編集時自動 GFM→HTML 変換廃止。Requirements Brief `table-gfm-html-mode` |
+| 2026-08-30 | §3 | Table メニューに **Delete table** を追加（カーソルが表内のときのみ有効） |

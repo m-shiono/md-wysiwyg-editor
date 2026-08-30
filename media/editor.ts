@@ -450,17 +450,18 @@ function initEditor(initialDoc: TipTapDoc): void {
   }
 }
 
-function applyExternalDoc(doc: TipTapDoc): void {
+function applyExternalDoc(doc: TipTapDoc, options?: { force?: boolean }): void {
   if (!editor) {
     return;
   }
-  // Preview always reflects Document. Markdown skips while focused (TC-067).
-  if (editorMode === 'markdown' && editor.isFocused) {
+  // TC-067: skip re-apply during active Markdown typing unless Host pushes full docJson.
+  if (editorMode === 'markdown' && editor.isFocused && !options?.force) {
     return;
   }
   suppressUpdate = true;
   editor.commands.setContent(prepareDocForEditor(doc));
   suppressUpdate = false;
+  updateTableMenuState();
 }
 
 /** Block keyboard/paste/mouse edits while Preview is active (strict RO). */
@@ -663,6 +664,7 @@ function updateTableMenuState(): void {
       op === 'addColumnBefore' ||
       op === 'addColumnAfter' ||
       op === 'deleteColumn' ||
+      op === 'deleteTable' ||
       op === 'convertToGfm' ||
       op === 'convertToHtml'
     ) {
@@ -741,17 +743,17 @@ function handleTableOperation(op: string): void {
       editor.chain().focus().deleteColumn().run();
       postDocUpdate();
       break;
+    case 'deleteTable':
+      editor.chain().focus().deleteTable().run();
+      postDocUpdate();
+      break;
     case 'convertToHtml': {
       const ctx = getTableContext(editor);
       if (!ctx.inTable || ctx.tableFormat === 'html') {
         return;
       }
-      vscode.postMessage({
-        type: 'tableOperation',
-        operation: 'convertToHtml',
-        docJson: JSON.stringify(editor.getJSON()),
-        tableIndex: ctx.tableIndex,
-      });
+      editor.chain().focus().updateAttributes('table', { tableFormat: 'html' }).run();
+      postDocUpdate();
       break;
     }
     case 'convertToGfm': {
@@ -915,14 +917,8 @@ window.addEventListener('message', (event) => {
       if (typeof message.docJson !== 'string') {
         break;
       }
-      // Document → Preview (always), idle Markdown, or TipTap while Raw is active.
-      if (
-        editorMode === 'preview' ||
-        (editorMode === 'markdown' && editor && !editor.isFocused) ||
-        editorMode === 'raw'
-      ) {
-        applyExternalDoc(JSON.parse(message.docJson));
-      }
+      // Host-initiated full doc (table convert, Raw parse, revert, undo/redo): always apply.
+      applyExternalDoc(JSON.parse(message.docJson), { force: true });
       break;
     case 'modeChanged':
       if (message.editorMode && message.editorMode !== editorMode) {
