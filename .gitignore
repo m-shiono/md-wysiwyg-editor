@@ -1,14 +1,48 @@
+# Dependencies
 node_modules/
+
+# Build outputs (VS Code extension)
 dist/
 out/
 *.vsix
+*.map
+
+# VS Code extension test runner
 .vscode-test/
 
-# 機能開発の作業用成果物（Intent Brief、Requirements Brief 等）
-temporary/*
+# Environment & secrets (doc/stack.md)
+.env
+.env.*
+*.vsix.publish.token
 
-# meta-agent 改善ループの run 成果物（再生成可）
-.triage/findings/*
-!.triage/findings/.gitkeep
-.triage/reports/*
-!.triage/reports/.gitkeep
+# OS
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Python (Cursor hooks)
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# ESLint
+.eslintcache
+
+# Workflow artifacts (Intent Brief, workflow-state, etc.)
+temporary/*
+!temporary/.gitkeep
+
+# skills and agents prompts templates
+.triage/*
+.cursor/skills-local/
+.cursor/*
+templates/
+AGENTS.md
+doc/development.md
+doc/coding-conventions.md
+doc/testspec-readme.md
+doc/stack.md.example
+.github/workflows/hooks.yml
