@@ -44,8 +44,38 @@ export function flattenTipTapNodesToText(nodes: TipTapNodeLike[]): string {
 }
 
 export function flattenCellContent(nodes: TipTapNodeLike[]): TipTapNodeLike[] {
-  const text = flattenTipTapNodesToText(nodes);
-  return [{ type: 'paragraph', content: text ? [{ type: 'text', text }] : [] }];
+  const paragraphs: TipTapNodeLike[] = [];
+  const pushParagraph = (text: string): void => {
+    if (!text) {
+      return;
+    }
+    paragraphs.push({ type: 'paragraph', content: [{ type: 'text', text }] });
+  };
+
+  for (const node of nodes) {
+    if (node.type === 'paragraph') {
+      // 段落境界はセル内改行として残す（スペース結合しない）
+      pushParagraph(flattenTipTapNodesToText(node.content ?? []));
+    } else if (node.type === 'hardBreak') {
+      continue;
+    } else if (
+      node.type === 'bulletList' ||
+      node.type === 'orderedList' ||
+      node.type === 'taskList'
+    ) {
+      pushParagraph(flattenTipTapNodesToText([node]));
+    } else if (node.content) {
+      for (const nested of flattenCellContent(node.content)) {
+        if (nested.type === 'paragraph') {
+          pushParagraph(flattenTipTapNodesToText(nested.content ?? []));
+        }
+      }
+    } else {
+      pushParagraph(flattenTipTapNodesToText([node]));
+    }
+  }
+
+  return paragraphs.length > 0 ? paragraphs : [{ type: 'paragraph', content: [] }];
 }
 
 function mapTableAtIndex<T extends TipTapDocLike>(

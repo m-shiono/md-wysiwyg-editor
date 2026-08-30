@@ -76,7 +76,7 @@
 ### Spec Gaps
 
 - （なし — Advisor defaults および AD-016 三点モード契約は systemspec に反映済み。詳細は [systemspec.md Spec Gaps（resolved）](systemspec.md#spec-gapsresolved)）
-- **実装ギャップ（Red テスト済み）:** TC-016–019, TC-054, TC-086–087, TC-091–092 ユニット Red（`table-gfm-html-mode`）。TC-085, TC-089–090, TC-093–096 は未実装
+- **実装ギャップ（Red テスト済み）:** TC-016–019, TC-054, TC-086–087, TC-091–092 ユニット（`table-gfm-html-mode`）。TC-085, TC-089–090, TC-093–096 は未実装
 
 ---
 
@@ -170,7 +170,7 @@
 | TC-084 | Happy | open-with-wysiwyg-cmd | P1 | `activate` 後に `getCommands` | `vsc-md-editor.openWithWysiwyg` が登録。`package.json` に command・configuration・editor/title menu が存在 | Pattern A 復帰コマンド | §10 正常系 5 |
 | TC-085 | Happy | table-row-col-ops | P0 | `tableFormat:'gfm'` の表内で Add row above/below、Delete row、Add column left/right、Delete column を順に実行 | 行/列が増減し UI 反映。`tableFormat` 不変。save で GFM パイプ表 | メニュー行/列操作 | §3 正常系 1, Table UI #2 |
 | TC-086 | Happy | table-convert-gfm-to-html | P0 | `tableFormat:'gfm'` の表で Convert to HTML table を実行（確認なし） | 即時 `tableFormat:'html'`。save で HTML `<table>` 出力。Undo 1 段で復元可 | GFM→HTML 明示変換 | §3 Outputs, 正常系 6 |
-| TC-087 | Happy | table-convert-html-to-gfm | P0 | リッチ内容（改行・リスト・チェックボックス）を含む `tableFormat:'html'` の表で Convert to GFM pipe table → 確認ダイアログで OK | 確認後 `tableFormat:'gfm'`。リッチ内容はプレーンテキストへ flatten。save で GFM パイプ表 | HTML→GFM 確認付き変換 | §3 Outputs, 正常系 6, AD-006 |
+| TC-087 | Happy | table-convert-html-to-gfm | P0 | リッチ内容（改行・リスト・チェックボックス）を含む `tableFormat:'html'` の表で Convert to GFM pipe table → 確認ダイアログで OK | 確認後 `tableFormat:'gfm'`。リスト・チェックボックス等のブロックリッチはプレーンテキストへ flatten。**セル内改行は `<br />`（または同等）として保持**し単一改行へ正規化。save で GFM パイプ表 | **Updated:** flatten はブロックリッチ除去；改行は GFM `<br />` 契約で保持 | §3 Outputs, 正常系 6, AD-006 |
 | TC-088 | Corner | table-convert-gfm-cancel | P1 | TC-087 同等の HTML 表で Convert to GFM → 確認ダイアログで Cancel | 変換なし。`tableFormat:'html'` 維持、リッチ内容保持 | 変換キャンセル | §3 Outputs |
 | TC-089 | Happy | table-insert-default-toggle | P0 | New tables default: HTML を選択 → Insert table → 既存 GFM 表は不変 | `insertTableFormat:'html'`、Table ボタンがアクセント色（`table-format-html` 等）。新規表は `html`、既存 GFM 表の `tableFormat` 不変 | セッションデフォルト + ボタン色 | §3, AD-004 |
 | TC-090 | Happy | table-format-menu-indicator | P1 | カーソルを GFM 表内に置き Table ドロップダウンを開く | 当該表の `tableFormat:'gfm'` にチェックマーク。ボタン色は `insertTableFormat`（セッションデフォルト）を反映し per-table と分離 | per-table vs セッション UI 分離 | §3 Table UI |
@@ -179,19 +179,22 @@
 | TC-093 | Corner | table-row-col-outside-disabled | P1 | カーソルが表外のとき Table ドロップダウンを開く | 行/列操作・Convert 項目が無効。Insert table と New tables default は有効 | 表外 precondition | §3 Preconditions |
 | TC-094 | Corner | table-convert-menu-disabled | P1 | `tableFormat:'gfm'` の表で Convert to GFM を試行；`html` 表で Convert to HTML を試行 | 当該表形式と不一致の Convert 項目は無効 | 変換メニュー条件 | §3 Table UI #3–4 |
 | TC-095 | Corner | table-insert-default-reset | P1 | `insertTableFormat:'html'` に設定 → VS Code 再起動 → 同一 doc を開く | `insertTableFormat` は `'gfm'` にリセット。Table ボタンは通常色 | セッション非永続 | §3 Inputs |
-| TC-096 | Corner | table-gfm-rich-restricted | P1 | `tableFormat:'gfm'` の表セルに改行・リスト・チェックボックス入力を試行 | リッチ構造は入力不可または flatten（インラインマーク・プレーンテキストのみ） | GFM セル制限 | §3 正常系 3, AD-008 |
+| TC-096 | Corner | table-gfm-rich-restricted | P1 | `tableFormat:'gfm'` の表セルにリスト・チェックボックス入力を試行（改行は TC-104 系） | リスト・チェックボックス等のブロックリッチは入力不可または flatten。**単一セル内改行は許可**（`<br />` 永続化・単一改行表示）。連続空行相当は不可 | **Updated:** 改行不可想定を廃止；ブロック構造のみ制限（§3 GFM 改行契約） | §3 正常系 3, AD-008 |
 | TC-101 | Happy | table-convert-updates-markdown-text | P0 | HTML 表を含む Document で `updateDoc(convertTableToGfmAtIndex)` | `markdownText` から `<table>` が消え GFM パイプ表になる（Raw 正本） | Host Raw 正本 | §3 正常系 6 |
 | TC-102 | Happy | table-convert-via-request-message | P0 | Custom editor 上で `requestConvertToGfm`（tableIndex=HTML 表、確認 OK） | Document `markdownText` から `<table>` が消える | Host ハンドラ経由変換 | §3 正常系 6 |
 | TC-103 | Corner | table-convert-stale-update-dropped | P0 | TC-102 の後に変換前の HTML `docJson` を epoch なし/`0` で `update` | `markdownText` は GFM のまま。stale update で HTML に戻らない | 確認ダイアログ中の上書き防止 | §3 正常系 6 |
+| TC-104 | Corner | regression-gfm-cell-linebreak-serialize | P0 | `tableFormat:'gfm'` の表セルに複数 paragraph（Enter 改行相当）を持つ Document を serialize | Raw/保存出力の当該パイプセルに `<br />`（または同等 hard break）が含まれ、両行テキストが残る | Regression: MD→Raw でセル内改行が落ちる（`cellToPhrasing`） | §3 Inputs cellContent, 正常系 3–4 |
+| TC-105 | Corner | regression-gfm-cell-br-parse | P0 | Raw `| a<br />b |` を含む GFM パイプ表を parse | セルは単一改行として復元。`htmlBlock`（`<br />`）による多重改行にならない。テキスト `a`/`b` を保持 | Regression: Raw→MD で br→htmlBlock の二重改行 | §3 正常系 3, 5 |
+| TC-106 | Corner | regression-gfm-cell-br-roundtrip | P0 | `| a<br />b |` を parse → serialize → 再 parse | serialize で `<br />`（または同等）が落ちない。再 parse で余分な改行ノード（htmlBlock / 空段落）が増えない | Regression: GFM セル改行往復不整合 | §3 正常系 3–5 |
 
 ### Category Coverage
 
 | Category | Covered | N/A Reason |
 |----------|---------|------------|
-| Happy Path | TC-001–004, TC-010–012, TC-016–019, TC-025–027, TC-031, TC-033, TC-038–039, TC-043–044, TC-052–054, TC-057–058, TC-070–072, TC-074–076, TC-079–092 | — |
+| Happy Path | TC-001–004, TC-010–012, TC-016–019, TC-025–027, TC-031, TC-033, TC-038–039, TC-043–044, TC-052–054, TC-057–058, TC-070–072, TC-074–076, TC-079–092, TC-101–102 | — |
 | Boundary | TC-008, TC-021–023 | — |
 | Structural | TC-014, TC-055, TC-077 | — |
-| Corner | TC-005–009, TC-015, TC-020, TC-024, TC-030, TC-034–037, TC-041–042, TC-047–051, TC-056, TC-059, TC-061, TC-064, TC-067–069, TC-073, TC-078, TC-088, TC-093–096 | — |
+| Corner | TC-005–009, TC-015, TC-020, TC-024, TC-030, TC-034–037, TC-041–042, TC-047–051, TC-056, TC-059, TC-061, TC-064, TC-067–069, TC-073, TC-078, TC-088, TC-093–096, TC-103–106 | — |
 | Stress | TC-065–066 | — |
 
 ### Complexity Notes
@@ -213,6 +216,7 @@
 |---------|--------------|
 | TC-052–056, TC-053, TC-069, TC-091–092 | ユニット（remark シリアライズ / tableFormat 分岐） |
 | TC-085–090, TC-093–096 | ユニット（TipTap table コマンド / insertTableFormat / convert）+ 統合（Table メニュー UI） |
+| TC-104–106 | ユニット（remark シリアライズ / GFM セル `<br />` 往復） |
 | TC-044 | ユニット（採番ロジック） |
 | TC-067–068, TC-072, TC-074 | ユニット（MarkdownDocument + vscode mock） |
 | TC-070（viewType）, TC-075（readonly key）, TC-077 | ユニット（package.json / 定数 / readonly-state） |
@@ -237,7 +241,7 @@ P0 + P1 の机上トレース（実装前）。
 | TC-016 | 既定 insert GFM → save で `\| --- \|` 形式パイプ表 | ✅ GFM デフォルト挿入 |
 | TC-018 | insertTableFormat html → save で `<table>` ブロック | ✅ HTML 挿入 |
 | TC-085 | 表内で addRowBefore 等 → 行/列数変化、GFM save | ✅ 行/列操作 |
-| TC-087 | HTML 表 + リッチセル → convertToGfm → confirm OK → flatten テキスト | ✅ HTML→GFM 確認+flatten |
+| TC-087 | HTML 表 + リッチセル → convertToGfm → confirm OK → リスト等 flatten・改行は `<br />` 保持 | ✅ HTML→GFM 確認+flatten（改行保持に更新） |
 | TC-086 | GFM 表 → convertToHtml 即時、確認なし | ✅ GFM→HTML |
 | TC-089 | setInsertDefault html → ボタン accent クラス、新規 insert が html | ✅ セッションデフォルト+色 |
 | TC-024 | RO ON → Table メニュー全 disabled | ✅ Readonly 無効 |
@@ -319,6 +323,39 @@ P0 + P1 の机上トレース（実装前）。
 
 **Result:** ✅ Pass（npm run test:unit）
 
+### TC-104 (P0): Regression — GFM cell multi-para serializes to `<br />`
+
+| Step | Value |
+|------|-------|
+| Input | `tableFormat:'gfm'` 表セルに paragraph×2（`a` / `b`）を持つ TipTapDoc → `serializeMarkdown` |
+| Expected | パイプセル出力に `<br />`（または同等）と `a`・`b` が含まれる |
+| Actual (pre-fix) | Fail: `cellToPhrasing` が先頭 paragraph のみ残し `b` と改行が落ちる |
+| Actual (post-fix) | Pass |
+
+**Result:** ✅ Pass（npm run test:unit 2026-08-31）
+
+### TC-105 (P0): Regression — GFM cell `<br />` parses as single linebreak
+
+| Step | Value |
+|------|-------|
+| Input | `| a<br />b |\n\| --- \|\n\| 1 |` を `parseMarkdown` |
+| Expected | セルに `a`/`b`。`htmlBlock` による多重改行なし（hardBreak または単一改行相当の段落のみ） |
+| Actual (pre-fix) | Fail: `<br />` が `htmlBlock` になり段落間で二重改行 |
+| Actual (post-fix) | Pass |
+
+**Result:** ✅ Pass（npm run test:unit 2026-08-31）
+
+### TC-106 (P0): Regression — GFM cell `<br />` round-trip stable
+
+| Step | Value |
+|------|-------|
+| Input | `| a<br />b |` → parse → serialize → 再 parse |
+| Expected | serialize に `<br` 相当が残る。再 parse で改行ノード数が増えない |
+| Actual (pre-fix) | Fail: serialize で改行落ち、または parse 側 htmlBlock 増殖 |
+| Actual (post-fix) | Pass |
+
+**Result:** ✅ Pass（npm run test:unit 2026-08-31）
+
 ---
 
 ## Self-Check Report
@@ -332,6 +369,7 @@ P0 + P1 の机上トレース（実装前）。
 - [x] 未対応記法保持（TC-014）
 - [x] GFM/HTML 混在（TC-019, TC-020, TC-091–092）
 - [x] GFM/HTML 二形式 per-table（TC-016–018, TC-085–089）
+- [x] GFM セル内改行 ↔ `<br />` 往復（TC-104–106）
 - [x] 欠番連番（TC-044: 0003 次は 0004）
 - [x] Marp Preview ≠ 三点 Preview（TC-077）
 
@@ -367,3 +405,5 @@ P0 + P1 の机上トレース（実装前）。
 | 2026-08-30 | TC-016–019, TC-024 更新；TC-085–096 追加 | GFM/HTML 二形式表（§3, AD-005）。デフォルト GFM 挿入、HTML 挿入、行/列操作、双方向変換（HTML→GFM 確認付き）、セッションデフォルト+ボタン色、Readonly 全無効、GFM/HTML round-trip。初回編集時自動 GFM→HTML 変換廃止（TC-019） |
 | 2026-08-30 | TC-016–019, TC-054, TC-086–087, TC-091–092 ユニット Red | `markdown-serializer.test.ts` に P0 表形式テスト追加。build-agent 向け TDD Red |
 | 2026-08-30 | TC-101–103 追加 | HTML→GFM 変換後の Raw 正本更新、および確認ダイアログ中の stale `update` による HTML 巻き戻し防止 |
+| 2026-08-31 | TC-104–106 追加；TC-087・TC-096 Expected 更新 | 回帰: GFM セル内改行 ↔ Raw `<br />` 往復（serialize 落ち / htmlBlock 二重改行）。Behavioral fix: TC-096 はブロックリッチのみ制限、TC-087 flatten は改行保持（`gfm-table-linebreak-fix`） |
+| 2026-08-31 | TC-104–106 Result / Spec Gaps を Green に同期 | ユニット Pass 確認後、Red 表記を解除（Expected 本文は不変） |

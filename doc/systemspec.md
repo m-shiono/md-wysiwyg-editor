@@ -194,7 +194,7 @@ Excel 的な表編集。各表は per-table `tableFormat`（`gfm` \| `html`）�
 | `tableFormat` | `'gfm'` \| `'html'` | はい（表ごと） | — | — | 当該表の永続化形式。読込時はソースから推論（既存 `gfmSource` / `html` 属性は互換推論に使用） |
 | `insertTableFormat` | `'gfm'` \| `'html'` | はい（セッション） | — | — | 新規挿入のデフォルト形式。Webview 内メモリのみ（VS Code 再起動で `gfm` にリセット）。ワークスペース / ユーザー設定への永続化は MVP 非対象 |
 | `tableOperation` | 列挙 | 操作ごと | — | — | `insert`、行/列追加・削除（`addRowBefore` / `addRowAfter` / `deleteRow` / `addColumnBefore` / `addColumnAfter` / `deleteColumn`）、`deleteTable`、`convertToGfm`、`convertToHtml`、`setInsertDefault` |
-| `cellContent` | テキスト / リッチ | 任意 | 空 | — | `gfm`: インラインマーク・プレーンテキストのみ。`html`: 改行・リスト・チェックボックス可 |
+| `cellContent` | テキスト / リッチ | 任意 | 空 | — | `gfm`: インラインマーク・プレーンテキスト。**セル内改行**は `<br />`（または同等 hard break）として永続化し、Markdown↔Raw で**単一改行**として往復する（連続 `<br />` による空行相当・多重改行は不可／単一改行へ正規化）。リスト等のブロック構造は不可。`html`: 改行・リスト・チェックボックス可（本項の GFM 改行契約は HTML リッチセル仕様を変更しない） |
 | 表サイズ | 行 × 列 | はい | 1 × 1 | ソフト上限 100 行 × 20 列 | 超過時 UI 警告、保存は許可 |
 
 ### Outputs & Failure Returns
@@ -204,7 +204,7 @@ Excel 的な表編集。各表は per-table `tableFormat`（`gfm` \| `html`）�
 | 成功（`gfm`） | 表 UI 更新、保存時 GFM パイプ表出力 | AD-005, AD-013 |
 | 成功（`html`） | 表 UI 更新、保存時 HTML `<table>` ブロック出力 | AD-005, AD-010, AD-013 |
 | `convertToHtml` 成功 | 当該表の `tableFormat` を `html` に更新。確認なし即時実行（プレーンテキスト昇格、実質ロスレス） | Undo 1 段で復元可 |
-| `convertToGfm` 成功 | 当該表の `tableFormat` を `gfm` に更新。リッチ内容はプレーンテキストへ flatten | 実行前に確認ダイアログ必須 |
+| `convertToGfm` 成功 | 当該表の `tableFormat` を `gfm` に更新。リスト・チェックボックス等のブロックリッチはプレーンテキストへ flatten。セル内改行は GFM の `<br />`（または同等 hard break）として保持し、単一改行へ正規化する | 実行前に確認ダイアログ必須 |
 | `convertToGfm` キャンセル | 変換なし、表・`tableFormat` 不変 | ユーザーが確認を拒否 |
 | `setInsertDefault` 成功 | `insertTableFormat` 更新、Table ボタン色を反映。既存表の `tableFormat` は不変 | AD-004 |
 | ソフト上限超過 | UI 警告表示、編集・保存は継続可 | 100 行 × 20 列、両形式共通 |
@@ -234,11 +234,11 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 #### 正常系
 
 1. 表の挿入、行/列の追加・削除、セル編集ができる
-2. `tableFormat: 'html'` の表では、セル内に複数行テキスト、箇条書き、チェックボックスを入力できる
-3. `tableFormat: 'gfm'` の表では、セル内容は GFM パイプ表が許容する範囲（インラインマーク・プレーンテキスト）に制限される
-4. 保存後の `.md` は当該表の `tableFormat` に応じて GFM パイプ表または HTML `<table>` として記録される
-5. 既存 GFM パイプ表の読込 → `tableFormat: 'gfm'`、既存 HTML `<table>` の読込 → `tableFormat: 'html'`（サニタイズ後）。属性欠落時は `gfmSource` / `html` 属性から推論する
-6. **GFM→HTML** 変換は確認なしで即時実行する。**HTML→GFM** 変換は実行前に確認ダイアログを表示する（例: 「リッチ内容（改行・リスト・チェックボックス等）はプレーンテキストに flatten されます。続行しますか？」）。MVP に「今後表示しない」オプションは設けない
+2. `tableFormat: 'html'` の表では、セル内に複数行テキスト、箇条書き、チェックボックスを入力できる（HTML リッチセルの既存仕様は変更しない）
+3. `tableFormat: 'gfm'` の表では、セル内容はインラインマーク・プレーンテキストに制限する。**セル内改行**はソース上 `<br />`（または同等 hard break）として永続化し、Markdown 面では単一改行として表示・編集する。Raw の `<br />` を Markdown へ投影するときも単一改行とする（空行相当の多重改行は作らない）。リスト・複数段落などのブロック構造は不可
+4. 保存後の `.md` は当該表の `tableFormat` に応じて GFM パイプ表または HTML `<table>` として記録される。GFM 表セル内の改行はパイプ行内の `<br />`（または同等 hard break）として出力する
+5. 既存 GFM パイプ表の読込 → `tableFormat: 'gfm'`、既存 HTML `<table>` の読込 → `tableFormat: 'html'`（サニタイズ後）。属性欠落時は `gfmSource` / `html` 属性から推論する。GFM セル内の `<br />`（または同等）は単一改行として Document / Markdown 面へ復元する
+6. **GFM→HTML** 変換は確認なしで即時実行する。**HTML→GFM** 変換は実行前に確認ダイアログを表示する（例: 「リスト・チェックボックス等はプレーンテキストに flatten されます。セル内改行は `<br />` として保持されます。続行しますか？」）。flatten はブロックリッチの除去を指し、セル内改行は上記 GFM 改行契約に従い保持する。MVP に「今後表示しない」オプションは設けない
 7. 行数が 100 を超える、または列数が 20 を超える場合、エディタ内にソフト上限警告を表示する（保存は拒否しない）
 
 #### 例外系
@@ -256,10 +256,11 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 - 表内数式・ピボット等の Excel 高度機能
 - `insertTableFormat` のワークスペース / ユーザー設定への永続化（MVP）
 - HTML→GFM 変換確認ダイアログの「今後表示しない」オプション（MVP）
+- GFM セル内のリスト・複数段落などブロック構造、および連続 `<br />` による空行相当の保持（単一改行へ正規化）
 
 ### Related Tests
 
-- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-016–024, TC-065（既存）。**要追記:** 挿入デフォルト GFM、HTML 挿入、HTML→GFM 確認付き変換・flatten、GFM→HTML 変換、メニュー行/列操作、ボタン色 / セッションデフォルト切替、Readonly 無効、GFM/HTML round-trip（`table-gfm-html-mode`）
+- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-016–024, TC-065（既存）。**要追記:** 挿入デフォルト GFM、HTML 挿入、HTML→GFM 確認付き変換・flatten、GFM→HTML 変換、メニュー行/列操作、ボタン色 / セッションデフォルト切替、Readonly 無効、GFM/HTML round-trip（`table-gfm-html-mode`）。**要追記（回帰）:** GFM セル内改行 ↔ Raw `<br />` 単一改行往復、連続 `<br />` の単一改行正規化（`gfm-table-linebreak-fix`）
 
 ---
 
@@ -697,3 +698,4 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 | 2026-08-30 | §10 | `reloadExtension` コマンド（拡張更新後の手動ウィンドウリロード）を追加 |
 | 2026-08-30 | AD-005, §3, Spec Gaps, Related Tests | GFM / HTML 二形式表編集。per-table `tableFormat`、Table メニュー（挿入・行/列操作・変換・セッションデフォルト）、初回編集時自動 GFM→HTML 変換廃止。Requirements Brief `table-gfm-html-mode` |
 | 2026-08-30 | §3 | Table メニューに **Delete table** を追加（カーソルが表内のときのみ有効） |
+| 2026-08-31 | §3 | GFM 表セル内改行を `<br />`（または同等 hard break）で永続化し、Markdown↔Raw で単一改行として往復する契約を追加。`convertToGfm` の flatten はブロックリッチ除去とし、セル内改行は保持。HTML リッチセル仕様は不変（`gfm-table-linebreak-fix` / ユーザー決定 A） |

@@ -25,6 +25,18 @@ function isGfmPipeTable(md: string): boolean {
 
 /** Simulate WYSIWYG cell edit without auto format conversion (TC-019). */
 function editTableCell(doc: TipTapDoc, rowIdx: number, colIdx: number, text: string): TipTapDoc {
+  return setTableCellContent(doc, rowIdx, colIdx, [
+    { type: 'paragraph', content: text ? [{ type: 'text', text }] : [] },
+  ]);
+}
+
+/** Multi-paragraph cell content (Enter linebreak in Markdown/WYSIWYG). */
+function setTableCellContent(
+  doc: TipTapDoc,
+  rowIdx: number,
+  colIdx: number,
+  cellContent: TipTapNode[],
+): TipTapDoc {
   const table = getTable(doc);
   if (!table?.content) {
     return doc;
@@ -39,10 +51,7 @@ function editTableCell(doc: TipTapDoc, rowIdx: number, colIdx: number, text: str
         if (ci !== colIdx) {
           return cell;
         }
-        return {
-          ...cell,
-          content: [{ type: 'paragraph', content: text ? [{ type: 'text', text }] : [] }],
-        };
+        return { ...cell, content: cellContent };
       }),
     };
   });
@@ -52,6 +61,64 @@ function editTableCell(doc: TipTapDoc, rowIdx: number, colIdx: number, text: str
       node.type === 'table' ? { ...table, content: rows } : node,
     ),
   };
+}
+
+function getCellAt(doc: TipTapDoc, rowIdx: number, colIdx: number): TipTapNode | undefined {
+  return getTable(doc)?.content?.[rowIdx]?.content?.[colIdx];
+}
+
+function cellTextParts(cell: TipTapNode | undefined): string[] {
+  const parts: string[] = [];
+  for (const node of cell?.content ?? []) {
+    if (node.type === 'paragraph') {
+      const text = (node.content ?? []).map((c) => c.text ?? '').join('');
+      if (text) {
+        parts.push(text);
+      }
+    } else if (node.type === 'hardBreak') {
+      parts.push('\n');
+    } else if (node.type === 'text' && node.text) {
+      parts.push(node.text);
+    }
+  }
+  return parts;
+}
+
+/** Count linebreak markers that would render as extra vertical space (htmlBlock br / empty paras). */
+function countExcessBreakMarkers(cell: TipTapNode | undefined): number {
+  let count = 0;
+  for (const node of cell?.content ?? []) {
+    if (node.type === 'htmlBlock') {
+      const html = String(node.attrs?.html ?? '');
+      if (/<br\s*\/?>/i.test(html)) {
+        count += 1;
+      }
+    }
+  }
+  return count;
+}
+
+function countLinebreakNodes(cell: TipTapNode | undefined): number {
+  let count = 0;
+  for (const node of cell?.content ?? []) {
+    if (node.type === 'hardBreak') {
+      count += 1;
+    } else if (node.type === 'htmlBlock' && /<br\s*\/?>/i.test(String(node.attrs?.html ?? ''))) {
+      count += 1;
+    } else if (node.type === 'paragraph') {
+      for (const child of node.content ?? []) {
+        if (child.type === 'hardBreak') {
+          count += 1;
+        }
+      }
+    }
+  }
+  // Adjacent paragraphs imply at least one visual break between them
+  const paragraphs = (cell?.content ?? []).filter((n) => n.type === 'paragraph');
+  if (paragraphs.length > 1) {
+    count += paragraphs.length - 1;
+  }
+  return count;
 }
 
 function getSerializerExport(name: string): ((doc: TipTapDoc) => TipTapDoc) | undefined {
@@ -188,10 +255,68 @@ suite('Markdown serializer unit tests', () => {
     const out = serializeMarkdown(converted);
     assert.ok(isGfmPipeTable(out), 'converted table must serialize as GFM pipe table');
     assert.ok(out.includes('Line1'));
-    assert.ok(out.includes('Line2') || out.includes('Line1 Line2') || out.includes('Line1<br'));
+    assert.ok(out.includes('Line2'), 'line2 text must survive convert');
+    assert.ok(
+      /Line1\s*<br\s*\/?>\s*Line2/i.test(out),
+      'cell linebreak must be preserved as <br /> after convertToGfm (not space-joined)',
+    );
     assert.ok(out.includes('Item A'));
     assert.ok(out.includes('Done'));
     assert.ok(!out.includes('<ul>'), 'rich list markup must be flattened for GFM');
+  });
+
+  test('TC-104: gfm cell multi-paragraph serializes to br in pipe cell', () => {
+    const md = '| h |\n| --- |\n| x |\n';
+    let doc = parseMarkdown(md);
+    assert.strictEqual(getTable(doc)?.attrs?.tableFormat, 'gfm');
+    doc = setTableCellContent(doc, 1, 0, [
+      { type: 'paragraph', content: [{ type: 'text', text: 'a' }] },
+      { type: 'paragraph', content: [{ type: 'text', text: 'b' }] },
+    ]);
+    const out = serializeMarkdown(doc);
+    assert.ok(isGfmPipeTable(out), 'must stay GFM pipe table');
+    assert.ok(out.includes('a'), 'first line must serialize');
+    assert.ok(out.includes('b'), 'second line must serialize');
+    assert.ok(/<br\s*\/?>/i.test(out), 'multi-para cell must emit <br /> (or equivalent) in Raw');
+  });
+
+  test('TC-105: gfm pipe cell br parses as single linebreak without htmlBlock', () => {
+    const md = '| a<br />b |\n| --- |\n| 1 |\n';
+    const doc = parseMarkdown(md);
+    const cell = getCellAt(doc, 0, 0);
+    assert.ok(cell, 'header cell must exist');
+    const texts = cellTextParts(cell).join('');
+    assert.ok(texts.includes('a'), 'must keep text a');
+    assert.ok(texts.includes('b'), 'must keep text b');
+    assert.strictEqual(
+      countExcessBreakMarkers(cell),
+      0,
+      'br must not become htmlBlock (double-break) inside GFM cell',
+    );
+    // Single visual linebreak: hardBreak in one paragraph, or two paragraphs without htmlBlock
+    const linebreakCount = countLinebreakNodes(cell);
+    assert.ok(linebreakCount >= 1, 'must represent a linebreak between a and b');
+    assert.ok(linebreakCount <= 1, 'must be a single linebreak, not multiple');
+  });
+
+  test('TC-106: gfm cell br survives parse-serialize round-trip without extra breaks', () => {
+    const md = '| a<br />b |\n| --- |\n| 1 |\n';
+    const once = parseMarkdown(md);
+    const serialized = serializeMarkdown(once);
+    assert.ok(/<br\s*\/?>/i.test(serialized), 'serialize must keep <br /> (or equivalent)');
+    assert.ok(serialized.includes('a') && serialized.includes('b'));
+    const twice = parseMarkdown(serialized);
+    const cellOnce = getCellAt(once, 0, 0);
+    const cellTwice = getCellAt(twice, 0, 0);
+    assert.strictEqual(
+      countExcessBreakMarkers(cellTwice),
+      0,
+      'round-trip must not introduce htmlBlock br markers',
+    );
+    assert.ok(
+      countLinebreakNodes(cellTwice) <= Math.max(1, countLinebreakNodes(cellOnce)),
+      'round-trip must not grow linebreak nodes',
+    );
   });
 
   test('TC-091: gfm table round-trip preserves pipe format', () => {

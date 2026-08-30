@@ -28,8 +28,14 @@ suite('table-convert', () => {
     const out = serializeMarkdown(converted);
     assert.ok(isGfmPipeTable(out), 'must serialize as GFM pipe table');
     assert.ok(out.includes('Line1'));
+    assert.ok(out.includes('Line2'), 'linebreak second line must survive flatten');
+    assert.ok(
+      /Line1\s*<br\s*\/?>\s*Line2/i.test(out),
+      'cell linebreak must be kept as <br /> (lists flatten; breaks do not)',
+    );
     assert.ok(out.includes('Item A'));
     assert.ok(!out.includes('<table>'), 'HTML block must be replaced by GFM');
+    assert.ok(!out.includes('<ul>'), 'list markup must be flattened');
   });
 
   test('TC-097: convert only middle html table in multi-table document', () => {

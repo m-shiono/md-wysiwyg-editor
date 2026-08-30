@@ -253,6 +253,14 @@ function phrasingToTipTap(nodes: PhrasingContent[]): TipTapNode[] {
         });
         break;
       case 'html':
+        // GFM セル内 <br /> を text にすると改行が落ち、htmlBlock にすると二重改行になる
+        if (isGfmBreakHtml(node.value)) {
+          const last = result[result.length - 1];
+          if (last?.type !== 'hardBreak') {
+            result.push({ type: 'hardBreak' });
+          }
+          break;
+        }
         result.push({ type: 'text', text: node.value });
         break;
       default:
@@ -278,13 +286,17 @@ function inferTableFormat(attrs?: Record<string, unknown>): TableFormat {
   return 'gfm';
 }
 
-function gfmTableToHtmlTable(table: Table, context: MdastToTipTapContext): TipTapNode {
+function gfmTableToHtmlTable(table: Table, _context: MdastToTipTapContext): TipTapNode {
   const rows = table.children.map((row: TableRow) => {
     const cells = row.children.map((cell: TableCell) => ({
       type: row.children.indexOf(cell) === 0 && table.align ? 'tableHeader' : 'tableCell',
-      content: cell.children.length
-        ? cell.children.map((c) => mdastToTipTap(c, context) as TipTapNode)
-        : [{ type: 'paragraph' }],
+      // phrasing として扱う。mdastToTipTap だと <br /> が htmlBlock になる
+      content: [
+        {
+          type: 'paragraph',
+          content: phrasingToTipTap(cell.children),
+        },
+      ],
     }));
     return { type: 'tableRow', content: cells };
   });
@@ -512,6 +524,20 @@ function tipTapNodeToMdast(node: TipTapNode): Content | undefined {
   }
 }
 
+const GFM_CELL_BREAK_HTML = '<br />';
+
+function isGfmBreakHtml(value: string): boolean {
+  return /<br\s*\/?>/i.test(value);
+}
+
+function pushGfmCellBreak(result: PhrasingContent[]): void {
+  const last = result[result.length - 1];
+  if (last?.type === 'html' && isGfmBreakHtml(last.value)) {
+    return;
+  }
+  result.push({ type: 'html', value: GFM_CELL_BREAK_HTML });
+}
+
 function tipTapPhrasingToMdast(nodes: TipTapNode[]): PhrasingContent[] {
   const result: PhrasingContent[] = [];
   for (const node of nodes) {
@@ -522,6 +548,11 @@ function tipTapPhrasingToMdast(nodes: TipTapNode[]): PhrasingContent[] {
         alt: (node.attrs?.alt as string) ?? '',
         title: (node.attrs?.title as string | null | undefined) ?? null,
       });
+      continue;
+    }
+    if (node.type === 'hardBreak') {
+      // mdast `break` はパイプ表で空白になるため HTML <br /> を使う
+      pushGfmCellBreak(result);
       continue;
     }
     if (node.type !== 'text' || !node.text) {
@@ -565,13 +596,27 @@ function tipTapTableToMdast(node: TipTapNode): Table {
 }
 
 function cellToPhrasing(nodes: TipTapNode[]): PhrasingContent[] {
+  const result: PhrasingContent[] = [];
   for (const node of nodes) {
     if (node.type === 'paragraph') {
       const phrasing = tipTapPhrasingToMdast(node.content ?? []);
-      if (phrasing.length > 0) {
-        return phrasing;
+      if (phrasing.length === 0) {
+        continue;
+      }
+      if (result.length > 0) {
+        pushGfmCellBreak(result);
+      }
+      result.push(...phrasing);
+      continue;
+    }
+    if (node.type === 'hardBreak') {
+      if (result.length > 0) {
+        pushGfmCellBreak(result);
       }
     }
+  }
+  if (result.length > 0) {
+    return result;
   }
   const text = flattenTipTapNodesToText(nodes);
   return text ? [{ type: 'text', value: text }] : [];
