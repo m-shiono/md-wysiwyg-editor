@@ -223964,6 +223964,66 @@ img.ProseMirror-separator {
   function getRawEditor() {
     return document.getElementById("raw-editor");
   }
+  function getLinkInputBar() {
+    return document.getElementById("link-input-bar");
+  }
+  function getLinkUrlInput() {
+    return document.getElementById("link-url-input");
+  }
+  function hideLinkInputBar() {
+    getLinkInputBar()?.classList.add("hidden");
+  }
+  function showLinkInputBar() {
+    if (!editor || readonly || editorMode !== "markdown") {
+      return;
+    }
+    editor.chain().focus().extendMarkRange("link").run();
+    const href = editor.getAttributes("link").href ?? "";
+    const bar = getLinkInputBar();
+    const input = getLinkUrlInput();
+    if (!bar || !input) {
+      return;
+    }
+    input.value = href;
+    bar.classList.remove("hidden");
+    input.focus();
+    input.select();
+  }
+  function applyLinkFromInput() {
+    if (!editor || readonly || editorMode !== "markdown") {
+      hideLinkInputBar();
+      return;
+    }
+    const input = getLinkUrlInput();
+    if (!input) {
+      return;
+    }
+    const url = input.value.trim();
+    if (url) {
+      editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
+    } else {
+      editor.chain().focus().extendMarkRange("link").unsetLink().run();
+    }
+    hideLinkInputBar();
+    editor.commands.focus();
+  }
+  function attachLinkInputHandlers() {
+    const input = getLinkUrlInput();
+    if (!input || input.dataset.bound === "1") {
+      return;
+    }
+    input.dataset.bound = "1";
+    input.addEventListener("keydown", (event3) => {
+      if (event3.key === "Enter") {
+        event3.preventDefault();
+        applyLinkFromInput();
+      } else if (event3.key === "Escape") {
+        event3.preventDefault();
+        hideLinkInputBar();
+        editor?.commands.focus();
+      }
+    });
+  }
   function isRawFocused() {
     const raw = getRawEditor();
     return !!raw && document.activeElement === raw;
@@ -224007,6 +224067,9 @@ img.ProseMirror-separator {
     }
     if (formatToolbar) {
       formatToolbar.classList.toggle("hidden", mode !== "markdown");
+    }
+    if (mode !== "markdown" || readonly) {
+      hideLinkInputBar();
     }
     const canEdit = !readonly && (mode === "markdown" || mode === "raw");
     editor?.setEditable(mode === "markdown" && canEdit, false);
@@ -224074,6 +224137,7 @@ img.ProseMirror-separator {
       });
       isEditorInitialized = true;
       attachToolbarHandlers();
+      attachLinkInputHandlers();
       attachModeToolbarHandlers();
       attachPasteHandler();
       attachRawEditorHandlers();
@@ -224181,13 +224245,9 @@ img.ProseMirror-separator {
           case "orderedList":
             editor.chain().focus().toggleOrderedList().run();
             break;
-          case "link": {
-            const url = prompt("URL");
-            if (url) {
-              editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
-            }
+          case "link":
+            showLinkInputBar();
             break;
-          }
           case "codeBlock":
             editor.chain().focus().toggleCodeBlock().run();
             break;

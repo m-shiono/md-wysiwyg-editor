@@ -462,6 +462,9 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     <button data-cmd="codeBlock" title="Code Block">Code</button>
     <button data-cmd="insertTable" title="Insert Table">Table</button>
   </div>
+  <div id="link-input-bar" class="hidden" role="group" aria-label="Link URL">
+    <input type="url" id="link-url-input" placeholder="https://example.com" spellcheck="false" aria-label="Link URL" />
+  </div>
   <div id="table-warning" class="hidden"></div>
   <div id="raw-parse-banner" class="hidden" role="alert"></div>
   <div id="editor"></div>

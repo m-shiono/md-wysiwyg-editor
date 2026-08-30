@@ -226,6 +226,72 @@ function getRawEditor(): HTMLTextAreaElement | null {
   return document.getElementById('raw-editor') as HTMLTextAreaElement | null;
 }
 
+function getLinkInputBar(): HTMLElement | null {
+  return document.getElementById('link-input-bar');
+}
+
+function getLinkUrlInput(): HTMLInputElement | null {
+  return document.getElementById('link-url-input') as HTMLInputElement | null;
+}
+
+function hideLinkInputBar(): void {
+  getLinkInputBar()?.classList.add('hidden');
+}
+
+function showLinkInputBar(): void {
+  if (!editor || readonly || editorMode !== 'markdown') {
+    return;
+  }
+  editor.chain().focus().extendMarkRange('link').run();
+  const href = (editor.getAttributes('link').href as string) ?? '';
+  const bar = getLinkInputBar();
+  const input = getLinkUrlInput();
+  if (!bar || !input) {
+    return;
+  }
+  input.value = href;
+  bar.classList.remove('hidden');
+  input.focus();
+  input.select();
+}
+
+function applyLinkFromInput(): void {
+  if (!editor || readonly || editorMode !== 'markdown') {
+    hideLinkInputBar();
+    return;
+  }
+  const input = getLinkUrlInput();
+  if (!input) {
+    return;
+  }
+  const url = input.value.trim();
+  if (url) {
+    editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+  } else {
+    editor.chain().focus().extendMarkRange('link').unsetLink().run();
+  }
+  hideLinkInputBar();
+  editor.commands.focus();
+}
+
+function attachLinkInputHandlers(): void {
+  const input = getLinkUrlInput();
+  if (!input || input.dataset.bound === '1') {
+    return;
+  }
+  input.dataset.bound = '1';
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      applyLinkFromInput();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      hideLinkInputBar();
+      editor?.commands.focus();
+    }
+  });
+}
+
 function isRawFocused(): boolean {
   const raw = getRawEditor();
   return !!raw && document.activeElement === raw;
@@ -276,6 +342,9 @@ function setModeUi(mode: EditorMode): void {
   if (formatToolbar) {
     // Format toolbar only for Markdown WYSIWYG (and hidden when file RO).
     formatToolbar.classList.toggle('hidden', mode !== 'markdown');
+  }
+  if (mode !== 'markdown' || readonly) {
+    hideLinkInputBar();
   }
 
   const canEdit = !readonly && (mode === 'markdown' || mode === 'raw');
@@ -354,6 +423,7 @@ function initEditor(initialDoc: TipTapDoc): void {
 
     isEditorInitialized = true;
     attachToolbarHandlers();
+    attachLinkInputHandlers();
     attachModeToolbarHandlers();
     attachPasteHandler();
     attachRawEditorHandlers();
@@ -478,13 +548,9 @@ function attachToolbarHandlers(): void {
         case 'orderedList':
           editor.chain().focus().toggleOrderedList().run();
           break;
-        case 'link': {
-          const url = prompt('URL');
-          if (url) {
-            editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
-          }
+        case 'link':
+          showLinkInputBar();
           break;
-        }
         case 'codeBlock':
           editor.chain().focus().toggleCodeBlock().run();
           break;
