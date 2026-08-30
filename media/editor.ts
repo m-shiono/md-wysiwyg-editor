@@ -28,8 +28,82 @@ type TableContext = {
   tableFormat: TableFormat | null;
 };
 
-const HTML_TO_GFM_CONFIRM_MESSAGE =
-  'Rich content (line breaks, lists, checkboxes, etc.) will be flattened to plain text. Continue?';
+
+function flattenNodesToText(nodes: JSONContent[] | undefined): string {
+  if (!nodes) {
+    return '';
+  }
+  const parts: string[] = [];
+  for (const node of nodes) {
+    if (node.type === 'text' && node.text) {
+      parts.push(node.text);
+    } else if (node.type === 'paragraph') {
+      const text = flattenNodesToText(node.content as JSONContent[] | undefined);
+      if (text) {
+        parts.push(text);
+      }
+    } else if (
+      node.type === 'bulletList' ||
+      node.type === 'orderedList' ||
+      node.type === 'taskList'
+    ) {
+      for (const item of node.content ?? []) {
+        const text = flattenNodesToText(item.content as JSONContent[] | undefined);
+        if (text) {
+          parts.push(text);
+        }
+      }
+    } else if (node.content) {
+      const text = flattenNodesToText(node.content as JSONContent[]);
+      if (text) {
+        parts.push(text);
+      }
+    }
+  }
+  return parts.join(' ');
+}
+
+function convertTableToGfmInDoc(doc: JSONContent, tableIndex: number): JSONContent {
+  let index = 0;
+  const content = (doc.content ?? []).map((node) => {
+    if (node.type !== 'table') {
+      return node;
+    }
+    if (index !== tableIndex) {
+      index += 1;
+      return node;
+    }
+    index += 1;
+    const rows = (node.content ?? []).map((row) => ({
+      ...row,
+      content: (row.content ?? []).map((cell) => {
+        const text = flattenNodesToText(cell.content as JSONContent[] | undefined);
+        return {
+          ...cell,
+          content: [{ type: 'paragraph', content: text ? [{ type: 'text', text }] : [] }],
+        };
+      }),
+    }));
+    return {
+      ...node,
+      attrs: { ...node.attrs, tableFormat: 'gfm', html: null },
+      content: rows,
+    };
+  });
+  return { ...doc, content };
+}
+
+function applyConvertToGfmInEditor(ed: Editor): void {
+  const ctx = getTableContext(ed);
+  if (!ctx.inTable) {
+    return;
+  }
+  const converted = convertTableToGfmInDoc(ed.getJSON(), ctx.tableIndex);
+  suppressUpdate = true;
+  ed.commands.setContent(prepareDocForEditor(converted as TipTapDoc));
+  suppressUpdate = false;
+  updateTableMenuState();
+}
 
 const vscode = acquireVsCodeApi();
 const lowlight = createLowlight(common);
@@ -761,15 +835,8 @@ function handleTableOperation(op: string): void {
       if (!ctx.inTable || ctx.tableFormat === 'gfm') {
         return;
       }
-      if (!window.confirm(HTML_TO_GFM_CONFIRM_MESSAGE)) {
-        return;
-      }
-      vscode.postMessage({
-        type: 'tableOperation',
-        operation: 'convertToGfm',
-        docJson: JSON.stringify(editor.getJSON()),
-        tableIndex: ctx.tableIndex,
-      });
+      // window.confirm は VS Code Webview で動作しないため Host 側で確認する。
+      vscode.postMessage({ type: 'requestConvertToGfm' });
       break;
     }
     case 'setDefaultGfm':
@@ -945,6 +1012,12 @@ window.addEventListener('message', (event) => {
       }
       break;
     }
+    case 'convertToGfmApproved':
+      if (editor && !readonly && editorMode === 'markdown') {
+        applyConvertToGfmInEditor(editor);
+        postDocUpdate();
+      }
+      break;
     case 'imageInserted':
       if (editor && !readonly && editorMode === 'markdown') {
         editor.chain().focus().setImage({ src: message.relativePath, alt: message.relativePath }).run();

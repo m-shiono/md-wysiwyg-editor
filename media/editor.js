@@ -223804,7 +223804,75 @@ img.ProseMirror-separator {
 
   // media/editor.ts
   init_purify_es();
-  var HTML_TO_GFM_CONFIRM_MESSAGE = "Rich content (line breaks, lists, checkboxes, etc.) will be flattened to plain text. Continue?";
+  function flattenNodesToText(nodes5) {
+    if (!nodes5) {
+      return "";
+    }
+    const parts = [];
+    for (const node2 of nodes5) {
+      if (node2.type === "text" && node2.text) {
+        parts.push(node2.text);
+      } else if (node2.type === "paragraph") {
+        const text4 = flattenNodesToText(node2.content);
+        if (text4) {
+          parts.push(text4);
+        }
+      } else if (node2.type === "bulletList" || node2.type === "orderedList" || node2.type === "taskList") {
+        for (const item of node2.content ?? []) {
+          const text4 = flattenNodesToText(item.content);
+          if (text4) {
+            parts.push(text4);
+          }
+        }
+      } else if (node2.content) {
+        const text4 = flattenNodesToText(node2.content);
+        if (text4) {
+          parts.push(text4);
+        }
+      }
+    }
+    return parts.join(" ");
+  }
+  function convertTableToGfmInDoc(doc3, tableIndex) {
+    let index = 0;
+    const content = (doc3.content ?? []).map((node2) => {
+      if (node2.type !== "table") {
+        return node2;
+      }
+      if (index !== tableIndex) {
+        index += 1;
+        return node2;
+      }
+      index += 1;
+      const rows = (node2.content ?? []).map((row) => ({
+        ...row,
+        content: (row.content ?? []).map((cell) => {
+          const text4 = flattenNodesToText(cell.content);
+          return {
+            ...cell,
+            content: [{ type: "paragraph", content: text4 ? [{ type: "text", text: text4 }] : [] }]
+          };
+        })
+      }));
+      return {
+        ...node2,
+        attrs: { ...node2.attrs, tableFormat: "gfm", html: null },
+        content: rows
+      };
+    });
+    return { ...doc3, content };
+  }
+  function applyConvertToGfmInEditor(ed) {
+    const ctx = getTableContext(ed);
+    if (!ctx.inTable) {
+      return;
+    }
+    const converted = convertTableToGfmInDoc(ed.getJSON(), ctx.tableIndex);
+    suppressUpdate = true;
+    ed.commands.setContent(prepareDocForEditor(converted));
+    suppressUpdate = false;
+    updateTableMenuState();
+  }
   var vscode = acquireVsCodeApi();
   var lowlight = createLowlight(grammars);
   mermaid_default.initialize({ startOnLoad: false, securityLevel: "strict" });
@@ -224421,15 +224489,7 @@ img.ProseMirror-separator {
         if (!ctx.inTable || ctx.tableFormat === "gfm") {
           return;
         }
-        if (!window.confirm(HTML_TO_GFM_CONFIRM_MESSAGE)) {
-          return;
-        }
-        vscode.postMessage({
-          type: "tableOperation",
-          operation: "convertToGfm",
-          docJson: JSON.stringify(editor.getJSON()),
-          tableIndex: ctx.tableIndex
-        });
+        vscode.postMessage({ type: "requestConvertToGfm" });
         break;
       }
       case "setDefaultGfm":
@@ -224593,6 +224653,12 @@ img.ProseMirror-separator {
         }
         break;
       }
+      case "convertToGfmApproved":
+        if (editor && !readonly && editorMode === "markdown") {
+          applyConvertToGfmInEditor(editor);
+          postDocUpdate();
+        }
+        break;
       case "imageInserted":
         if (editor && !readonly && editorMode === "markdown") {
           editor.chain().focus().setImage({ src: message.relativePath, alt: message.relativePath }).run();

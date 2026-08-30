@@ -313,6 +313,21 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
           }
         }
         break;
+      case 'requestConvertToGfm':
+        if (readonly) {
+          return;
+        }
+        {
+          const answer = await vscode.window.showWarningMessage(
+            'リッチ内容（改行・リスト・チェックボックス等）はプレーンテキストに flatten されます。続行しますか？',
+            { modal: true },
+            '変換',
+          );
+          if (answer === '変換') {
+            this.postMessage(panel.webview, { type: 'convertToGfmApproved' });
+          }
+        }
+        break;
       case 'tableOperation':
         if (readonly || typeof message.docJson !== 'string') {
           return;
