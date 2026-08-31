@@ -3,7 +3,7 @@
 ## 概要
 
 - **対象:** VS Code 拡張 vsc-md-editor の MVP 機能（Custom Editor、三点モード Preview/Markdown/Raw、WYSIWYG、**GFM 書式ツールバー**、表、Readonly、Mermaid、Marp、画像 paste、シリアライズ、セキュリティ、ログ・共存）
-- **対応仕様:** [doc/systemspec.md](systemspec.md) §1–§10（AD-016 三点モード、§2/§8/§9 GFM 書式ツールバー含む）
+- **対応仕様:** [doc/systemspec.md](systemspec.md) §1–§10（AD-016 三点モード、§2/§8/§9 GFM 書式ツールバー、§1/§5/§6/§7/§9 `preview-rich-embed` 含む）
 - **テストコード:** `src/test/suite/unit/**/*.test.ts`（mocha + vscode mock）、`src/test/suite/integration/**/*.test.ts`（@vscode/test-electron）
 - **作成日:** 2026-08-29
 
@@ -33,6 +33,9 @@
 | `clipboardImage` | `image/*` バイナリ | 1 B | — | jpg/png/gif/svg |
 | `sequenceNumber` | 整数 | 1 | 9999 | `image-NNNN` ゼロ埋め |
 | `untrustedHtml` | `string` | — | — | 外部 `.md` 取込 |
+| `imageSrc` | `string` | — | — | Document / `docJson` 内相対パス（例: `img/image-0001.png`）。Host が表示投影時に rewrite |
+| `isMarpDocument` | `(markdown: string) => boolean` | — | — | 共有ユーティリティ。Preview 切入・`markdownText` 更新で再評価 |
+| `previewMarpHtml` | `{ html: string }` | — | — | Host → Webview。サニタイズ済み Marp body 断片 |
 
 ### Outputs & Failure Returns
 
@@ -65,6 +68,10 @@
 | Raw 中の書式コマンド | ツールバー表示は維持、コマンドは no-op | §2 |
 | strike シリアライズ | 常に GFM `~~text~~`（`<del>` / `<s>` は出さない） | §8 |
 | sanitize `del` / `s` | 許可。`mark`（下線・highlight）は許可追加しない | §9 |
+| 画像表示投影成功 | TipTap `image.src` / Marp HTML `<img src>` が webview URI | Host `asWebviewUri` rewrite。Document / serialize は相対パス維持 | §7, §9 |
+| 画像 URI 解決不可 | broken image + Output debug ログ（通知なし） | `img/` 外・`..` 含む・ワークスペース外は rewrite しない | §7, §9 |
+| Preview 内 Marp 描画成功 | `#preview-marp-root` にスライド HTML RO 表示、`#editor` 非表示 | `previewMarpHtml` postMessage。入力は `markdownText` | §1, §6 |
+| Preview Mermaid 表示 | `.mermaid-preview` のみ表示、`.mermaid-source` 非表示 | `body[data-mode="preview"]` CSS | §5 |
 
 ### Preconditions & Assumptions
 
@@ -88,6 +95,7 @@
 - 番号付きタスク `1. [ ]` の unordered 正規化・複合 mark のネスト順入れ替わりは仕様上の許容（§2 / §8）。本 testspec では意味保持を検証し byte 一致は要求しない
 - **実装ギャップ（Red テスト済み）:** TC-016–019, TC-054, TC-086–087, TC-091–092 ユニット（`table-gfm-html-mode`）。TC-085, TC-089–090, TC-093–096 は未実装
 - **実装ギャップ（Red テスト済み）:** TC-107–123 ユニット（`gfm-format-toolbar`）。build-agent 向け TDD Red
+- **`preview-rich-embed`:** TC-124–142 ユニット Green（`preview-rich-embed.test.ts`、91 passing）
 
 ---
 
@@ -154,7 +162,7 @@
 | TC-057 | Happy | security-csp | P0 | Webview HTML を検査 | `default-src 'none'` 基調 CSP、nonce 付き script/style | CSP 設定 | §9 正常系 1 |
 | TC-058 | Corner | security-script-strip | P0 | `<script>alert(1)</script><p>ok</p>` を含む doc を表示 | `<script>` 除去、`<p>ok</p>` 表示 | XSS 防御 | §9 正常系 2 |
 | TC-059 | Corner | security-on-attr-strip | P1 | `<img src=x onerror=alert(1)>` を含む doc | `on*` 属性除去 | イベント属性拒否 | §9 Outputs |
-| TC-060 | Happy | security-local-roots | P1 | Webview `localResourceRoots` を検証 | 拡張 `media/` と WS `img/` のみ | リソース制限 | §9 Preconditions |
+| TC-060 | Happy | security-local-roots | P1 | Webview `localResourceRoots` を検証；`isSafeImagePath` と `img/` スコープの整合 | 拡張 `media/` と WS `img/` のみ。`isSafeImagePath` は `img/` プレフィックス必須・`..` 禁止と一致。CSP / roots 緩和なし | リソース制限 + 画像 rewrite 回帰 | §9 Preconditions, §7 |
 | TC-061 | Corner | security-image-scope | P1 | ワークスペース外パスへの画像保存試行 | 拒否、通知 | 保存先限定 | §9 正常系 3 |
 | TC-062 | Happy | output-channel | P1 | シリアライズエラーを発生させる | Output `MD WYSIWYG Editor` に概要記録（全文なし） | ログ可観測性 | §10 正常系 1 |
 | TC-063 | Happy | editor-coexistence | P1 | Custom Editor 開放中に `Reopen Editor With…` → Built-in Markdown | ビルトインエディタで開ける | AD-014 共存 | §10 正常系 3 |
@@ -171,12 +179,12 @@
 | TC-074 | Happy | edit-dirty-save | P0 | Markdown または Raw 相当の内容変更 → `save` / `saveAs` | 変更で dirty（`onDidChange`）、save 後ディスク更新・シリアライズ反映 | 通常編集の dirty/save 契約 | §1 正常系 5, §8 |
 | TC-075 | Happy | file-ro-locks-editors | P0 | ファイル RO ON 後に Markdown / Raw 編集を試行 | 両編集面とも編集不可（`editable: false`）。三点 Preview（描画 RO）とは別概念（RO フラグ独立） | AD-006 全編集面ロック | §4 正常系 1, 3 |
 | TC-076 | Happy | ro-allows-viewing | P0 | ファイル RO ON のまま三点モード切替・Preview 表示・Marp Preview 起動 | モード切替可、Preview / Marp 閲覧可。編集は不可のまま | RO 中も閲覧系は可 | §4 正常系 4–5, §6 |
-| TC-077 | Structural | marp-vs-preview | P0 | Custom Editor viewType と Marp Preview パネル/コマンドを比較 | Marp Preview（`vsc-md-editor.marpPreview` / `showMarpPreview`）は三点 Preview ではない。viewType `wysiwyg` と別責務 | AD-008 責務分離 | §1, §6 |
+| TC-077 | Structural | marp-vs-preview | P0 | 三点 Preview（mode id `preview`）と Marp Preview **パネル**（`vsc-md-editor.marpPreview` / `showMarpPreview`）を比較 | **別 UI インスタンス**・別 viewType/コマンドは維持。三点 Preview は Marp 検出時に同一 Webview 内 `#preview-marp-root` でスライド RO 表示可（非 Marp は TipTap RO）。パネル自動オープンなし | AD-008 責務分離 + Preview 内 Marp 兼用（RK-017） | §1, §6 |
 | TC-078 | Corner | raw-parse-fail | P0 | Raw ソースをパース不能な文字列に変更して Document へ適用試行 | Document（直前の有効内容）非破壊、通知 + Output、`isRawParseFailed=true`、`save` ブロック | Raw 失敗時データ保全 | §1 例外系 2, §8 |
 | TC-079 | Happy | raw-parse-recover | P0 | TC-078 状態から有効な Raw ソースに修正して再適用 → `save` | `isRawParseFailed=false`、Document 更新、save 成功 | パース回復後の save 再開 | §1, §8 |
-| TC-080 | Happy | preview-mode-refresh | P0 | Preview または Markdown へモード切替 | Host が Document 最新を `docJson` + `markdownText` で再投影（Raw 離脱 flush 後を含む） | Preview 厳密 RO・切替時 refresh | §1 三者同期, 正常系 3–4 |
-| TC-081 | Happy | raw-mode-text-projection | P0 | Raw へモード切替 | Host が `markdownText` のみ投影（docJson なし） | Raw 面の Document 追随 | §1 三者同期 |
-| TC-082 | Happy | triple-sync-document | P0 | Markdown 編集 → Document；続けて Raw 編集 → Document | 正本 `MarkdownDocument` が唯一の真実。Preview 投影源の `docJson` / `markdownText` が同一 Document から導出 | Raw↔Markdown↔Preview 三者同期 | §1 三者同期 |
+| TC-080 | Happy | preview-mode-refresh | P0 | Preview または Markdown へモード切替 | Host が Document 最新を再投影（Raw 離脱 flush 後を含む）。**非 Marp Preview:** rewrite 済み `docJson`。**Marp 検出 Preview:** `previewMarpHtml` で `#preview-marp-root` 更新。表示層のみで Document / serialize 不変 | Preview 厳密 RO・切替時 refresh | §1 三者同期, 正常系 3–4 |
+| TC-081 | Happy | raw-mode-text-projection | P0 | Raw へモード切替 | Host が `markdownText` のみ投影（docJson なし）。Marp 分岐・画像 rewrite は Raw 面に適用しない | Raw 面の Document 追随 | §1 三者同期 |
+| TC-082 | Happy | triple-sync-document | P0 | Markdown 編集 → Document；続けて Raw 編集 → Document；Preview 投影中に画像 rewrite / Marp HTML / Mermaid CSS が適用 | 正本 `MarkdownDocument` が唯一の真実。`docJson` / `markdownText` は同一 Document から導出。表示層（画像 URI rewrite・`previewMarpHtml`・Mermaid ソース非表示 CSS）は Document / serialize を変更しない | Raw↔Markdown↔Preview 三者同期 + 表示層非変更 | §1 三者同期, AD-008 |
 | TC-083 | Happy | builtin-switch-detect | P1 | dispose 後アクティブタブが同一 `.md` の `TabInputText` または非 wysiwyg `TabInputCustom` | `isBuiltinSwitchToSameMdFile` が true。タブ閉鎖・別 URI・wysiwyg タブは false | Pattern A 検知 | §10 正常系 4 |
 | TC-084 | Happy | open-with-wysiwyg-cmd | P1 | `activate` 後に `getCommands` | `vsc-md-editor.openWithWysiwyg` が登録。`package.json` に command・configuration・editor/title menu が存在 | Pattern A 復帰コマンド | §10 正常系 5 |
 | TC-085 | Happy | table-row-col-ops | P0 | `tableFormat:'gfm'` の表内で Add row above/below、Delete row、Add column left/right、Delete column を順に実行 | 行/列が増減し UI 反映。`tableFormat` 不変。save で GFM パイプ表 | メニュー行/列操作 | §3 正常系 1, Table UI #2 |
@@ -214,15 +222,34 @@
 | TC-121 | Boundary | single-tilde-not-strike | P1 | `~notstrike~` および単独 `~` を含む段落を parse | 取り消し線にしない。literal `~` として保持 | 単一チルダ誤認防止 | §2 In strike |
 | TC-122 | Corner | no-new-format-keybindings | P1 | `package.json` の `contributes.keybindings` と Webview キーマップ | 新項目の keybindings 追加なし。Strike 既定 `Mod-Shift-s` と Blockquote 既定 `Mod-Shift-b` は無効化。HR / Task に新ショートカットなし。既存 Heading `Mod-Alt-1..6` は不変 | ワークベンチコマンド衝突回避 | §2 Behavior 10, Non-Goals |
 | TC-123 | Structural | format-toolbar-composition | P1 | Markdown モードの `#toolbar` HTML を検査 | 個別ボタン（折りたたみ・見出しドロップダウンなし）。視覚セパレータで 4 群。Strike=`S` / `title=Strikethrough` / `data-cmd=strike`。H3–H6。Inline Code=`` ` `` / `inlineCode`。Task / Quote / HR=`―`。既存 Code は `codeBlock` / `title=Code Block` 維持。画像挿入・下線・highlight ボタンなし | UI 契約と Scope Out | §2 ツールバー構成, Non-Goals |
+| TC-124 | Happy | image-uri-rewrite | P0 | `docJson` 内 `image.src` が `img/image-0001.png` の Document を Host が Webview 投影 | `asWebviewUri` 済み webview URI に rewrite された `docJson` が送信される。元 Document の相対パスは不変 | Host 画像 URI 解決（TipTap） | §7 正常系 6, §9 正常系 4 |
+| TC-125 | Happy | image-serialize-relative | P0 | TC-124 状態で save / serialize | ディスク出力は `img/image-0001.png` 相対パスのまま。webview URI は含まれない | serialize 相対パス維持 | §7, §8 正常系 8 |
+| TC-126 | Corner | image-safe-path-scope | P1 | `isSafeImagePath` に `img/image-0001.png`、`../evil.png`、`assets/logo.png`、`img/../other.png` を渡す | `img/...` のみ true。`..` 含む・`img/` プレフィックスなしは false | `img/` スコープ + トラバーサル拒否 | §7, §9 |
+| TC-127 | Corner | image-uri-skip-unsafe | P1 | `docJson` 内 `image.src` が `assets/logo.png`（`img/` 外）の Document を投影 | Host は rewrite しない（broken image 許容）。Document / serialize は相対パス維持 | 非 `img/` パスは解決しない | §7 Outputs, §9 例外系 |
+| TC-128 | Happy | marp-html-image-rewrite | P1 | Marp 出力 HTML に `<img src="img/slide.png">` を含む `previewMarpHtml` | Host が `<img src>` を `asWebviewUri` 済み URL に rewrite して送信 | Marp HTML 画像 rewrite | §6 正常系 6, §9 |
+| TC-129 | Corner | image-https-data-pass-through | P1 | `docJson` 内 `image.src` が `https://example.com/a.png` または `data:image/png;base64,...` | Host rewrite なし。src はそのまま Webview へ（CSP 既存どおり） | 外部/data URI は従来挙動 | §7 正常系 9 |
+| TC-130 | Happy | preview-mermaid-source-hidden | P0 | Preview モード（`body[data-mode="preview"]`）で Mermaid ブロックを含む doc を表示 | `.mermaid-source` は非表示（`display: none` 等）。`.mermaid-preview` のみ表示 | Preview Mermaid 図のみ | §5 正常系 4 |
+| TC-131 | Happy | markdown-mermaid-source-visible | P1 | Markdown モードで同一 Mermaid ブロックを表示 | `.mermaid-source` と `.mermaid-preview` の両方が表示される | Markdown は従来どおり | §5 正常系 5 |
+| TC-132 | Corner | preview-mermaid-error-source-hidden | P1 | Preview モードで不正 Mermaid 構文を含む doc | `.mermaid-preview`（または同等）にエラー表示。`.mermaid-source` は非表示のまま。Document ソースは保持 | Preview エラー時もソース非表示 | §5 Outputs |
+| TC-133 | Structural | is-marp-document-shared | P0 | Preview 分岐と Marp Preview パネルが参照する `isMarpDocument` の export 元を検証 | 同一関数（`src/commands/marp-preview.ts` export または `src/utils/` 共有）を両経路が使用 | Marp 検出の単一正本 | §1, §6 |
+| TC-134 | Happy | preview-marp-swap | P0 | Marp front matter + `---` スライドを含む doc を Preview モードで表示 | `#editor`（TipTap）非表示、`#preview-marp-root` にスライド HTML が RO 表示（縦スクロール一覧） | Preview Marp コンテナ切替 | §1 Preview 分岐, §6 |
+| TC-135 | Happy | preview-non-marp-tiptap | P0 | 通常 Markdown（非 Marp）を Preview モードで表示 | `#editor`（TipTap RO）表示、`#preview-marp-root` は空 | 非 Marp は TipTap RO | §1 Preview 分岐 |
+| TC-136 | Happy | preview-marp-html-message | P0 | Host が `previewMarpHtml` `{ html: string }` を Webview へ送信 | Webview はサニタイズ済み HTML を `#preview-marp-root` に DOM 注入のみ（Host 済み HTML） | postMessage 契約 | §1 postMessage |
+| TC-137 | Structural | preview-marp-uses-markdown-text | P0 | Marp doc を Preview 表示。TipTap `docJson` と `markdownText` を意図的に乖離させた fixture | Marp 描画入力は `markdownText` のみ。`docJson` は Marp 描画に使われない | Document 正本は markdownText | §6 Inputs |
+| TC-138 | Corner | preview-no-marp-panel-auto-open | P1 | 非表示状態の Marp Preview パネルから Preview モードへ切入 | §6 Marp Preview パネルは自動オープンしない | パネル共存・非自動起動 | §1 Non-Goals, §6 |
+| TC-139 | Structural | preview-marp-root-a11y | P1 | Preview 内 Marp 表示時の `#preview-marp-root` DOM | `role="document"`、`aria-readonly="true"` | Marp コンテナ a11y | §1 Preview 分岐 |
+| TC-140 | Happy | preview-leave-clears-marp-root | P1 | Preview（Marp 表示中）から Markdown へ切替 | `#preview-marp-root` を空にし `#editor` を復帰表示 | Preview 離脱時クリーンアップ | §1 正常系 4 |
+| TC-141 | Happy | marp-panel-coexists-with-preview | P1 | Marp doc で Preview 内 Marp 表示中に `showMarpPreview` を手動実行 | §6 パネルもスライド表示。三点 Preview 内 Marp と共存（同一 `markdownText` 由来可） | 二系統共存 | §6 正常系 5, TC-038 |
+| TC-142 | Corner | preview-marp-reeval-on-update | P1 | Preview 表示中に Document の `markdownText` を更新（Marp ↔ 非 Marp 境界を跨ぐ fixture） | `isMarpDocument` を再評価し、`#preview-marp-root` / `#editor` の表示を切替。パネルは自動オープンしない | 動的 Marp 検出 | §1, §6 正常系 7 |
 
 ### Category Coverage
 
 | Category | Covered | N/A Reason |
 |----------|---------|------------|
-| Happy Path | TC-001–004, TC-010–012, TC-016–019, TC-025–027, TC-031, TC-033, TC-038–039, TC-043–044, TC-052–054, TC-057–058, TC-070–072, TC-074–076, TC-079–092, TC-101–102, TC-107–109, TC-111–113, TC-117, TC-120 | — |
+| Happy Path | TC-001–004, TC-010–012, TC-016–019, TC-025–027, TC-031, TC-033, TC-038–039, TC-043–044, TC-052–054, TC-057–058, TC-070–072, TC-074–076, TC-079–092, TC-101–102, TC-107–109, TC-111–113, TC-117, TC-120, TC-124–125, TC-128, TC-130–131, TC-134–136, TC-140–141 | — |
 | Boundary | TC-008, TC-021–023, TC-121 | — |
-| Structural | TC-014, TC-055, TC-077, TC-110, TC-118, TC-123 | — |
-| Corner | TC-005–009, TC-015, TC-020, TC-024, TC-030, TC-034–037, TC-041–042, TC-047–051, TC-056, TC-059, TC-061, TC-064, TC-067–069, TC-073, TC-078, TC-088, TC-093–096, TC-103–106, TC-114–116, TC-119, TC-122 | — |
+| Structural | TC-014, TC-055, TC-077, TC-110, TC-118, TC-123, TC-133, TC-137, TC-139 | — |
+| Corner | TC-005–009, TC-015, TC-020, TC-024, TC-030, TC-034–037, TC-041–042, TC-047–051, TC-056, TC-059, TC-061, TC-064, TC-067–069, TC-073, TC-078, TC-088, TC-093–096, TC-103–106, TC-114–116, TC-119, TC-122, TC-126–127, TC-129, TC-132, TC-138, TC-142 | — |
 | Stress | TC-065–066 | 書式ツールバー自体の最悪計算量は N/A（既存大 doc TC でカバー） |
 
 ### Complexity Notes
@@ -231,6 +258,8 @@
 - 画像連番上限 9999 — MVP では P2 省略（単体テストで modulo 検証可）
 - Mermaid debounce 300 ms — TC-032 でタイマー mock または実時間計測
 - GFM 書式ノード往復は文書サイズ非依存の unit（TC-107–113）。P2 追加なし
+- 画像 URI rewrite / `isSafeImagePath` は O(画像数) の unit（TC-124–129）。P2 追加なし
+- Preview Marp 再描画は Document 更新ごとに Host render（RK-016）— debounce は backlog。P2 省略
 
 ---
 
@@ -251,13 +280,17 @@
 | TC-114–115, TC-120, TC-123 | ユニット（toolbar HTML / RO・モードガード / aria-pressed）+ 統合（任意） |
 | TC-119 | ユニット（`src/utils/sanitize.ts` 許可タグ） |
 | TC-122 | ユニット（`package.json` keybindings + Webview keymap） |
+| TC-124–129 | ユニット（`isSafeImagePath` / `rewriteImageUrisInDocJson` / `rewriteImageUrisInHtml` / serialize 相対パス） |
+| TC-130–132 | ユニット（Webview CSS / `body[data-mode="preview"]` Mermaid NodeView DOM） |
+| TC-133 | ユニット（`isMarpDocument` export 元・Preview / パネル import 一致） |
+| TC-134–142 | ユニット（Preview 分岐・`previewMarpHtml` handler / `#preview-marp-root` DOM）+ 統合（Custom Editor Preview Marp・パネル共存） |
 | TC-044 | ユニット（採番ロジック） |
 | TC-067–068, TC-072, TC-074 | ユニット（MarkdownDocument + vscode mock） |
-| TC-070（viewType）, TC-075（readonly key）, TC-077 | ユニット（package.json / 定数 / readonly-state） |
+| TC-070（viewType）, TC-075（readonly key）, TC-077 | ユニット（package.json / 定数 / readonly-state / Preview vs パネル用語） |
 | TC-070（初期モード）, TC-071, TC-073, TC-076, TC-078–079 | ユニット（EditorModeState / MarkdownDocument + vscode mock） |
-| TC-080–081 | ユニット（editor-mode-sync / buildModeSwitchMessages） |
-| TC-082 | ユニット（MarkdownDocument 三者同期） |
-| TC-080/082 | 統合（Extension Host: Custom Editor 起動・Preview RO・Markdown/Raw 編集・Document 同期） |
+| TC-080–082 | ユニット（editor-mode-sync / buildModeSwitchMessages / 表示層非変更） |
+| TC-082 | ユニット（MarkdownDocument 三者同期 + 表示層が正本を変えないこと） |
+| TC-080/082, TC-134–141 | 統合（Extension Host: Custom Editor 起動・Preview RO・Marp 分岐・パネル共存・Document 同期） |
 | TC-001–051, TC-057–064 | 統合（Extension Development Host） |
 | TC-065–066 | 統合 `@slow` |
 
@@ -294,10 +327,15 @@ P0 + P1 の机上トレース（実装前）。
 | TC-072 | updateDoc → markdownText 更新（正本 Document）；parse → updateDoc で Raw 相当同期 | ✅ ユニット |
 | TC-074 | updateDoc → onDidChange → save → mock FS 更新 | ✅ ユニット |
 | TC-075 | setReadonly(true) → isReadonly；Preview 概念と独立 | ✅ ユニット |
-| TC-077 | customEditors viewType ≠ marpPreview panel / showMarpPreview は別コマンド | ✅ ユニット |
+| TC-077 | 三点 Preview mode id ≠ Marp パネル viewType/コマンド。Preview は Marp 検出時 `#preview-marp-root` 描画可。パネル自動オープンなし | ✅ ユニット（Expected 更新 — RK-017） |
 | TC-071/073/076/078/079 | Preview 一方向・mode switch 非 I/O・RO 切替可・Raw 失敗/回復 | ✅ ユニット |
-| TC-080–081 | Preview/Markdown 切替時 docJson 再投影・Raw は markdownText のみ | ✅ ユニット |
-| TC-082 | Markdown / Raw 編集が同一 Document に収束 | ✅ ユニット |
+| TC-080–082 | Preview/Markdown 切替時 rewrite docJson または previewMarpHtml・Raw は markdownText のみ・表示層は Document 非変更 | ✅ ユニット（TC-080–082 Expected 拡張） |
+| TC-124 | `img/image-0001.png` docJson → Host rewrite → webview URI 投影、Document 相対パス維持 | ✅ Pass — `image-uri-rewrite.ts` |
+| TC-125 | rewrite 投影後 serialize → ディスクは `img/...` 相対パス | ✅ Pass |
+| TC-126 | `isSafeImagePath`: `img/` のみ許可、`..` / 非 `img/` 拒否 | ✅ Pass |
+| TC-130 | Preview: `.mermaid-source` hidden、`.mermaid-preview` visible | ✅ Pass — `editor.css` |
+| TC-134 | Marp doc + Preview → `#editor` hidden、`#preview-marp-root` にスライド | ✅ Pass — `preview-projection.ts` |
+| TC-136 | `previewMarpHtml` → `#preview-marp-root` innerHTML 注入 | ✅ Pass — `messages.ts` / `editor.ts` |
 
 ### gfm-format-toolbar ユニット（2026-08-31、TDD Red）
 
@@ -435,6 +473,38 @@ P0 + P1 の机上トレース（実装前）。
 
 **Command:** `npm run test:unit -- --grep 'TC-10[7-9]|TC-11[0-9]|TC-12[0-3]'` — 15 failing / 2 passing（意図的 Red）
 
+### preview-rich-embed ユニット（2026-08-31、Green）
+
+| TC | Trace | Result |
+|----|-------|--------|
+| TC-124 | `rewriteImageUrisInDocJson` → webview URI 投影、Document 相対パス維持 | ✅ Pass — `image-uri-rewrite.ts` |
+| TC-125 | rewrite 後 serialize → `img/...` 相対パス維持 | ✅ Pass |
+| TC-126 | `isSafeImagePath` img/ のみ、`..` / 非 img/ 拒否 | ✅ Pass |
+| TC-127 | `assets/logo.png` は rewrite しない | ✅ Pass |
+| TC-128 | Marp HTML `<img src>` rewrite | ✅ Pass — `rewriteImageUrisInHtml` |
+| TC-129 | `https:` / `data:` pass-through | ✅ Pass |
+| TC-130 | Preview: `.mermaid-source` hidden | ✅ Pass — `editor.css` |
+| TC-131 | Markdown: source + preview 両方表示 | ✅ Pass |
+| TC-132 | Preview エラー時も source hidden | ✅ Pass |
+| TC-133 | `isMarpDocument` 共有 export | ✅ Pass — `is-marp-document.ts` |
+| TC-134 | Preview + Marp → `#preview-marp-root` | ✅ Pass — `preview-projection.ts` |
+| TC-135 | Preview + 非 Marp → TipTap RO | ✅ Pass |
+| TC-136 | `previewMarpHtml` postMessage 契約 | ✅ Pass — `messages.ts` / `editor.ts` |
+| TC-137 | Marp 入力は `markdownText` のみ | ✅ Pass |
+| TC-138 | Preview 切入でパネル自動オープンなし | ✅ Pass |
+| TC-139 | `#preview-marp-root` a11y 属性 | ✅ Pass |
+| TC-140 | Preview 離脱で marp root クリア | ✅ Pass |
+| TC-141 | パネルと Preview 内 Marp 共存 | ✅ Pass |
+| TC-142 | `markdownText` 更新で Marp 再評価 | ✅ Pass |
+
+**Command:** `npm run test:unit -- --grep 'TC-12[4-9]|TC-13[0-9]|TC-14[0-2]'` — 21 passing
+
+### Summary（preview-rich-embed）
+
+| ID | Priority | Result | Notes |
+|----|----------|--------|-------|
+| TC-124–142 | P0/P1 | ✅ Pass | `preview-rich-embed.test.ts` |
+
 ### Summary（gfm-format-toolbar）
 
 | ID | Priority | Result | Notes |
@@ -548,7 +618,11 @@ P0 + P1 の机上トレース（実装前）。
 - [x] GFM/HTML 二形式 per-table（TC-016–018, TC-085–089）
 - [x] GFM セル内改行 ↔ `<br />` 往復（TC-104–106）
 - [x] 欠番連番（TC-044: 0003 次は 0004）
-- [x] Marp Preview ≠ 三点 Preview（TC-077）
+- [x] Marp Preview パネル ≠ 三点 Preview UI インスタンス；三点 Preview は Marp 検出時 `#preview-marp-root` 描画可（TC-077 — RK-017）
+- [x] 画像 URI Host rewrite + serialize 相対パス（TC-124–125）
+- [x] `isSafeImagePath` / `localResourceRoots` 整合（TC-060, TC-126–127）
+- [x] Preview Mermaid ソース非表示（TC-130–132）
+- [x] Preview 内 Marp 分岐・`previewMarpHtml`・`isMarpDocument` 共用（TC-133–142）
 - [x] 引用の非 paragraph 子（TC-110）、複合 mark（TC-118）、ツールバー 4 群（TC-123）
 
 ### C. Corner & Failure
@@ -557,6 +631,8 @@ P0 + P1 の机上トレース（実装前）。
 - [x] 外部変更・FS 失敗（TC-007, TC-009, TC-048）
 - [x] モード切替 alone の非 I/O（TC-073）、パース回復（TC-079）
 - [x] 番号付きタスク正規化（TC-116）、sanitize `mark` 非許可（TC-119）
+- [x] Preview 表示層が Document 正本を変更しない（TC-082, TC-125）
+- [x] `https:` / `data:` 画像 pass-through（TC-129）
 
 ### D. Complexity & Resources
 - [x] P2 ストレス TC-065, TC-066 定義
@@ -570,7 +646,9 @@ P0 + P1 の机上トレース（実装前）。
 - （なし — TC-071/073/076/078/079 はユニット実装済み）
 - 画像サイズ上限は MVP 未定 — backlog（BL-008）で管理、本 testspec では MIME 検証のみ
 - TC-107–123 はユニット Red 実装済み（`gfm-format-toolbar.test.ts`）。Green は build-agent
+- TC-124–142 はユニット Green（`preview-rich-embed.test.ts`、91 passing）
 - 空選択 strike の stored mark は仕様「でよい」のため専用 TC なし（TipTap 既定）
+- `isMarpDocument()` 偽陽性（RK-013）は既存検出ロール維持。専用 TC は TC-142 で再評価のみ
 
 ---
 
@@ -578,6 +656,9 @@ P0 + P1 の机上トレース（実装前）。
 
 | 日付 | 変更内容 |
 |------|---------|
+| 2026-08-31 | TC-124–142 Green 同期（91 passing）。Trace / Spec Gaps / Summary 更新 | `preview-rich-embed` build-agent 完了 |
+| 2026-08-31 | TC-124–142 ユニット Red（`preview-rich-embed.test.ts`）。Trace / Spec Gaps を TDD Red に同期 | `preview-rich-embed` testspec-implementation |
+| 2026-08-31 | TC-124–142 追加；TC-060 / TC-077 / TC-080–082 Expected 更新；Spec Digest・Coverage・Trace 拡張 | `preview-rich-embed`（§1 / §5 / §6 / §7 / §9）: Host 画像 URI rewrite、Preview Mermaid ソース非表示、Preview 内 Marp（`#preview-marp-root` / `previewMarpHtml` / `isMarpDocument`）、TC-077 RK-017 意味更新、三者同期表示層非変更 |
 | 2026-08-31 | TC-107–123 ユニット Red（`gfm-format-toolbar.test.ts`）。Trace / Spec Gaps を TDD Red に同期 |
 | 2026-08-29 | 初版。systemspec §1–§10 MVP カバー、Spec Gaps を Advisor defaults で解決 |
 | 2026-08-29 | TC-067–069 追加 | 回帰: edit-display-break（webview echo 抑止 / 外部同期 / Mermaid 保持） |

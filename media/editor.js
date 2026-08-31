@@ -223825,6 +223825,7 @@ img.ProseMirror-separator {
   var insertTableFormat = "gfm";
   var readonly = false;
   var editorMode = "markdown";
+  var previewSurface = "tiptap";
   var suppressUpdate = false;
   var suppressRawUpdate = false;
   var isEditorInitialized = false;
@@ -224083,6 +224084,33 @@ img.ProseMirror-separator {
   function scheduleRawTextUpdate(text4) {
     syncRawTextFromHost(text4, false);
   }
+  function getEditorRoot() {
+    return document.querySelector("#editor");
+  }
+  function applyPreviewMarpHtml(html2) {
+    const marpRoot = document.getElementById("preview-marp-root");
+    const editorEl = getEditorRoot();
+    previewSurface = "marp";
+    if (marpRoot) {
+      marpRoot.innerHTML = html2;
+      marpRoot.classList.remove("hidden");
+    }
+    if (editorEl) {
+      editorEl.classList.add("hidden");
+    }
+  }
+  function applyPreviewTipTap() {
+    const marpRoot = document.getElementById("preview-marp-root");
+    const editorEl = getEditorRoot();
+    previewSurface = "tiptap";
+    if (marpRoot) {
+      marpRoot.innerHTML = "";
+      marpRoot.classList.add("hidden");
+    }
+    if (editorEl) {
+      editorEl.classList.remove("hidden");
+    }
+  }
   function setModeUi(mode) {
     editorMode = mode;
     document.body.setAttribute("data-mode", mode);
@@ -224090,11 +224118,27 @@ img.ProseMirror-separator {
       const el = btn;
       el.classList.toggle("active", el.getAttribute("data-mode") === mode);
     });
-    const editorEl = document.getElementById("editor");
+    const editorEl = getEditorRoot();
     const rawEl = getRawEditor();
     const formatToolbar = document.getElementById("toolbar");
+    const marpRoot = document.getElementById("preview-marp-root");
+    if (mode !== "preview") {
+      if (marpRoot) {
+        marpRoot.innerHTML = "";
+        marpRoot.classList.add("hidden");
+      }
+      previewSurface = "tiptap";
+    } else if (previewSurface === "marp") {
+      if (marpRoot) {
+        marpRoot.classList.remove("hidden");
+      }
+    } else if (marpRoot) {
+      marpRoot.innerHTML = "";
+      marpRoot.classList.add("hidden");
+    }
     if (editorEl) {
-      editorEl.classList.toggle("hidden", mode === "raw");
+      const hideEditor = mode === "raw" || mode === "preview" && previewSurface === "marp";
+      editorEl.classList.toggle("hidden", hideEditor);
       editorEl.setAttribute("aria-readonly", String(mode === "preview"));
     }
     if (rawEl) {
@@ -224200,7 +224244,7 @@ img.ProseMirror-separator {
     updateTableMenuState();
   }
   function attachPreviewGuard() {
-    const editorEl = document.getElementById("editor");
+    const editorEl = getEditorRoot();
     if (!editorEl || editorEl.dataset.previewGuard === "1") {
       return;
     }
@@ -224646,9 +224690,17 @@ img.ProseMirror-separator {
           scheduleRawTextUpdate(latestMarkdownText);
           break;
         }
+        if (editorMode === "preview") {
+          applyPreviewTipTap();
+        }
         gfmConvertPending = false;
         syncRawTextFromHost(latestMarkdownText, true);
         applyExternalDoc(JSON.parse(message.docJson), { force: true });
+        break;
+      case "previewMarpHtml":
+        if (editorMode === "preview" && typeof message.html === "string") {
+          applyPreviewMarpHtml(message.html);
+        }
         break;
       case "convertToGfmCancelled":
         gfmConvertPending = false;

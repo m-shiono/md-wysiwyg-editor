@@ -18,7 +18,8 @@ export type WebviewOutboundMessage =
   | { type: 'tableLimitWarning'; exceeded: boolean; message?: string; rows: number; cols: number }
   | { type: 'imageInserted'; relativePath: string }
   | { type: 'rawParseFailed'; failed: boolean; message?: string }
-  | { type: 'modeChanged'; editorMode: EditorMode };
+  | { type: 'modeChanged'; editorMode: EditorMode }
+  | { type: 'previewMarpHtml'; html: string };
 
 export type WebviewInboundMessage =
   | { type: 'ready' }

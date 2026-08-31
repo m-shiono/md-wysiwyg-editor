@@ -67,6 +67,7 @@ let editor: Editor | undefined;
 let insertTableFormat: TableFormat = 'gfm';
 let readonly = false;
 let editorMode: EditorMode = 'markdown';
+let previewSurface: 'tiptap' | 'marp' = 'tiptap';
 let suppressUpdate = false;
 let suppressRawUpdate = false;
 /** True after the first successful initEditor — ready must not force a second full init. */
@@ -370,6 +371,36 @@ function scheduleRawTextUpdate(text: string): void {
   syncRawTextFromHost(text, false);
 }
 
+function getEditorRoot(): HTMLElement | null {
+  return document.querySelector('#editor');
+}
+
+function applyPreviewMarpHtml(html: string): void {
+  const marpRoot = document.getElementById('preview-marp-root');
+  const editorEl = getEditorRoot();
+  previewSurface = 'marp';
+  if (marpRoot) {
+    marpRoot.innerHTML = html;
+    marpRoot.classList.remove('hidden');
+  }
+  if (editorEl) {
+    editorEl.classList.add('hidden');
+  }
+}
+
+function applyPreviewTipTap(): void {
+  const marpRoot = document.getElementById('preview-marp-root');
+  const editorEl = getEditorRoot();
+  previewSurface = 'tiptap';
+  if (marpRoot) {
+    marpRoot.innerHTML = '';
+    marpRoot.classList.add('hidden');
+  }
+  if (editorEl) {
+    editorEl.classList.remove('hidden');
+  }
+}
+
 function setModeUi(mode: EditorMode): void {
   editorMode = mode;
   document.body.setAttribute('data-mode', mode);
@@ -379,12 +410,29 @@ function setModeUi(mode: EditorMode): void {
     el.classList.toggle('active', el.getAttribute('data-mode') === mode);
   });
 
-  const editorEl = document.getElementById('editor');
+  const editorEl = getEditorRoot();
   const rawEl = getRawEditor();
   const formatToolbar = document.getElementById('toolbar');
+  const marpRoot = document.getElementById('preview-marp-root');
+
+  if (mode !== 'preview') {
+    if (marpRoot) {
+      marpRoot.innerHTML = '';
+      marpRoot.classList.add('hidden');
+    }
+    previewSurface = 'tiptap';
+  } else if (previewSurface === 'marp') {
+    if (marpRoot) {
+      marpRoot.classList.remove('hidden');
+    }
+  } else if (marpRoot) {
+    marpRoot.innerHTML = '';
+    marpRoot.classList.add('hidden');
+  }
 
   if (editorEl) {
-    editorEl.classList.toggle('hidden', mode === 'raw');
+    const hideEditor = mode === 'raw' || (mode === 'preview' && previewSurface === 'marp');
+    editorEl.classList.toggle('hidden', hideEditor);
     editorEl.setAttribute('aria-readonly', String(mode === 'preview'));
   }
   if (rawEl) {
@@ -506,7 +554,7 @@ function applyExternalDoc(doc: TipTapDoc, options?: { force?: boolean }): void {
 
 /** Block keyboard/paste/drop edits while Preview is active (strict RO). Scroll is allowed. */
 function attachPreviewGuard(): void {
-  const editorEl = document.getElementById('editor');
+  const editorEl = getEditorRoot();
   if (!editorEl || editorEl.dataset.previewGuard === '1') {
     return;
   }
@@ -1011,10 +1059,18 @@ window.addEventListener('message', (event) => {
         scheduleRawTextUpdate(latestMarkdownText);
         break;
       }
+      if (editorMode === 'preview') {
+        applyPreviewTipTap();
+      }
       // Host-initiated full doc (table convert, Raw parse, revert, undo/redo).
       gfmConvertPending = false;
       syncRawTextFromHost(latestMarkdownText, true);
       applyExternalDoc(JSON.parse(message.docJson), { force: true });
+      break;
+    case 'previewMarpHtml':
+      if (editorMode === 'preview' && typeof message.html === 'string') {
+        applyPreviewMarpHtml(message.html);
+      }
       break;
     case 'convertToGfmCancelled':
       gfmConvertPending = false;

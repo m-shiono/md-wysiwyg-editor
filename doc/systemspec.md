@@ -6,7 +6,7 @@ VS Code 拡張 **vsc-md-editor** の振る舞い仕様（WHAT）。実装詳細�
 
 ## 概要
 
-チーム向け技術ドキュメントを Git 管理しながら、Word/Excel に近い WYSIWYG 体験で Markdown（`.md`）を編集する VS Code 拡張機能。MVP では同一 Custom Editor 上の **Preview / Markdown / Raw 三点モード**、**GFM 書式ツールバー**（§2 — 取り消し線・H1–H6・インラインコード・引用・タスクリスト・水平線等）、**GFM / HTML 二形式表編集**（§3・アーキテクチャ AD-005）、ファイル単位 Readonly 切替、Mermaid リアルタイム描画、**Marp プレビュー**（§6・アーキテクチャ AD-008 — 三点の Preview とは別）、クリップボード画像のローカル保存を提供する。リッチ表現（拡張記法・HTML 混在）を Markdown 厳密互換より優先する（UD-001）。今回追加の書式ノードは GFM として往復できること（§8）。
+チーム向け技術ドキュメントを Git 管理しながら、Word/Excel に近い WYSIWYG 体験で Markdown（`.md`）を編集する VS Code 拡張機能。MVP では同一 Custom Editor 上の **Preview / Markdown / Raw 三点モード**、**GFM 書式ツールバー**（§2 — 取り消し線・H1–H6・インラインコード・引用・タスクリスト・水平線等）、**GFM / HTML 二形式表編集**（§3・アーキテクチャ AD-005）、ファイル単位 Readonly 切替、Mermaid リアルタイム描画（Preview では図のみ表示 — §5）、**Marp プレビュー**（§6 — サイド/パネル。**Preview モードでも Marp 検出時は同一 Webview 内にスライド描画可** — §1 / AD-008）、**Host 側 `img/` 画像 URI 解決**（§7 / §9）、クリップボード画像のローカル保存を提供する。リッチ表現（拡張記法・HTML 混在）を Markdown 厳密互換より優先する（UD-001）。今回追加の書式ノードは GFM として往復できること（§8）。
 
 **feature-slug:** `vsc-md-wysiwyg`
 
@@ -22,9 +22,9 @@ VS Code 拡張 **vsc-md-editor** の振る舞い仕様（WHAT）。実装詳細�
 | AD-004 | 編集内容 ↔ ディスク `.md` は remark/unified パイプラインで変換。HTML 混在・拡張ブロックを許容。出力は決定的（AD-013） |
 | AD-005 | 表は per-table `tableFormat`（`gfm` \| `html`）で永続化する。新規挿入のデフォルトは GFM パイプ表。形式切替は Table メニューの明示操作のみ（§3） |
 | AD-006 | ファイル単位 Readonly は **全編集面**（Markdown / Raw）をロック。Preview モードとは別概念。状態はワークスペースに永続化 |
-| AD-007 | Mermaid はコードブロック + リアルタイム描画。編集はテキストのみ |
-| AD-008 | **Marp Preview** はサイド/パネルのスライド表示専用（§6）。三点モードの **Preview**（§1）とは別 UI・別責務。編集は Markdown / Raw 側 |
-| AD-009 | 画像 paste → 同階層 `img/image-NNNN.ext` に保存し相対パスを挿入 |
+| AD-007 | Mermaid はコードブロック + リアルタイム描画。Preview では図のみ（ソース非表示 — §5）。編集はテキストのみ |
+| AD-008 | **Marp Preview** はサイド/パネル（§6）を維持。**Preview モード**（§1）でも `isMarpDocument(markdownText)` 検出時は同一 Webview 内 `#preview-marp-root` に Host 生成 HTML を RO 表示可。別 UI インスタンス・別責務は維持。編集は Markdown / Raw 側 |
+| AD-009 | 画像 paste → 同階層 `img/image-NNNN.ext` に保存し相対パスを挿入。表示時は Host が `img/` 配下のみ `asWebviewUri` で rewrite（§7 / §9）。serialize / ディスクは常に相対パス |
 | AD-010 | Webview CSP + HTML サニタイズ。許可タグ・属性を限定 |
 | AD-011 | Extension Host と Webview を別バンドルし `media/` に配置 |
 | AD-012 | シリアライズ round-trip のユニットテスト + Custom Editor 統合テスト |
@@ -73,14 +73,14 @@ VS Code 拡張 **vsc-md-editor** の振る舞い仕様（WHAT）。実装詳細�
 
 #### 三点モード定義（AD-016）
 
-同一 Custom Editor タブ内で次の 3 モードを切り替える。**Marp Preview（§6 / AD-008）は本節の Preview ではない。**
+同一 Custom Editor タブ内で次の 3 モードを切り替える。**§6 Marp Preview パネル**（サイド/パネル）は別 UI インスタンスとして維持するが、**Preview モード**（`editorMode === 'preview'`）でも Marp 文書検出時は同一 Webview 内で Marp スライドを RO 表示できる（§1 Preview 分岐 / AD-008）。
 
 概念名（Preview / Markdown / Raw）は編集面・同期契約の記述に用いる。プロトコル・状態の正は **mode id**（`editorMode` / ボタン `data-mode`）。ツールバーの**表示ラベル**は mode id とは別契約であり、実装・テストは mode id をリネームしてはならない。
 
 | モード（概念） | mode id | 役割 | 編集可否 | Document との関係 |
 |----------------|---------|------|----------|-------------------|
-| **Preview** | `preview` | 読み取り専用の描画表示（TipTap レンダリング、入力不可） | **不可（厳密 RO）** | **Document → 一方表示**のみ。キー入力・paste・ツールバー等の編集イベントを Document へ送らない |
-| **Markdown** | `markdown` | TipTap WYSIWYG 本文編集（§2） | 可（ファイル RO 時は不可 — §4） | Markdown 面 ↔ Document 双方向。変更で `dirty` |
+| **Preview** | `preview` | 読み取り専用の描画表示。**非 Marp:** TipTap RO + Host 解決済み画像 + Mermaid 図のみ（§5）。**Marp 検出時:** `#preview-marp-root` に Host 生成サニタイズ HTML（縦スクロール一覧） | **不可（厳密 RO）** | **Document → 一方表示**のみ。キー入力・paste・ツールバー等の編集イベントを Document へ送らない |
+| **Markdown** | `markdown` | TipTap WYSIWYG 本文編集（§2）。画像は Host rewrite 済み `docJson` を投影（§7） | 可（ファイル RO 時は不可 — §4） | Markdown 面 ↔ Document 双方向。変更で `dirty` |
 | **Raw** | `raw` | Markdown ソース文字列の直接編集 | 可（ファイル RO 時は不可 — §4） | Raw 面 ↔ Document 双方向。変更で `dirty` |
 
 ##### mode-toolbar 表示ラベル（UI）
@@ -98,20 +98,45 @@ Webview モード切替バーのボタン文言および `title` 属性は次と
 ```text
 Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdown（TipTap WYSIWYG）
                                     ↓
-                              Preview（TipTap RO 描画）
+                              Preview（表示層のみ — 正本は変更しない）
+                                    ├─ 非 Marp: TipTap RO（docJson + 画像 URI rewrite）
+                                    └─ Marp: Host render → previewMarpHtml → #preview-marp-root
 ```
 
 - **編集可能なのは Markdown / Raw のみ**。Preview は常に Document の投影を RO 表示する
 - Markdown 編集 → Document 更新 → Raw テキスト投影 + Preview 描画追随（Markdown フォーカス中は TipTap を破壊しない — TC-067）
-- Raw 編集（パース成功）→ Document 更新 → Markdown / Preview へ `docJson` 投影
+- Raw 編集（パース成功）→ Document 更新 → Markdown / Preview へ `docJson` 投影（画像 `src` は Host が rewrite 後に送信）
 - **Preview 表示中**も Document 更新時は描画を追随する（一方通行）
+- **Preview 表示層**（Marp HTML 注入・画像 URI rewrite・Mermaid CSS）は `docJson` / `markdownText` / serialize を変更しない（AD-008 三者同期維持）
+
+#### Preview 表示分岐（`preview-rich-embed`）
+
+| 条件 | 表示 | Host 処理 |
+|------|------|-----------|
+| `editorMode === 'preview'` かつ **非 Marp** | `#editor`（TipTap）表示、`#preview-marp-root` 空 | `docJson` 内 `image.src` を `asWebviewUri` 済み URL に rewrite して投影 |
+| `editorMode === 'preview'` かつ **`isMarpDocument(markdownText)`** | `#editor` 非表示、`#preview-marp-root` に Marp HTML | `@marp-team/marp-core` + 既存 `sanitizeHtml` / `sanitizeCss`（§6 と共用）。`markdownText` を入力。`previewMarpHtml` postMessage |
+| `editorMode !== 'preview'` または非 Marp 離脱 | `#preview-marp-root` 空、`#editor` 表示 | Marp 分岐しない |
+
+- **Marp 検出**は共有ユーティリティ `isMarpDocument()` を正とする（`src/commands/marp-preview.ts` から export または `src/utils/` へ移行）。Preview 切入時と `markdownText` 更新の両方で再評価
+- **Markdown / Raw モード**では Marp 分岐しない（Rich Editor Marp WYSIWYG は Non-Goal）
+- `#preview-marp-root` は `role="document"` `aria-readonly="true"`。スライド UX は §6 パネルと同じ **縦スクロール一覧**（ページ送り UI は作らない）
+- Preview 切入で §6 Marp Preview パネルを自動オープンしない
+
+#### postMessage — Host → Webview（Preview 追加）
+
+| メッセージ | 方向 | payload | 備考 |
+|-----------|------|---------|------|
+| `previewMarpHtml` | Host → Webview | `{ html: string }` | サニタイズ済み body 断片 + inline style。Webview は DOM 注入のみ（`innerHTML` は Host 済み HTML のみ） |
+| （既存）`docJson` 投影 | Host → Webview | TipTap JSON | 送信前に Host が `image.src` を rewrite |
+
+型定義は `src/webviews/messages.ts` に追加する。
 
 #### 正常系
 
 1. ユーザーが `.md` を開くと Custom Editor が起動し、ディスク内容を `MarkdownDocument` に読み込み、初期モード **Markdown** で Webview に表示する
 2. **Markdown ↔ Raw 相互リアルタイム同期:** 一方の編集は postMessage 経由で Document に反映され、他方面も Document から再投影される。正本は常に Extension Host の `MarkdownDocument`
-3. **Preview** は Document の現在内容を **厳密 RO** で描画する一方通行。Preview 表示中に Document が更新されれば描画を追随する。**Preview への切替時**は Host が Document 最新を `docJson` で再投影する（Raw 離脱時の flush 後を含む）
-4. **モード切替**（Preview ↔ Markdown ↔ Raw）は表示面の切替のみであり、**ディスクへの書き込みを行わない**。内容に差分がなければ `dirty` も変化しない。Preview / Markdown への切替時は Document から視覚面を refresh する
+3. **Preview** は Document の現在内容を **厳密 RO** で描画する一方通行。Preview 表示中に Document が更新されれば描画を追随する。**Preview への切替時**は Host が Document 最新を再投影する（Raw 離脱時の flush 後を含む）。非 Marp は rewrite 済み `docJson`、Marp 検出時は `previewMarpHtml` で `#preview-marp-root` を更新
+4. **モード切替**（Preview ↔ Markdown ↔ Raw）は表示面の切替のみであり、**ディスクへの書き込みを行わない**。内容に差分がなければ `dirty` も変化しない。Preview / Markdown への切替時は Document から視覚面を refresh する。Preview 離脱時は `#preview-marp-root` を空にし `#editor` を復帰
 5. Markdown / Raw での内容変更は既存の CustomDocument フローに乗り `dirty` となる。`save` / `saveAs` で Document 内容をシリアライズし UTF-8 で書き込む（§8）
 6. undo/redo は Document 経由で一貫して動作する（モードをまたいでも同一 Document 履歴）
 7. エディタを閉じる際、未保存変更があれば VS Code 標準の確認ダイアログが表示される
@@ -128,14 +153,17 @@ Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdow
 - 仮想スクロールによる大ファイル最適化（RK-004 — backlog）
 - Preview / Markdown / Raw の同時分割表示（同一タブ内の三点切替のみ）
 - モードごとに別 Custom Editor / 別 viewType を登録すること
+- Preview 内 Marp のページ送り UI（縦スクロール一覧のみ）
+- Preview 切入時の §6 Marp Preview パネル自動オープン
+- Rich Editor（Markdown モード）での Marp WYSIWYG 描画（§6 Non-Goals と同旨）
 
 ### Related Tests
 
-- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-001–009（基盤）および三点モード追加 TC（後続 `spec-test-design`）
+- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-001–009（基盤）および三点モード追加 TC。Preview Marp 分岐・`previewMarpHtml`・`isMarpDocument` 共用: TC-124–142（`preview-rich-embed`）
 
 ### Spec Gaps
 
-- なし（モード初期値 Markdown・Raw パース失敗時 save ブロック・モード切替でディスク非書込は本節で確定）
+- なし（モード初期値 Markdown・Raw パース失敗時 save ブロック・モード切替でディスク非書込・Preview Marp 分岐・画像 Host rewrite は本節および §6 / §7 / §9 で確定）
 
 ---
 
@@ -151,7 +179,7 @@ Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdow
 |------|-----|------|------|------|------|
 | `editOperation` | 編集コマンド / キー入力 / ツールバー | はい | — | — | ファイル RO 時は拒否（§4）。Preview では Document へ送らない（§1） |
 | `formatToolbarCommand` | `data-cmd` 列挙 | 任意 | — | — | 下記「書式ツールバー」表。第一操作はツールバー |
-| `documentSnapshot` | 内部ドキュメントモデル | はい | — | — | TipTap / ProseMirror 相当（アーキテクチャ AD-003） |
+| `documentSnapshot` | 内部ドキュメントモデル | はい | — | — | TipTap / ProseMirror 相当（アーキテクチャ AD-003）。投影時 `image.src` は Host rewrite 済み（§7） |
 
 #### 書式ツールバー（In / Out）
 
@@ -390,21 +418,22 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 
 ### 概要
 
-` ```mermaid ` フェンスブロックをリアルタイムに図として描画する。編集はテキストのみ（UD-004, AD-007）。
+` ```mermaid ` フェンスブロックをリアルタイムに図として描画する。編集はテキストのみ（UD-004, AD-007）。**Preview モード**ではソース（`.mermaid-source`）を非表示とし、描画（`.mermaid-preview`）のみ表示する（`preview-rich-embed`）。
 
 ### Inputs & Types
 
 | 入力 | 型 | 必須 | 最小 | 最大 | 備考 |
 |------|-----|------|------|------|------|
 | `mermaidSource` | `string` | はい | 0 文字 | — | フェンス内テキスト |
-| `debounceMs` | 数値 | いいえ | — | — | 目安 300 ms（AD-007） |
+| `debounceMs` | 数値 | いいえ | — | — | 目安 300 ms |
+| `editorMode` | `"preview" \| "markdown" \| "raw"` | はい | — | — | Preview 時はソース非表示（§1） |
 
 ### Outputs & Failure Returns
 
 | 条件 | 戻り値 / ステータス | 備考 |
 |------|-------------------|------|
-| 成功 | ブロック内に SVG/図表示 | ソースは保持 |
-| 構文エラー | ブロック内にエラーメッセージ | ソースは保持、Output に記録（AD-015） |
+| 成功 | ブロック内に SVG/図表示 | ソースは Document に保持。Preview では DOM 上非表示 |
+| 構文エラー | ブロック内にエラーメッセージ | ソースは Document に保持。Preview ではソース非表示のまま preview 領域にエラー。Output に記録（AD-015） |
 | レンダリングタイムアウト | エラー表示 | RK-004 |
 
 ### Preconditions
@@ -415,9 +444,11 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 
 #### 正常系
 
-1. Mermaid コードブロック内のテキスト変更を debounce 後に再描画する
+1. Mermaid コードブロック内のテキスト変更を debounce（目安 300 ms）後に再描画する
 2. 保存内容は ```mermaid フェンスとして .md に残る
 3. RO 中も描画は更新される（ソース変更は不可）
+4. **Preview モード**（`body[data-mode="preview"]`）: `.mermaid-source` を CSS で非表示（`display: none` 等）。`.mermaid-preview` のみ表示。`securityLevel: 'strict'`・DOMPurify SVG サニタイズは不変
+5. **Markdown / Raw モード**: ソース + 図を従来どおり表示（Markdown モードでソース編集可）
 
 #### 例外系
 
@@ -431,65 +462,84 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 
 ### Related Tests
 
-- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-031–037
+- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-031–037。Preview Mermaid ソース非表示: TC-130–132（`preview-rich-embed`）
 
 ---
 
-## §6 Marp プレビュー（AD-008）
+## §6 Marp プレビュー
 
 ### 概要
 
-Marp 形式スライドのプレビューをサイドまたはパネルに表示する（UD-003, AD-008）。編集は Markdown / Raw 側のみ。
+Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。**二系統**で共存する:
+
+1. **Marp Preview パネル** — サイドまたはパネル（`showMarpPreview` コマンド / `MarpPreviewManager`）。従来どおり独立 UI
+2. **Preview モード内 Marp 描画** — §1 に従い、三点 **Preview** かつ `isMarpDocument(markdownText)` 時に同一 Custom Editor Webview の `#preview-marp-root` へ Host 生成 HTML を RO 注入
+
+編集は Markdown / Raw 側のみ。Marp 描画パイプライン（`isMarpDocument` → `marp.render` → `sanitizeHtml` / `sanitizeCss`）は **Host 側で共用**し、Webview 内で Marp JS を実行しない。
 
 **用語の区別（必須）:**
 
 | 名称 | 節 | 意味 |
 |------|-----|------|
-| **三点 Preview** | §1 | Custom Editor 内の読み取り専用 Markdown 描画モード |
-| **Marp Preview** | §6（本節） | Marp スライド用のサイド/パネル表示。三点モードとは独立 |
+| **三点 Preview** | §1 | Custom Editor 内の読み取り専用モード。非 Marp は TipTap RO、**Marp 検出時は `#preview-marp-root` にスライド RO 表示** |
+| **Marp Preview パネル** | §6（本節） | Marp スライド用のサイド/パネル表示。**三点 Preview とは別 UI インスタンス**。自動更新・手動オープンは従来どおり |
 
 ### Inputs & Types
 
 | 入力 | 型 | 必須 | 最小 | 最大 | 備考 |
 |------|-----|------|------|------|------|
-| `documentContent` | `string` | はい | — | — | front matter + 本文（Document 正本） |
-| `previewTrigger` | コマンド / 自動 | はい | — | — | ドキュメント変更で更新 |
+| `documentContent` | `string` | はい | — | — | front matter + 本文（Document 正本 `markdownText`）。TipTap `docJson` は Marp 描画に使わない |
+| `previewTrigger` | コマンド / 自動 / Preview 切入 | はい | — | — | ドキュメント変更・Preview モード切入で更新 |
+| `isMarpDocument` | `(markdown: string) => boolean` | はい | — | — | 共有ユーティリティ。`src/commands/marp-preview.ts` から export または `src/utils/` へ移行 |
 
 ### Outputs & Failure Returns
 
 | 条件 | 戻り値 / ステータス | 備考 |
 |------|-------------------|------|
-| 成功 | スライド HTML プレビュー | テーマは front matter から |
+| 成功（パネル） | スライド HTML プレビュー | テーマは front matter から |
+| 成功（Preview 内） | `previewMarpHtml` で `#preview-marp-root` 更新 | §1 postMessage |
 | パース失敗 | プレビュー内エラー表示 | Output に記録。Document は変更しない |
-| 非 Marp 文書 | プレビュー内に「No Marp slides detected」ガイダンス表示 | Marp front matter / スライド区切り未検出時 |
+| 非 Marp 文書（パネル） | プレビュー内に「No Marp slides detected」ガイダンス表示 | Marp front matter / スライド区切り未検出時 |
+| 非 Marp 文書（Preview 内） | §1 非 Marp 分岐 — TipTap RO へフォールバック | Marp コンテナ非表示 |
 
 ### Preconditions
 
 - Marp 用 Webview / Panel が利用可能であること（Custom Editor 三点 Preview とは別インスタンスでも可）
+- Custom Editor Preview 用 Webview は Host 生成 HTML のみ受け取る（`enableScripts: false` 相当の信頼境界 — Marp パネルと同等）
 
 ### Behavior
 
 #### 正常系
 
 1. YAML front matter をパースし Marp テーマを適用する
-2. 本文変更（Document 更新）に追随してプレビューを更新する
-3. ファイル RO / 三点いずれのモードでも Marp Preview は表示できる
-4. 三点モードを Preview にしても、本節の Marp Preview が自動で置き換わることはない
+2. 本文変更（Document 更新）に追随して **パネル** プレビューを更新する（`MarpPreviewManager` 自動更新継続）
+3. **Preview モード**かつ Marp 検出時: 同一 `markdownText` から Host で再描画し `previewMarpHtml` を送信。スライド UX は **縦スクロール一覧**（ページ送り UI なし）
+4. ファイル RO / 三点いずれのモードでも Marp Preview **パネル**は表示できる
+5. 三点 Preview と Marp Preview **パネル**は **共存**する。Preview 切入でパネルを自動オープンしない
+6. Marp 出力 HTML 内の `<img src>` は Host が §9 と同規則で `asWebviewUri` rewrite する
+7. **`isMarpDocument()`** は Preview 切入時と `markdownText` 更新の両方で再評価する
 
 #### 例外系
 
 1. レンダリング失敗時も `.md` ソース / Document は変更しない
-2. Marp スライドが検出されない文書では、プレビューパネルに **「No Marp slides detected」** とガイダンス（Marp front matter の追加方法等）を表示する
+2. Marp スライドが検出されない文書では、**パネル**に **「No Marp slides detected」** とガイダンスを表示する
+3. **`isMarpDocument()` 偽陽性**（YAML front matter + 本文 `---` 等）で非 Marp 文書が Preview 時に Marp 描画になるリスクあり（RK-013 — 既存検出ロール維持）
 
 ### Non-Goals
 
 - Marp WYSIWYG 編集（backlog）
 - スライド PDF / 画像エクスポート
-- 三点 Preview モードを Marp レンダラで兼用すること（責務分離を維持）
+- Preview 内 Marp のページ送り UI
+- §6 Marp Preview パネルの廃止（Intent Out — パネル存続）
+- Rich Editor（Markdown モード）での Marp スライド WYSIWYG 表示
 
 ### Related Tests
 
-- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-038–042
+- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-038–042（パネル共存）、TC-124–142（Preview 内 Marp 分岐・`isMarpDocument` 共用・TC-077 更新）
+
+### Spec Gaps
+
+- なし（Preview 内 Marp 兼用・パネル共存・共用パイプラインは Requirements Brief `preview-rich-embed` AD-003–006 で確定）
 
 ---
 
@@ -497,7 +547,7 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 
 ### 概要
 
-クリップボードから画像を貼り付け、`.md` と同階層の `img/` に保存し、相対パス参照を挿入する（AD-009, UD-007）。
+クリップボードから画像を貼り付け、`.md` と同階層の `img/` に保存し、相対パス参照を挿入する（AD-009, UD-007）。**表示時**の画像 URI 解決は Extension Host が行い、Webview には `asWebviewUri` 済み URL のみ渡す（§9）。serialize / ディスク出力は **常に相対パス**を維持する（`preview-rich-embed`）。
 
 ### Inputs & Types
 
@@ -506,12 +556,15 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 | `clipboardImage` | `image/*` バイナリ | はい | 1 バイト | 実用上限未定（backlog） | jpg/png/gif/svg |
 | `sequenceNumber` | 整数 | 自動 | 1 | 9999 | `image-NNNN` ゼロ埋め 4 桁 |
 | `targetMdUri` | `vscode.Uri` | はい | — | — | 同階層 `img/` 基準 |
+| `imageSrc` | `string` | 任意 | — | — | Document / `docJson` 内の相対パス（例: `img/image-0001.png`）。表示投影時に Host が rewrite |
 
 ### Outputs & Failure Returns
 
 | 条件 | 戻り値 / ステータス | 備考 |
 |------|-------------------|------|
-| 成功 | `img/image-NNNN.ext` 保存 + Markdown 画像参照挿入 | 上書きなし（UD-007） |
+| 成功（paste） | `img/image-NNNN.ext` 保存 + Markdown 画像参照挿入 | 上書きなし（UD-007）。Document 正本は相対パス |
+| 成功（表示投影） | TipTap `image.src` / Marp HTML `<img src>` が webview URI | Host rewrite。Document / serialize は相対パスのまま |
+| URI 解決不可 | broken image 表示 + Output debug ログ | ユーザー通知なし。`img/` 外・ワークスペース外・非 `https:` 絶対パスは rewrite しない |
 | 未保存新規 doc | paste 拒否、「Save document first」通知 | URI 未確定 |
 | RO 中 | 操作拒否 | §4（全編集面ロック） |
 | FS 書込失敗 | 通知、挿入なし | 権限・ディスク容量 |
@@ -532,6 +585,10 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 3. 拡張子は MIME から決定（jpg/png/gif/svg）
 4. Markdown に `img/image-NNNN.ext` 形式の相対パスを挿入する
 5. URI は `vscode.Uri` で正規化しパストラバーサルを防ぐ
+6. **表示投影時（Host）:** `.md` のディレクトリ基準で実ファイル URI を組み立て、`isSafeImagePath`（`..` 禁止・**`img/` プレフィックス必須**）を通過した場合のみ `webview.asWebviewUri` して TipTap `docJson` 内 `image.src` および Marp 出力 HTML 内 `<img src>` を書き換える
+7. **`docUpdated` / Preview 投影 / Marp 再描画**の各タイミングで画像 URI を再解決する
+8. **Markdown モード（Rich Editor）** も Host rewrite 済み `docJson` を投影する。paste 直後は Host が webview URI を返すか、相対パス挿入後に次投影で rewrite
+9. **`https:` / `data:`** 画像は Webview が直接解決（CSP 既存どおり — 挙動変更なし）
 
 #### 例外系
 
@@ -544,10 +601,12 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 - 画像のリサイズ・圧縮の自動最適化
 - 外部 URL への自動アップロード
 - 孤児画像の自動削除（backlog）
+- **`img/` 外**の手書き相対パス（例: `./assets/logo.png`）の Host URI 解決（RK-014）
+- Webview 内での file パス解決（Host 経由のみ）
 
 ### Related Tests
 
-- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-043–051
+- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-043–051、TC-124–129（画像 URI Host rewrite・serialize 相対パス・TC-060 系 regression）
 
 ---
 
@@ -590,15 +649,16 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 5. HTML 表・許可 HTML は raw HTML ノードまたは同等手段で保持する
 6. 同一内容に対し、連続保存で byte-identical 出力を目指す（アーキテクチャ AD-013）
 7. **モード切替だけでは本節の保存処理を起動しない**（§1）
-8. **GFM 書式ノードの往復（§2 In）:** 次を parse ↔ stringify で保持する（micromark/mdast の strikethrough・task-list を **direct dependency** として追加。既存 `gfm-table` は維持）
+8. **画像参照:** serialize / ディスク出力は **常に相対パス**（例: `img/image-0001.png`）。Host の `asWebviewUri` rewrite は表示投影のみで Document 正本を変更しない（§7 / §9）
+9. **GFM 書式ノードの往復（§2 In）:** 次を parse ↔ stringify で保持する（micromark/mdast の strikethrough・task-list を **direct dependency** として追加。既存 `gfm-table` は維持）
    - 取り消し線: 入力 `~~` および HTML `<del>` / `<s>` → モデル `strike` → 出力 **常に** `~~text~~`（`<del>`/`<s>` は出さない）
    - 見出し h1–h6: 既存スキーマどおり往復
    - インラインコード: `` `code` `` mark ↔ 出力。フェンスコードブロックとは別経路
    - 引用: GFM `>`。ブロック子（heading, list, taskList, codeBlock, 入れ子 blockquote）を落とさない（paragraph-only フィルタは禁止）
    - タスクリスト: `- [ ]` / `- [x]`（出力のチェックは小文字 `x`）。入力 `[X]` は `[x]` に正規化。`1. [ ]` は unordered タスクリストへ正規化（番号非保持）
    - 水平線: mdast `thematicBreak` ↔ 出力 `---`（既存 `toMarkdown` `rule: '-'`）。前後空行は決定的整形に従う
-9. **複合 mark:** strike+bold / strike+italic 等は意味を保持。ネスト順の入れ替わりは許容（見た目同等なら byte 一致は要求しない）
-10. **非対象 GFM 拡張:** footnotes / GitHub Alerts / autolink-literal / tagfilter の新規有効化はしない（§2 Out）
+10. **複合 mark:** strike+bold / strike+italic 等は意味を保持。ネスト順の入れ替わりは許容（見た目同等なら byte 一致は要求しない）
+11. **非対象 GFM 拡張:** footnotes / GitHub Alerts / autolink-literal / tagfilter の新規有効化はしない（§2 Out）
 
 #### 例外系
 
@@ -621,7 +681,7 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 
 ### 概要
 
-信頼できない `.md` / HTML / Mermaid ソースに対する防御（AD-010, RK-003）。
+信頼できない `.md` / HTML / Mermaid ソースに対する防御（AD-010, RK-003）。**画像 URI 解決**は Extension Host のみが行い、`img/` 配下に限定する（`preview-rich-embed`）。
 
 ### Inputs & Types
 
@@ -629,26 +689,34 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 |------|-----|------|------|------|------|
 | `untrustedHtml` | `string` | 任意 | — | — | 外部ファイル取込 |
 | `webviewCsp` | CSP 文字列 | はい | — | — | `default-src 'none'` 基調 |
+| `imageSrc` | `string` | 任意 | — | — | 相対パス。`isSafeImagePath` 検証後に Host が `asWebviewUri` |
 
 ### Outputs & Failure Returns
 
 | 条件 | 戻り値 / ステータス | 備考 |
 |------|-------------------|------|
 | 成功 | サニタイズ済み HTML / SVG 表示 | 許可タグリスト適用 |
+| 成功（画像 URI） | webview URI へ rewrite 済み `src` | `img/` 配下のみ |
 | 拒否 | 危険要素除去 | `<script>`, `on*` 属性等 |
+| 画像 URI 拒否 | rewrite しない（broken image） | `img/` 外・`..` 含む・ワークスペース外 |
 
 ### Preconditions
 
-- `localResourceRoots` は拡張 `media/` とワークスペース `img/` に限定（AD-010）
+- `localResourceRoots` は拡張 `media/` とワークスペース `img/` に限定（AD-010）。`getWorkspaceImgRoots` と整合。**緩和しない**
 - Extension Host 上で HTML を実行しない
+- Webview 内で相対 file パスを直接解決しない（Host rewrite 必須 — §7）
 
 ### Behavior
 
 #### 正常系
 
-1. Webview に格 CSP を設定する（nonce 付き script/style）。CSP / `localResourceRoots` / `on*` 除去は本変更で不変
+1. Webview に格 CSP を設定する（nonce 付き script/style）。Custom Editor の `img-src ${webview.cspSource} data: https: file:` は `getHtml` のまま維持。CSP / `localResourceRoots` / `on*` 除去は本変更で不変
 2. 表示前に HTML をサニタイズする（表・画像・基本書式・Mermaid SVG を許可）。**許可タグに `del` / `s` を含める**（§2 取り消し線の HTML 混在入力を落とさない）。下線・highlight（`mark`）は許可追加しない。`input` checkbox は既存許可のまま
-3. 画像保存先はワークスペース内に限定する
+3. 画像保存先はワークスペース内 `img/` に限定する
+4. **画像 URI rewrite（Host）:** `.md` のディレクトリ基準で実ファイル URI を組み立て、`isSafeImagePath(path)` — **`..` 禁止**、**`img/` プレフィックス必須** — を通過した場合のみ `webview.asWebviewUri` する。対象: TipTap `docJson` 内 `image.src`、Marp 出力 HTML 内 `<img src>`
+5. **`https:` / `data:`** は CSP 上 Webview が直接解決（既存どおり — rewrite 不要）
+6. Marp Preview **パネル**の CSP（`enableScripts: false`）は本タスクでは Preview 整合のため AD-001 rewrite で足りる限り **img-src 拡張しない**
+7. **`img/` 内 SVG** は CSP + サニタイズ経路を通す（Mermaid SVG とは別経路 — RK-015）
 
 #### 例外系
 
@@ -660,10 +728,12 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 - 秘密情報の収集・外部送信
 - CSP や `localResourceRoots` の緩和
 - 下線・highlight 用タグの許可追加
+- **`img/` 外**相対パス・ワークスペース外ローカルファイルの URI 解決
+- Webview 側での file URI 組み立て
 
 ### Related Tests
 
-- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-057–061、および `del`/`s` 許可追記 TC（`gfm-format-toolbar`）
+- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-057–061、TC-126–127（`isSafeImagePath` / `localResourceRoots` regression）
 
 ---
 
@@ -723,6 +793,11 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 | Raw パース失敗中の強制ディスク書き込み | §8 Non-Goals |
 | 画像挿入ボタン・下線・highlight・脚注・GitHub Alerts | §2 Non-Goals / `gfm-format-toolbar` Scope Out |
 | 書式ツールバーの `package.json` keybindings 追加 | §2 Non-Goals |
+| **`img/` 外**ローカル画像パスの URI 解決 | §7 / §9 / RK-014 |
+| Preview 内 Marp ページ送り UI | §1 / §6 Non-Goals |
+| §6 Marp Preview パネル廃止 | Intent Out — パネル存続 |
+| CSP / `localResourceRoots` 緩和 | §9 Non-Goals |
+| Preview 切入時 Marp パネル自動オープン | §1 Non-Goals |
 
 ---
 
@@ -742,6 +817,11 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 | RK-010 | 番号付きタスク記法 `1. [ ]` の番号喪失 | unordered タスクへ正規化（§2 / §8）。GFM 往復優先 |
 | RK-011 | 複合 mark のネスト順入れ替わり | 意味保持・byte 一致非要求（§2 / §8） |
 | RK-012 | 引用の非 paragraph 子保持による初回保存 diff | データ保全側。paragraph-only フィルタ廃止（§2 / §8） |
+| RK-013 | `isMarpDocument()` 偽陽性で非 Marp が Preview 時 Marp 描画 | 既存検出ロール維持（§6） |
+| RK-014 | `img/` 外手書き相対パスは引き続き非表示 | paste 経路（§7）が主用途 |
+| RK-015 | `img/` 内 SVG の XSS | CSP + サニタイズ（§9）。Mermaid SVG とは別 |
+| RK-016 | Preview Marp 再描画の性能 | Document 更新のたび Host `marp.render` — debounce は backlog（RK-004 同様） |
+| RK-017 | TC-077「三点 Preview ≠ Marp Preview」の意味更新 | 別 UI インスタンスは残るが Preview でも Marp 描画可（§1 / §6） |
 
 ---
 
@@ -749,7 +829,7 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 
 | ドキュメント | 状態 |
 |-------------|------|
-| [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) | **作成済** — TC-001–106。**GFM 書式ツールバー**（§2 / §8 / §9 `del`/`s`）は **要追記**（次: test-agent / spec-test-design、`gfm-format-toolbar`） |
+| [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) | **作成済** — TC-001–142。**preview-rich-embed**（§1 / §5 / §6 / §7 / §9）: TC-124–142 Green。**GFM 書式ツールバー**（§2 / §8 / §9 `del`/`s`）は **要追記**（`gfm-format-toolbar`） |
 | MVP 外項目 | [doc/backlog-vsc-md-wysiwyg.md](backlog-vsc-md-wysiwyg.md) |
 
 ---
@@ -768,9 +848,12 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 | RO 未保存ワークスペース | 保存済み WS は `workspaceState` 永続化；未保存 WS はセッション内のみ | TC-027, TC-030 |
 | 三点モード・正本・dirty | 同一 Custom Editor、初期 Markdown、正本 `MarkdownDocument`、モード切替でディスク非書込 | TC-070–074 |
 | Raw パース失敗 | Document 非破壊 + 通知 + 失敗中 save ブロック | TC-078–079 |
-| Preview vs Marp Preview | §1 三点 Preview と §6 Marp Preview を別概念として明示 | TC-077 |
-| Preview 厳密 RO・三者同期 | Preview 入力不可、Raw↔Markdown↔Preview が Document 経由で一致 | TC-080–082 |
+| Preview vs Marp Preview | §1 三点 Preview（Marp 検出時は同一 Webview 内 RO 描画可）と §6 Marp Preview **パネル**（別 UI インスタンス）を明示 | TC-077（意味更新 — RK-017） |
+| Preview 厳密 RO・三者同期 | Preview 入力不可、Raw↔Markdown↔Preview が Document 経由で一致。表示層（Marp HTML / 画像 rewrite / Mermaid CSS）は正本非変更 | TC-080–082 |
 | GFM 書式ツールバー | §2 In（strike / H3–H6 / inline code / quote / task / HR）往復、Out（画像ボタン・下線・highlight・脚注・Alerts）、RO/モード既存ガード、sanitize `del`/`s` | 後続 TC（`gfm-format-toolbar`） |
+| 画像 URI Host 解決 | `img/` 配下のみ `isSafeImagePath` + `asWebviewUri`。serialize は相対パス維持 | 後続 TC（`preview-rich-embed`） |
+| Preview Mermaid ソース非表示 | `body[data-mode="preview"]` で `.mermaid-source` 非表示 | 後続 TC（`preview-rich-embed`） |
+| Preview 内 Marp 描画 | `isMarpDocument` 共用、`#preview-marp-root`、`previewMarpHtml`、§6 パネル共存 | 後続 TC（`preview-rich-embed`） |
 
 ---
 
@@ -789,3 +872,4 @@ Marp 形式スライドのプレビューをサイドまたはパネルに表示
 | 2026-08-31 | §3 | GFM 表セル内改行を `<br />`（または同等 hard break）で永続化し、Markdown↔Raw で単一改行として往復する契約を追加。`convertToGfm` の flatten はブロックリッチ除去とし、セル内改行は保持。HTML リッチセル仕様は不変（`gfm-table-linebreak-fix` / ユーザー決定 A） |
 | 2026-08-31 | §1 三点モード, §10 | mode-toolbar 表示ラベルを `Preview` / `Edit Rich Editor` / `Edit Raw Text` と契約化。mode id（`preview` \| `markdown` \| `raw`）は不変（`mode-toolbar-labels`） |
 | 2026-08-31 | 概要, AD-003, §2, §4, §8, §9, Non-Goals, RK-*, Spec Gaps, Related Tests | Edit Rich Editor 書式ツールバーの GFM 充足（strike `~~`、H3–H6、inline code、blockquote 子保持、task list、HR）。Scope Out（画像ボタン・下線・highlight・脚注・Alerts）。sanitize `del`/`s`。Requirements Brief `gfm-format-toolbar` AD-001–AD-015 を契約化 |
+| 2026-08-31 | 概要, AD-008, AD-009, §1, §5, §6, §7, §8, §9, Non-Goals, RK-013–017, Spec Gaps, Related Tests | Preview リッチ表示（`preview-rich-embed`）: Host 画像 URI rewrite（`img/` のみ）、Preview Mermaid ソース非表示、Preview 内 Marp 描画（`#preview-marp-root` / `previewMarpHtml` / `isMarpDocument` 共用）、§6 パネル共存、serialize 相対パス維持。Requirements Brief AD-001–AD-012 |

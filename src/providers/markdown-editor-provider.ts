@@ -26,6 +26,9 @@ import {
   type EditorMode,
 } from '../utils/editor-mode';
 import { buildModeSwitchMessages } from '../utils/editor-mode-sync';
+import { applyDisplayUriRewrite } from '../utils/preview-projection';
+import type { WebviewUriResolver } from '../utils/image-uri-rewrite';
+import { buildPreviewProjectionMessages } from '../utils/preview-projection';
 import { handleCustomEditorDisposed } from '../utils/editor-switch-guard';
 import { shouldAcceptWebviewUpdate } from '../utils/webview-update-epoch';
 import type { WebviewInboundMessage, WebviewOutboundMessage } from '../webviews/messages';
@@ -102,11 +105,16 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     });
 
     document.onDidContentChange(() => {
-      this.postMessage(webviewPanel.webview, {
-        type: 'docUpdated',
-        docJson: document.docJson,
-        markdownText: document.markdownText,
-      });
+      const mode = this.modeStateFor(document).mode;
+      if (mode === 'preview') {
+        this.postPreviewProjection(document, webviewPanel.webview);
+      } else {
+        this.postDisplayMessage(document, webviewPanel.webview, {
+          type: 'docUpdated',
+          docJson: document.docJson,
+          markdownText: document.markdownText,
+        });
+      }
       // Content mutations clear Raw-fail state — keep webview banner in sync.
       if (!document.isRawParseFailed) {
         this.postMessage(webviewPanel.webview, {
@@ -147,7 +155,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     await document.revert();
     const panel = this._openPanels.get(document.uri.toString());
     if (panel) {
-      this.postMessage(panel.webview, {
+      this.postDisplayMessage(document, panel.webview, {
         type: 'docUpdated',
         docJson: document.docJson,
         markdownText: document.markdownText,
@@ -229,6 +237,34 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     void webview.postMessage(message);
   }
 
+  private postDisplayMessage(
+    document: MarkdownDocument,
+    webview: vscode.Webview,
+    message: WebviewOutboundMessage,
+  ): void {
+    this.postMessage(
+      webview,
+      applyDisplayUriRewrite(message, document.uri, this.webviewUriResolver(webview)),
+    );
+  }
+
+  private webviewUriResolver(webview: vscode.Webview): WebviewUriResolver {
+    return {
+      asWebviewUri: (uri) => webview.asWebviewUri(vscode.Uri.file(uri.fsPath)),
+    };
+  }
+
+  private postPreviewProjection(document: MarkdownDocument, webview: vscode.Webview): void {
+    const mode = this.modeStateFor(document).mode;
+    for (const message of buildPreviewProjectionMessages(
+      mode,
+      document.docJson,
+      document.markdownText,
+    )) {
+      this.postDisplayMessage(document, webview, message);
+    }
+  }
+
   private modeStateFor(document: MarkdownDocument): EditorModeState {
     const key = document.uri.toString();
     let state = this._modeStates.get(key);
@@ -249,7 +285,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
 
     switch (message.type) {
       case 'ready':
-        this.postMessage(panel.webview, {
+        this.postDisplayMessage(document, panel.webview, {
           type: 'init',
           docJson: document.docJson,
           markdownText: document.markdownText,
@@ -257,6 +293,9 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
           uri: document.uri.toString(),
           editorMode: modeState.mode,
         });
+        if (modeState.mode === 'preview') {
+          this.postPreviewProjection(document, panel.webview);
+        }
         break;
       case 'setMode':
         // Mode switch alone: display only — no disk I/O, no dirty (AD-016).
@@ -270,7 +309,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
             document.docJson,
             document.markdownText,
           )) {
-            this.postMessage(panel.webview, outbound);
+            this.postDisplayMessage(document, panel.webview, outbound);
           }
         }
         break;
@@ -318,7 +357,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
               : 'Raw Markdown parse failed. Document was not modified.',
           });
           if (ok) {
-            this.postMessage(panel.webview, {
+            this.postDisplayMessage(document, panel.webview, {
               type: 'docUpdated',
               docJson: document.docJson,
               markdownText: document.markdownText,
@@ -453,7 +492,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
       const data = Buffer.from(message.dataBase64, 'base64');
       await vscode.workspace.fs.writeFile(imageUri, data);
 
-      this.postMessage(panel.webview, {
+      this.postDisplayMessage(document, panel.webview, {
         type: 'imageInserted',
         relativePath,
       });
@@ -543,6 +582,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
   </div>
   <div id="table-warning" class="hidden"></div>
   <div id="raw-parse-banner" class="hidden" role="alert"></div>
+  <div id="preview-marp-root" class="hidden" role="document" aria-readonly="true"></div>
   <div id="editor"></div>
   <textarea id="raw-editor" class="hidden" spellcheck="false" aria-label="Raw Markdown"></textarea>
   <script nonce="${nonce}" src="${scriptUri}"></script>

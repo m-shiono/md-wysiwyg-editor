@@ -1,5 +1,6 @@
 import type { EditorMode } from './editor-mode';
 import type { WebviewOutboundMessage } from '../webviews/messages';
+import { buildPreviewProjectionMessages } from './preview-projection';
 
 /** Preview / Markdown receive TipTap docJson from Document on mode switch. */
 export function shouldProjectDocJsonOnModeSwitch(mode: EditorMode): boolean {
@@ -16,7 +17,9 @@ export function buildModeSwitchMessages(
   markdownText: string,
 ): WebviewOutboundMessage[] {
   const messages: WebviewOutboundMessage[] = [{ type: 'modeChanged', editorMode: mode }];
-  if (shouldProjectDocJsonOnModeSwitch(mode)) {
+  if (mode === 'preview') {
+    messages.push(...buildPreviewProjectionMessages(mode, docJson, markdownText));
+  } else if (shouldProjectDocJsonOnModeSwitch(mode)) {
     messages.push({ type: 'docUpdated', docJson, markdownText });
   } else {
     messages.push({ type: 'docUpdated', markdownText });

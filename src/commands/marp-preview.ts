@@ -1,10 +1,12 @@
 import * as vscode from 'vscode';
-import { Marp } from '@marp-team/marp-core';
 import { sanitizeHtml } from '../utils/sanitize';
 import { logError } from '../utils/logger';
 import { NO_MARP_MESSAGE } from '../utils/marp-constants';
+import { isMarpDocument } from '../utils/is-marp-document';
+import { renderMarpPreviewFragment } from '../utils/marp-render';
+import { rewriteImageUrisInHtml } from '../utils/image-uri-rewrite';
 
-export { NO_MARP_MESSAGE };
+export { NO_MARP_MESSAGE, isMarpDocument };
 
 export class MarpPreviewManager {
   private panel: vscode.WebviewPanel | undefined;
@@ -32,27 +34,32 @@ export class MarpPreviewManager {
     }
     this.currentUri = uri;
     this.panel.title = `Marp Preview — ${uri.path.split('/').pop() ?? 'document'}`;
-    this.panel.webview.html = this.renderHtml(content);
+    this.panel.webview.html = this.renderHtml(uri, content);
   }
 
   async updatePreview(uri: vscode.Uri, content: string): Promise<void> {
     if (this.panel && this.currentUri?.toString() === uri.toString()) {
-      this.panel.webview.html = this.renderHtml(content);
+      this.panel.webview.html = this.renderHtml(uri, content);
     }
   }
 
-  private renderHtml(content: string): string {
-    const marp = new Marp();
+  private renderHtml(uri: vscode.Uri, content: string): string {
     try {
       if (!isMarpDocument(content)) {
         return wrapPreviewHtml(
           `<div class="guidance"><h2>${NO_MARP_MESSAGE}</h2><p>Add Marp front matter to enable slide preview:</p><pre>---\nmarp: true\n---</pre></div>`,
         );
       }
-      const { html, css } = marp.render(content);
-      const sanitized = sanitizeHtml(html);
-      const safeCss = sanitizeCss(css);
-      return wrapPreviewHtml(`<style>${safeCss}</style>${sanitized}`);
+      const fragment = renderMarpPreviewFragment(content);
+      if (!fragment) {
+        return wrapPreviewHtml(
+          `<div class="guidance"><h2>${NO_MARP_MESSAGE}</h2><p>Add Marp front matter to enable slide preview:</p><pre>---\nmarp: true\n---</pre></div>`,
+        );
+      }
+      const rewritten = rewriteImageUrisInHtml(fragment, uri, {
+        asWebviewUri: (localUri) => this.panel!.webview.asWebviewUri(vscode.Uri.file(localUri.fsPath)),
+      });
+      return wrapPreviewHtml(rewritten);
     } catch (error) {
       logError('Marp parse error', error);
       return wrapPreviewHtml(
@@ -60,28 +67,6 @@ export class MarpPreviewManager {
       );
     }
   }
-}
-
-function isMarpDocument(content: string): boolean {
-  const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
-  if (!fmMatch) {
-    return false;
-  }
-  const fm = fmMatch[1];
-  if (/marp\s*:\s*true/i.test(fm)) {
-    return true;
-  }
-  return /^---\s*$/m.test(content.slice(fmMatch[0].length));
-}
-
-/** Strip CSS constructs that can break out of a style tag or execute expressions. */
-function sanitizeCss(css: string): string {
-  return css
-    .replace(/<\/style/gi, '')
-    .replace(/<script/gi, '')
-    .replace(/expression\s*\(/gi, '')
-    .replace(/javascript\s*:/gi, '')
-    .replace(/@import/gi, '');
 }
 
 function wrapPreviewHtml(body: string): string {
