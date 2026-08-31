@@ -224216,15 +224216,6 @@ img.ProseMirror-separator {
     editorEl.addEventListener("beforeinput", blockWhenPreview, true);
     editorEl.addEventListener("paste", blockWhenPreview, true);
     editorEl.addEventListener("drop", blockWhenPreview, true);
-    editorEl.addEventListener(
-      "mousedown",
-      (event3) => {
-        if (editorMode === "preview") {
-          event3.preventDefault();
-        }
-      },
-      true
-    );
   }
   function attachModeToolbarHandlers() {
     document.querySelectorAll("#mode-toolbar button[data-mode]").forEach((btn) => {

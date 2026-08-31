@@ -353,6 +353,11 @@ suite('GFM format toolbar (TC-107–123)', () => {
     assert.strictEqual(canEditContent('preview', false), false);
 
     const css = readRepoFile('media/editor.css');
+    assert.ok(/#editor\s*\{[\s\S]*?overflow:\s*auto/.test(css), '#editor must be scrollable');
+    assert.ok(
+      !/body\[data-mode=['"]preview['"]\]\s*#editor[\s\S]*?pointer-events:\s*none/.test(css),
+      'Preview must not disable pointer events on #editor (blocks scroll)',
+    );
     assert.ok(
       /body\[data-mode=['"]preview['"]\]\s*#toolbar[\s\S]*?display:\s*none/.test(css),
       'Preview must hide #toolbar',
@@ -363,6 +368,12 @@ suite('GFM format toolbar (TC-107–123)', () => {
     );
 
     const editorSrc = readRepoFile('media/editor.ts');
+    assert.ok(
+      !/addEventListener\s*\(\s*['"]mousedown['"]/.test(
+        editorSrc.slice(editorSrc.indexOf('attachPreviewGuard')),
+      ),
+      'Preview guard must not block mousedown (allows scroll drag)',
+    );
     assert.ok(
       /editorMode\s*!==\s*['"]markdown['"]/.test(editorSrc) ||
         /editorMode\s*===\s*['"]markdown['"]/.test(editorSrc),

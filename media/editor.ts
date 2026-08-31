@@ -504,7 +504,7 @@ function applyExternalDoc(doc: TipTapDoc, options?: { force?: boolean }): void {
   updateTableMenuState();
 }
 
-/** Block keyboard/paste/mouse edits while Preview is active (strict RO). */
+/** Block keyboard/paste/drop edits while Preview is active (strict RO). Scroll is allowed. */
 function attachPreviewGuard(): void {
   const editorEl = document.getElementById('editor');
   if (!editorEl || editorEl.dataset.previewGuard === '1') {
@@ -524,15 +524,6 @@ function attachPreviewGuard(): void {
   editorEl.addEventListener('beforeinput', blockWhenPreview, true);
   editorEl.addEventListener('paste', blockWhenPreview, true);
   editorEl.addEventListener('drop', blockWhenPreview, true);
-  editorEl.addEventListener(
-    'mousedown',
-    (event) => {
-      if (editorMode === 'preview') {
-        event.preventDefault();
-      }
-    },
-    true,
-  );
 }
 
 function attachModeToolbarHandlers(): void {

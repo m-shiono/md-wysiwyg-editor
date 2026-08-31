@@ -364,9 +364,8 @@ body[data-readonly='true'] #link-input-bar {
   opacity: 0.95;
 }
 
-/* Preview: strict RO — block pointer interaction on the visual surface */
+/* Preview: strict RO — block text selection; scroll remains on #editor (overflow: auto) */
 body[data-mode='preview'] #editor {
-  pointer-events: none;
   user-select: none;
   cursor: default;
 }
