@@ -1,29 +1,16 @@
 import type { ThemeKind } from './theme-sync';
 
-const VS_CODE_THEME_VAR_KEYS: Record<string, string> = {
-  background: '--vscode-editor-background',
-  textColor: '--vscode-editor-foreground',
-  primaryTextColor: '--vscode-editor-foreground',
-  lineColor: '--vscode-panel-border',
-  primaryBorderColor: '--vscode-panel-border',
-  primaryColor: '--vscode-editorWidget-background',
-  fontFamily: '--vscode-font-family',
-};
-
 export type MermaidThemeConfig = {
   theme: string;
   themeVariables: Record<string, string>;
   securityLevel: string;
 };
 
-export function buildMermaidThemeConfig(_kind: ThemeKind): MermaidThemeConfig {
-  const themeVariables: Record<string, string> = {};
-  for (const [key, cssVar] of Object.entries(VS_CODE_THEME_VAR_KEYS)) {
-    themeVariables[key] = `var(${cssVar})`;
-  }
+export function buildMermaidThemeConfig(kind: ThemeKind): MermaidThemeConfig {
+  const theme = kind === 'dark' || kind === 'highContrast' ? 'dark' : 'default';
   return {
-    theme: 'base',
-    themeVariables,
+    theme,
+    themeVariables: {},
     securityLevel: 'strict',
   };
 }
@@ -44,6 +31,10 @@ export function handleThemeUpdated(kind: ThemeKind): void {
   if (!runtime) {
     return;
   }
-  runtime.initialize(buildMermaidThemeConfig(kind));
+  try {
+    runtime.initialize(buildMermaidThemeConfig(kind));
+  } catch (err) {
+    // runtime.initialize might fail in webview context; isolate it
+  }
   runtime.scheduleRerender();
 }

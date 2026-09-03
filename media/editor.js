@@ -223811,23 +223811,11 @@ img.ProseMirror-separator {
   }
 
   // src/utils/mermaid-theme.ts
-  var VS_CODE_THEME_VAR_KEYS = {
-    background: "--vscode-editor-background",
-    textColor: "--vscode-editor-foreground",
-    primaryTextColor: "--vscode-editor-foreground",
-    lineColor: "--vscode-panel-border",
-    primaryBorderColor: "--vscode-panel-border",
-    primaryColor: "--vscode-editorWidget-background",
-    fontFamily: "--vscode-font-family"
-  };
-  function buildMermaidThemeConfig(_kind) {
-    const themeVariables = {};
-    for (const [key, cssVar] of Object.entries(VS_CODE_THEME_VAR_KEYS)) {
-      themeVariables[key] = `var(${cssVar})`;
-    }
+  function buildMermaidThemeConfig(kind) {
+    const theme = kind === "dark" || kind === "highContrast" ? "dark" : "default";
     return {
-      theme: "base",
-      themeVariables,
+      theme,
+      themeVariables: {},
       securityLevel: "strict"
     };
   }
@@ -223839,7 +223827,10 @@ img.ProseMirror-separator {
     if (!runtime) {
       return;
     }
-    runtime.initialize(buildMermaidThemeConfig(kind));
+    try {
+      runtime.initialize(buildMermaidThemeConfig(kind));
+    } catch (err) {
+    }
     runtime.scheduleRerender();
   }
 
@@ -223864,13 +223855,17 @@ img.ProseMirror-separator {
   var mermaidRerenderCallbacks = /* @__PURE__ */ new Set();
   var mermaidThemeRerenderTimer;
   function initializeMermaidTheme(kind) {
-    const config3 = buildMermaidThemeConfig(kind);
-    mermaid_default.initialize({
-      startOnLoad: false,
-      theme: "base",
-      themeVariables: config3.themeVariables,
-      securityLevel: "strict"
-    });
+    try {
+      const config3 = buildMermaidThemeConfig(kind);
+      mermaid_default.initialize({
+        startOnLoad: false,
+        theme: config3.theme,
+        themeVariables: config3.themeVariables,
+        securityLevel: "strict"
+      });
+    } catch (err) {
+      console.error("Mermaid initialization failed:", err);
+    }
   }
   initializeMermaidTheme("dark");
   function scheduleMermaidThemeRerender() {
@@ -223885,12 +223880,16 @@ img.ProseMirror-separator {
   }
   registerMermaidThemeRuntime({
     initialize: (config3) => {
-      mermaid_default.initialize({
-        startOnLoad: false,
-        theme: "base",
-        themeVariables: config3.themeVariables,
-        securityLevel: "strict"
-      });
+      try {
+        mermaid_default.initialize({
+          startOnLoad: false,
+          theme: config3.theme,
+          themeVariables: config3.themeVariables,
+          securityLevel: "strict"
+        });
+      } catch (err) {
+        console.error("Mermaid runtime initialization failed:", err);
+      }
     },
     scheduleRerender: scheduleMermaidThemeRerender
   });

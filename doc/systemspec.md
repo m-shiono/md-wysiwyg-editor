@@ -467,19 +467,15 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 4. **Preview モード**（`body[data-mode="preview"]`）: `.mermaid-source` を CSS で非表示（`display: none` 等）。`.mermaid-preview` のみ表示。構文エラーは `.mermaid-error` に `--vscode-errorForeground` / `--vscode-inputValidation-errorBackground` で表示（`preview-mode-quality` AD-007）。`securityLevel: 'strict'`・DOMPurify SVG サニタイズは不変
 5. **Markdown / Raw モード**: ソース + 図を従来どおり表示（Markdown モードでソース編集可）
 6. **フェンス全文レンダリング**（`preview-mode-quality` AD-003）: `mermaid.render(id, source)` にはフェンス内 **全文**を渡す。YAML frontmatter および `%%{init:...}%%` による per-diagram 設定は Mermaid ネイティブに委譲し、Webview 側で frontmatter を strip しない。per-diagram 設定はグローバル `mermaid.initialize` より優先（Mermaid v11 仕様）
-7. **グローバルテーマ**（`preview-mode-quality` AD-004）: `mermaid.initialize` の `theme` は `'base'`。`themeVariables` は render 時に Webview 内の VS Code CSS 変数から導出する。最低限マッピング:
+7. **グローバルテーマ**（`mermaid-theme-crash-fix`）: `mermaid.initialize` の `theme` は VS Code カラーテーマ kind に応じてマップする。
+   - `dark` / `highContrast` → `theme: 'dark'`
+   - `light` → `theme: 'default'`
+   - `themeVariables` への `var(--vscode-...)` 指定（khroma color parser が "Unsupported color format" でクラッシュする原因）は廃止し、Mermaid ビルトインテーマを優先する。
+   `securityLevel: 'strict'` は不変（§9 / AD-010）。
 
-   | `themeVariables` キー | VS Code CSS 変数 |
-   |------------------------|------------------|
-   | `background` | `--vscode-editor-background` |
-   | `textColor`, `primaryTextColor` | `--vscode-editor-foreground` |
-   | `lineColor`, `primaryBorderColor` | `--vscode-panel-border` |
-   | `primaryColor` | `--vscode-editorWidget-background` |
-   | `fontFamily` | `--vscode-font-family` |
+8. **初期化・テーマ切替の隔離**（`mermaid-theme-crash-fix`）: `mermaid.initialize` およびテーマ更新処理は `try-catch` で隔離し、Mermaid 内部エラーが Webview 全体のメッセージングや描画を停止させないようにする。
 
-   `securityLevel: 'strict'` は不変（§9 / AD-010）
-
-8. **テーマ切替再描画**（`preview-mode-quality` AD-005）: §1 `themeUpdated` 受信時、Webview は `mermaid.initialize(...)` を更新し、表示中の全 Mermaid NodeView を debounce 後に再 render する
+9. **テーマ切替再描画**（`preview-mode-quality` AD-005）: §1 `themeUpdated` 受信時、Webview は `mermaid.initialize(...)` を更新し、表示中の全 Mermaid NodeView を debounce 後に再 render する。本処理も上記「隔離」に従う。
 
 #### 例外系
 
@@ -487,7 +483,7 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 2. Mermaid パッケージ更新による見た目変化は許容（RK-007 — lockfile 固定推奨）
 3. frontmatter 内 `config.theme` が VS Code テーマと異なる場合、当該図のみ意図的に別配色となる（Mermaid 仕様 — `preview-mode-quality` RK-004）
 4. 文書内 Mermaid ブロックが多数ある場合、テーマ切替の一括再描画で短時間 CPU 負荷が上がり得る（debounce + 表示中 NodeView のみ — RK-004 系 / `preview-mode-quality` RK-002）
-5. `themeVariables` の VS Code 変数マッピングは VS Code ネイティブ Markdown Preview とのピクセル一致を保証しない（`preview-mode-quality` RK-001）
+5. Mermaid テーマのマッピングは VS Code ネイティブ Markdown Preview とのピクセル一致を保証しない（`preview-mode-quality` RK-001）
 
 ### Non-Goals
 
@@ -890,7 +886,7 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | Preview Mermaid ソース非表示 | `body[data-mode="preview"]` で `.mermaid-source` 非表示 | 後続 TC（`preview-rich-embed`） |
 | Preview 内 Marp 描画 | `isMarpDocument` 共用、`#preview-marp-root`、`previewMarpHtml`、§6 パネル共存 | 後続 TC（`preview-rich-embed`） |
 | Preview 可読性 CSS | `body[data-mode='preview']` スコープ、`line-height`、opacity/コントラスト、`--vscode-*` トークン | 後続 TC（`preview-mode-quality`） |
-| Mermaid frontmatter / VS Code テーマ | フェンス全文 render、`theme: 'base'` + `themeVariables`、`themeUpdated` 再描画 | 後続 TC（`preview-mode-quality`） |
+| Mermaid frontmatter / VS Code テーマ | フェンス全文 render、VS Code kind マップ（dark/default）、try-catch 隔離、var(...) 廃止、`themeUpdated` 再描画 | `mermaid-theme-crash-fix` |
 
 ---
 
@@ -911,3 +907,4 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | 2026-08-31 | 概要, AD-003, §2, §4, §8, §9, Non-Goals, RK-*, Spec Gaps, Related Tests | Edit Rich Editor 書式ツールバーの GFM 充足（strike `~~`、H3–H6、inline code、blockquote 子保持、task list、HR）。Scope Out（画像ボタン・下線・highlight・脚注・Alerts）。sanitize `del`/`s`。Requirements Brief `gfm-format-toolbar` AD-001–AD-015 を契約化 |
 | 2026-08-31 | 概要, AD-008, AD-009, §1, §5, §6, §7, §8, §9, Non-Goals, RK-013–017, Spec Gaps, Related Tests | Preview リッチ表示（`preview-rich-embed`）: Host 画像 URI rewrite（`img/` のみ）、Preview Mermaid ソース非表示、Preview 内 Marp 描画（`#preview-marp-root` / `previewMarpHtml` / `isMarpDocument` 共用）、§6 パネル共存、serialize 相対パス維持。Requirements Brief AD-001–AD-012 |
 | 2026-09-03 | §1, §5, Spec Gaps, Related Tests, 改訂履歴 | Preview 品質改善（`preview-mode-quality`）: §1 Preview 可読性 CSS（`body[data-mode='preview']` スコープ、`line-height`、opacity/コントラスト、`--vscode-*` トークン）、`themeUpdated` postMessage 契約。§5 Mermaid フェンス全文 render（frontmatter 非 strip）、`theme: 'base'` + VS Code `themeVariables`、テーマ切替再描画。Marp 分岐・三点同期は不変。Requirements Brief AD-001–AD-010 |
+| 2026-09-03 | §5, Spec Gaps, 改訂履歴 | Mermaid テーマ初期化クラッシュ修正（`mermaid-theme-crash-fix`）: VS Code kind から Mermaid ビルトインテーマ（dark/default）へのマップ採用、`themeVariables` での `var(...)` 指定を廃止。Mermaid 初期化・テーマ切替を try-catch で隔離し Webview クラッシュを防止 |

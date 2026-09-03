@@ -1,5 +1,5 @@
 /**
- * TC-013 (themeUpdated extension), TC-143–150: preview-mode-quality contracts (TDD Red).
+ * TC-013 (themeUpdated extension), TC-143–151: preview-mode-quality contracts (TDD Red).
  * Production theme sync / Mermaid theme / Preview CSS may be absent until build-agent Green.
  */
 import * as assert from 'assert';
@@ -44,7 +44,7 @@ const MERMAID_FRONTMATTER_DOC = [
   '',
 ].join('\n');
 
-suite('preview-mode-quality (TC-013, TC-143–150)', () => {
+suite('preview-mode-quality (TC-013, TC-143–151)', () => {
   // --- Mermaid frontmatter full render (TC-143) ---
 
   test('TC-143: buildMermaidRenderSource passes full fence text including YAML frontmatter to render', () => {
@@ -153,6 +153,17 @@ suite('preview-mode-quality (TC-013, TC-143–150)', () => {
     assert.ok(handleThemeUpdated, 'handleThemeUpdated export required (TC-145 AD-005)');
   });
 
+  // --- Mermaid initialization and error isolation (TC-150) ---
+
+  test('TC-150: Mermaid initialization and theme updates are wrapped in try-catch', () => {
+    const mermaidThemeSrc = readRepoFile('src/utils/mermaid-theme.ts');
+    assert.ok(
+      /try\s*\{[\s\S]*runtime\.initialize[\s\S]*\}[\s\S]*catch/.test(mermaidThemeSrc) ||
+        /try\s*\{[\s\S]*mermaid\.initialize[\s\S]*\}[\s\S]*catch/.test(mermaidThemeSrc),
+      'Mermaid initialization must be wrapped in try-catch for error isolation (TC-150)',
+    );
+  });
+
   // --- Preview readability CSS (TC-146–148) ---
 
   test('TC-146: Preview mode sets body line-height 1.6 for readability', () => {
@@ -191,9 +202,9 @@ suite('preview-mode-quality (TC-013, TC-143–150)', () => {
     );
   });
 
-  // --- Mermaid VS Code themeVariables (TC-149) ---
+  // --- Mermaid built-in theme mapping (TC-149) ---
 
-  test('TC-149: mermaid.initialize uses base theme and VS Code CSS variable mapping', () => {
+  test('TC-149: buildMermaidThemeConfig maps VS Code kind to Mermaid built-in themes and excludes var()', () => {
     const buildMermaidThemeConfig = getUtilExport<
       (kind: 'light' | 'dark' | 'highContrast') => {
         theme: string;
@@ -203,39 +214,31 @@ suite('preview-mode-quality (TC-013, TC-143–150)', () => {
     >('mermaid-theme', 'buildMermaidThemeConfig');
     assert.ok(buildMermaidThemeConfig, 'buildMermaidThemeConfig export required (TC-149 AD-004)');
 
-    const config = buildMermaidThemeConfig!('dark');
-    assert.strictEqual(config.theme, 'base');
-    assert.strictEqual(config.securityLevel, 'strict');
-    assert.ok(
-      config.themeVariables.background?.includes('--vscode-editor-background'),
-      'background must map from --vscode-editor-background',
-    );
-    assert.ok(
-      config.themeVariables.textColor?.includes('--vscode-editor-foreground') ||
-        config.themeVariables.primaryTextColor?.includes('--vscode-editor-foreground'),
-      'text colors must map from --vscode-editor-foreground',
-    );
-    assert.ok(
-      config.themeVariables.lineColor?.includes('--vscode-panel-border') ||
-        config.themeVariables.primaryBorderColor?.includes('--vscode-panel-border'),
-      'border colors must map from --vscode-panel-border',
-    );
-    assert.ok(
-      config.themeVariables.primaryColor?.includes('--vscode-editorWidget-background'),
-      'primaryColor must map from --vscode-editorWidget-background',
-    );
-    assert.ok(
-      config.themeVariables.fontFamily?.includes('--vscode-font-family'),
-      'fontFamily must map from --vscode-font-family',
-    );
+    // Test mapping
+    const darkConfig = buildMermaidThemeConfig!('dark');
+    assert.strictEqual(darkConfig.theme, 'dark', 'dark kind should map to dark theme (mermaid-theme-crash-fix)');
+    
+    const highContrastConfig = buildMermaidThemeConfig!('highContrast');
+    assert.strictEqual(highContrastConfig.theme, 'dark', 'highContrast kind should map to dark theme');
 
-    const editorSrc = readRepoFile('media/editor.ts');
-    assert.ok(/theme:\s*['"]base['"]/.test(editorSrc), 'editor.ts must initialize Mermaid with base theme');
+    const lightConfig = buildMermaidThemeConfig!('light');
+    assert.strictEqual(lightConfig.theme, 'default', 'light kind should map to default theme');
+
+    // Test themeVariables exclusion of var()
+    [darkConfig, highContrastConfig, lightConfig].forEach(config => {
+      if (config.themeVariables) {
+        Object.values(config.themeVariables).forEach(val => {
+          assert.ok(!val.includes('var(--vscode-'), `themeVariables must NOT contain var(): ${val}`);
+        });
+      }
+    });
+
+    assert.strictEqual(darkConfig.securityLevel, 'strict');
   });
 
-  // --- Display layer does not mutate Document (TC-150) ---
+  // --- Display layer does not mutate Document (TC-151) ---
 
-  test('TC-150: theme and preview display projection leaves Document fields unchanged', () => {
+  test('TC-151: theme and preview display projection leaves Document fields unchanged', () => {
     const applyThemeDisplayOnly = getUtilExport<
       (
         markdownText: string,

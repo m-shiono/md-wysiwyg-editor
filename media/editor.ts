@@ -65,13 +65,17 @@ const mermaidRerenderCallbacks = new Set<() => void>();
 let mermaidThemeRerenderTimer: ReturnType<typeof setTimeout> | undefined;
 
 function initializeMermaidTheme(kind: ThemeKind): void {
-  const config = buildMermaidThemeConfig(kind);
-  mermaid.initialize({
-    startOnLoad: false,
-    theme: 'base',
-    themeVariables: config.themeVariables,
-    securityLevel: 'strict',
-  });
+  try {
+    const config = buildMermaidThemeConfig(kind);
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: config.theme as any,
+      themeVariables: config.themeVariables,
+      securityLevel: 'strict',
+    });
+  } catch (err) {
+    console.error('Mermaid initialization failed:', err);
+  }
 }
 
 initializeMermaidTheme('dark');
@@ -89,12 +93,16 @@ function scheduleMermaidThemeRerender(): void {
 
 registerMermaidThemeRuntime({
   initialize: (config: MermaidThemeConfig) => {
-    mermaid.initialize({
-      startOnLoad: false,
-      theme: 'base',
-      themeVariables: config.themeVariables,
-      securityLevel: 'strict',
-    });
+    try {
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: config.theme as any,
+        themeVariables: config.themeVariables,
+        securityLevel: 'strict',
+      });
+    } catch (err) {
+      console.error('Mermaid runtime initialization failed:', err);
+    }
   },
   scheduleRerender: scheduleMermaidThemeRerender,
 });
