@@ -13,3 +13,4 @@ import './suite/unit/editor-switch-guard.test';
 import './suite/unit/reload-extension.test';
 import './suite/unit/webview-update-epoch.test';
 import './suite/unit/preview-rich-embed.test';
+import './suite/unit/preview-mode-quality.test';

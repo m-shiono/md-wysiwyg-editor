@@ -347,8 +347,10 @@ body[data-readonly='true'] #link-input-bar {
 
 .mermaid-error {
   color: var(--vscode-errorForeground);
+  background: var(--vscode-inputValidation-errorBackground);
   font-size: 0.9em;
   padding: 8px;
+  border-radius: 4px;
 }
 
 .mermaid-source {
@@ -372,6 +374,15 @@ body[data-mode='preview'] .mermaid-source {
 
 #preview-marp-root section {
   margin-bottom: 2rem;
+}
+
+/* Preview readability — scoped to preview mode only (AD-006) */
+body[data-mode='preview'] {
+  line-height: 1.6;
+}
+
+body[data-mode='preview'] #editor .ProseMirror {
+  opacity: 1;
 }
 
 .ProseMirror[contenteditable='false'] {

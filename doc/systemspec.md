@@ -107,7 +107,7 @@ Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdow
 - Markdown 編集 → Document 更新 → Raw テキスト投影 + Preview 描画追随（Markdown フォーカス中は TipTap を破壊しない — TC-067）
 - Raw 編集（パース成功）→ Document 更新 → Markdown / Preview へ `docJson` 投影（画像 `src` は Host が rewrite 後に送信）
 - **Preview 表示中**も Document 更新時は描画を追随する（一方通行）
-- **Preview 表示層**（Marp HTML 注入・画像 URI rewrite・Mermaid CSS）は `docJson` / `markdownText` / serialize を変更しない（AD-008 三者同期維持）
+- **Preview 表示層**（Marp HTML 注入・画像 URI rewrite・Mermaid 描画/CSS・Preview 可読性 CSS）は `docJson` / `markdownText` / serialize を変更しない（三者同期維持 — `preview-mode-quality` AD-002）
 
 #### Preview 表示分岐（`preview-rich-embed`）
 
@@ -122,11 +122,25 @@ Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdow
 - `#preview-marp-root` は `role="document"` `aria-readonly="true"`。スライド UX は §6 パネルと同じ **縦スクロール一覧**（ページ送り UI は作らない）
 - Preview 切入で §6 Marp Preview パネルを自動オープンしない
 
+#### Preview 可読性（`preview-mode-quality`）
+
+非 Marp Preview（TipTap RO 表示層）の Typography・コントラストは **`body[data-mode='preview']` スコープの CSS のみ**で改善する。Markdown / Raw モードのスタイルは変更しない。色は **`--vscode-*` CSS 変数**を正とし、ハードコード色は用いない。
+
+| 要素 | 要件 |
+|------|------|
+| 本文 | `line-height: 1.6`（目安）。見出し・段落の余白は Preview スコープで微調整可 |
+| `.ProseMirror[contenteditable='false']` | Preview 時の `opacity` は **1**（Edit 面との完全一致は Non-Goal — コントラスト確保を優先） |
+| リンク・引用・表・コードブロック | 既存の `--vscode-*` トークンを継続使用 |
+
+- Marp 分岐（`#preview-marp-root` / `previewMarpHtml`）の契約は変更しない（`preview-mode-quality` AD-008）
+- Preview 表示層の CSS は Document 正本・三者同期に影響しない（`preview-mode-quality` AD-002）
+
 #### postMessage — Host → Webview（Preview 追加）
 
 | メッセージ | 方向 | payload | 備考 |
 |-----------|------|---------|------|
 | `previewMarpHtml` | Host → Webview | `{ html: string }` | サニタイズ済み body 断片 + inline style。Webview は DOM 注入のみ（`innerHTML` は Host 済み HTML のみ） |
+| `themeUpdated` | Host → Webview | `{ kind: 'light' \| 'dark' \| 'highContrast' }` | VS Code カラーテーマ変更時（Host: `onDidChangeActiveColorTheme`）および Webview `init` / `ready` 時に送信。payload は列挙型 `kind` のみ — 任意 HTML / 設定オブジェクトは送らない（§9 / `preview-mode-quality` AD-010）。Webview は Mermaid グローバルテーマ更新・再描画に用いる（§5） |
 | （既存）`docJson` 投影 | Host → Webview | TipTap JSON | 送信前に Host が `image.src` を rewrite |
 
 型定義は `src/webviews/messages.ts` に追加する。
@@ -156,14 +170,16 @@ Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdow
 - Preview 内 Marp のページ送り UI（縦スクロール一覧のみ）
 - Preview 切入時の §6 Marp Preview パネル自動オープン
 - Rich Editor（Markdown モード）での Marp WYSIWYG 描画（§6 Non-Goals と同旨）
+- VS Code ビルトイン Markdown Preview とのピクセル完全一致（`preview-mode-quality` — 三点モード一体感・テーマ連動可読性を優先）
+- VS Code ビルトイン Preview の嵌め込み・別 Webview 化・markdown-it HTML パイプラインへの全面置換（非 Marp Preview は TipTap RO 表示層を維持 — `preview-mode-quality` AD-001）
 
 ### Related Tests
 
-- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-001–009（基盤）および三点モード追加 TC。Preview Marp 分岐・`previewMarpHtml`・`isMarpDocument` 共用: TC-124–142（`preview-rich-embed`）
+- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-001–009（基盤）および三点モード追加 TC。Preview Marp 分岐・`previewMarpHtml`・`isMarpDocument` 共用: TC-124–142（`preview-rich-embed`）。Preview 可読性・`themeUpdated`: 後続 TC（`preview-mode-quality`）
 
 ### Spec Gaps
 
-- なし（モード初期値 Markdown・Raw パース失敗時 save ブロック・モード切替でディスク非書込・Preview Marp 分岐・画像 Host rewrite は本節および §6 / §7 / §9 で確定）
+- なし（モード初期値 Markdown・Raw パース失敗時 save ブロック・モード切替でディスク非書込・Preview Marp 分岐・画像 Host rewrite・Preview 可読性 CSS・`themeUpdated` は本節および §5 / §6 / §7 / §9 で確定）
 
 ---
 
@@ -418,15 +434,16 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 
 ### 概要
 
-` ```mermaid ` フェンスブロックをリアルタイムに図として描画する。編集はテキストのみ（UD-004, AD-007）。**Preview モード**ではソース（`.mermaid-source`）を非表示とし、描画（`.mermaid-preview`）のみ表示する（`preview-rich-embed`）。
+` ```mermaid ` フェンスブロックをリアルタイムに図として描画する。編集はテキストのみ（UD-004, AD-007）。**Preview モード**ではソース（`.mermaid-source`）を非表示とし、描画（`.mermaid-preview`）のみ表示する（`preview-rich-embed`）。フェンス内 YAML frontmatter / `%%{init:...}%%` は Mermaid ネイティブに委譲する（`preview-mode-quality` AD-003）。グローバルテーマは VS Code カラーテーマ CSS 変数と連動する（`preview-mode-quality` AD-004–005）。
 
 ### Inputs & Types
 
 | 入力 | 型 | 必須 | 最小 | 最大 | 備考 |
 |------|-----|------|------|------|------|
-| `mermaidSource` | `string` | はい | 0 文字 | — | フェンス内テキスト |
-| `debounceMs` | 数値 | いいえ | — | — | 目安 300 ms |
+| `mermaidSource` | `string` | はい | 0 文字 | — | フェンス内**全文**（YAML frontmatter / `%%{init:...}%%` 含む。Webview は strip しない — AD-003） |
+| `debounceMs` | 数値 | いいえ | — | — | 目安 300 ms。テーマ切替再描画にも適用 |
 | `editorMode` | `"preview" \| "markdown" \| "raw"` | はい | — | — | Preview 時はソース非表示（§1） |
+| `themeUpdated` | postMessage | 任意 | — | — | §1 `{ kind: 'light' \| 'dark' \| 'highContrast' }` |
 
 ### Outputs & Failure Returns
 
@@ -447,22 +464,40 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 1. Mermaid コードブロック内のテキスト変更を debounce（目安 300 ms）後に再描画する
 2. 保存内容は ```mermaid フェンスとして .md に残る
 3. RO 中も描画は更新される（ソース変更は不可）
-4. **Preview モード**（`body[data-mode="preview"]`）: `.mermaid-source` を CSS で非表示（`display: none` 等）。`.mermaid-preview` のみ表示。`securityLevel: 'strict'`・DOMPurify SVG サニタイズは不変
+4. **Preview モード**（`body[data-mode="preview"]`）: `.mermaid-source` を CSS で非表示（`display: none` 等）。`.mermaid-preview` のみ表示。構文エラーは `.mermaid-error` に `--vscode-errorForeground` / `--vscode-inputValidation-errorBackground` で表示（`preview-mode-quality` AD-007）。`securityLevel: 'strict'`・DOMPurify SVG サニタイズは不変
 5. **Markdown / Raw モード**: ソース + 図を従来どおり表示（Markdown モードでソース編集可）
+6. **フェンス全文レンダリング**（`preview-mode-quality` AD-003）: `mermaid.render(id, source)` にはフェンス内 **全文**を渡す。YAML frontmatter および `%%{init:...}%%` による per-diagram 設定は Mermaid ネイティブに委譲し、Webview 側で frontmatter を strip しない。per-diagram 設定はグローバル `mermaid.initialize` より優先（Mermaid v11 仕様）
+7. **グローバルテーマ**（`preview-mode-quality` AD-004）: `mermaid.initialize` の `theme` は `'base'`。`themeVariables` は render 時に Webview 内の VS Code CSS 変数から導出する。最低限マッピング:
+
+   | `themeVariables` キー | VS Code CSS 変数 |
+   |------------------------|------------------|
+   | `background` | `--vscode-editor-background` |
+   | `textColor`, `primaryTextColor` | `--vscode-editor-foreground` |
+   | `lineColor`, `primaryBorderColor` | `--vscode-panel-border` |
+   | `primaryColor` | `--vscode-editorWidget-background` |
+   | `fontFamily` | `--vscode-font-family` |
+
+   `securityLevel: 'strict'` は不変（§9 / AD-010）
+
+8. **テーマ切替再描画**（`preview-mode-quality` AD-005）: §1 `themeUpdated` 受信時、Webview は `mermaid.initialize(...)` を更新し、表示中の全 Mermaid NodeView を debounce 後に再 render する
 
 #### 例外系
 
 1. 悪意ある入力はサニタイズし、スクリプト実行を行わない（RK-003）
 2. Mermaid パッケージ更新による見た目変化は許容（RK-007 — lockfile 固定推奨）
+3. frontmatter 内 `config.theme` が VS Code テーマと異なる場合、当該図のみ意図的に別配色となる（Mermaid 仕様 — `preview-mode-quality` RK-004）
+4. 文書内 Mermaid ブロックが多数ある場合、テーマ切替の一括再描画で短時間 CPU 負荷が上がり得る（debounce + 表示中 NodeView のみ — RK-004 系 / `preview-mode-quality` RK-002）
+5. `themeVariables` の VS Code 変数マッピングは VS Code ネイティブ Markdown Preview とのピクセル一致を保証しない（`preview-mode-quality` RK-001）
 
 ### Non-Goals
 
 - Mermaid ビジュアルダイアグラムエディタ（backlog）
 - オフライン以外での外部レンダリング API 呼び出し
+- VS Code ネイティブ Markdown Preview との Mermaid 配色ピクセル一致（`preview-mode-quality` RK-001）
 
 ### Related Tests
 
-- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-031–037。Preview Mermaid ソース非表示: TC-130–132（`preview-rich-embed`）
+- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-031–037。Preview Mermaid ソース非表示: TC-130–132（`preview-rich-embed`）。frontmatter 描画・テーマ切替再描画（TC-013 拡張）・Preview コントラスト: 後続 TC（`preview-mode-quality`）
 
 ---
 
@@ -854,6 +889,8 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | 画像 URI Host 解決 | `img/` 配下のみ `isSafeImagePath` + `asWebviewUri`。serialize は相対パス維持 | 後続 TC（`preview-rich-embed`） |
 | Preview Mermaid ソース非表示 | `body[data-mode="preview"]` で `.mermaid-source` 非表示 | 後続 TC（`preview-rich-embed`） |
 | Preview 内 Marp 描画 | `isMarpDocument` 共用、`#preview-marp-root`、`previewMarpHtml`、§6 パネル共存 | 後続 TC（`preview-rich-embed`） |
+| Preview 可読性 CSS | `body[data-mode='preview']` スコープ、`line-height`、opacity/コントラスト、`--vscode-*` トークン | 後続 TC（`preview-mode-quality`） |
+| Mermaid frontmatter / VS Code テーマ | フェンス全文 render、`theme: 'base'` + `themeVariables`、`themeUpdated` 再描画 | 後続 TC（`preview-mode-quality`） |
 
 ---
 
@@ -873,3 +910,4 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | 2026-08-31 | §1 三点モード, §10 | mode-toolbar 表示ラベルを `Preview` / `Edit Rich Editor` / `Edit Raw Text` と契約化。mode id（`preview` \| `markdown` \| `raw`）は不変（`mode-toolbar-labels`） |
 | 2026-08-31 | 概要, AD-003, §2, §4, §8, §9, Non-Goals, RK-*, Spec Gaps, Related Tests | Edit Rich Editor 書式ツールバーの GFM 充足（strike `~~`、H3–H6、inline code、blockquote 子保持、task list、HR）。Scope Out（画像ボタン・下線・highlight・脚注・Alerts）。sanitize `del`/`s`。Requirements Brief `gfm-format-toolbar` AD-001–AD-015 を契約化 |
 | 2026-08-31 | 概要, AD-008, AD-009, §1, §5, §6, §7, §8, §9, Non-Goals, RK-013–017, Spec Gaps, Related Tests | Preview リッチ表示（`preview-rich-embed`）: Host 画像 URI rewrite（`img/` のみ）、Preview Mermaid ソース非表示、Preview 内 Marp 描画（`#preview-marp-root` / `previewMarpHtml` / `isMarpDocument` 共用）、§6 パネル共存、serialize 相対パス維持。Requirements Brief AD-001–AD-012 |
+| 2026-09-03 | §1, §5, Spec Gaps, Related Tests, 改訂履歴 | Preview 品質改善（`preview-mode-quality`）: §1 Preview 可読性 CSS（`body[data-mode='preview']` スコープ、`line-height`、opacity/コントラスト、`--vscode-*` トークン）、`themeUpdated` postMessage 契約。§5 Mermaid フェンス全文 render（frontmatter 非 strip）、`theme: 'base'` + VS Code `themeVariables`、テーマ切替再描画。Marp 分岐・三点同期は不変。Requirements Brief AD-001–AD-010 |

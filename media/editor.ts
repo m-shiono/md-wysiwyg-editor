@@ -14,6 +14,14 @@ import Image from '@tiptap/extension-image';
 import { common, createLowlight } from 'lowlight';
 import mermaid from 'mermaid';
 import DOMPurify from 'dompurify';
+import { buildMermaidRenderSource } from '../src/utils/mermaid-render';
+import {
+  buildMermaidThemeConfig,
+  handleThemeUpdated,
+  registerMermaidThemeRuntime,
+  type MermaidThemeConfig,
+} from '../src/utils/mermaid-theme';
+import type { ThemeKind } from '../src/utils/theme-sync';
 
 /** AD-004: Strike 既定 Mod-Shift-s は Save All と衝突するため無効化。 */
 const StrikeWithoutShortcut = Strike.extend({
@@ -48,12 +56,48 @@ type TableContext = {
 const vscode = acquireVsCodeApi();
 const lowlight = createLowlight(common);
 
-mermaid.initialize({ startOnLoad: false, securityLevel: 'strict' });
-
 const MERMAID_DEBOUNCE_MS = 300;
+const MERMAID_THEME_RERENDER_DEBOUNCE_MS = 300;
 const RAW_SYNC_DEBOUNCE_MS = 200;
 const RAW_UPDATE_DEBOUNCE_MS = 250;
 const mermaidTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const mermaidRerenderCallbacks = new Set<() => void>();
+let mermaidThemeRerenderTimer: ReturnType<typeof setTimeout> | undefined;
+
+function initializeMermaidTheme(kind: ThemeKind): void {
+  const config = buildMermaidThemeConfig(kind);
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'base',
+    themeVariables: config.themeVariables,
+    securityLevel: 'strict',
+  });
+}
+
+initializeMermaidTheme('dark');
+
+function scheduleMermaidThemeRerender(): void {
+  if (mermaidThemeRerenderTimer) {
+    clearTimeout(mermaidThemeRerenderTimer);
+  }
+  mermaidThemeRerenderTimer = setTimeout(() => {
+    for (const rerender of mermaidRerenderCallbacks) {
+      rerender();
+    }
+  }, MERMAID_THEME_RERENDER_DEBOUNCE_MS);
+}
+
+registerMermaidThemeRuntime({
+  initialize: (config: MermaidThemeConfig) => {
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'base',
+      themeVariables: config.themeVariables,
+      securityLevel: 'strict',
+    });
+  },
+  scheduleRerender: scheduleMermaidThemeRerender,
+});
 
 interface TipTapDoc {
   type: string;
@@ -168,7 +212,8 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
           viewId,
           setTimeout(async () => {
             try {
-              const { svg } = await mermaid.render(`${viewId}-svg`, source || ' ');
+              const renderSource = buildMermaidRenderSource(source);
+              const { svg } = await mermaid.render(`${viewId}-svg`, renderSource || ' ');
               preview.innerHTML = DOMPurify.sanitize(svg);
             } catch (err) {
               preview.innerHTML = `<div class="mermaid-error">${escapeHtml(String(err))}</div>`;
@@ -178,6 +223,11 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
         );
       };
 
+      const rerenderFromDom = (): void => {
+        renderPreview(code.textContent ?? '');
+      };
+
+      mermaidRerenderCallbacks.add(rerenderFromDom);
       renderPreview(node.textContent);
 
       return {
@@ -194,6 +244,7 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
           return true;
         },
         destroy: () => {
+          mermaidRerenderCallbacks.delete(rerenderFromDom);
           const existing = mermaidTimers.get(viewId);
           if (existing) {
             clearTimeout(existing);
@@ -1104,6 +1155,11 @@ window.addEventListener('message', (event) => {
       if (editor && !readonly && editorMode === 'markdown') {
         editor.chain().focus().setImage({ src: message.relativePath, alt: message.relativePath }).run();
         vscode.postMessage({ type: 'update', docJson: JSON.stringify(editor.getJSON()) });
+      }
+      break;
+    case 'themeUpdated':
+      if (message.kind === 'light' || message.kind === 'dark' || message.kind === 'highContrast') {
+        handleThemeUpdated(message.kind);
       }
       break;
   }

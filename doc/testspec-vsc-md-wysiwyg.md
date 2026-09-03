@@ -3,7 +3,7 @@
 ## 概要
 
 - **対象:** VS Code 拡張 vsc-md-editor の MVP 機能（Custom Editor、三点モード Preview/Markdown/Raw、WYSIWYG、**GFM 書式ツールバー**、表、Readonly、Mermaid、Marp、画像 paste、シリアライズ、セキュリティ、ログ・共存）
-- **対応仕様:** [doc/systemspec.md](systemspec.md) §1–§10（AD-016 三点モード、§2/§8/§9 GFM 書式ツールバー、§1/§5/§6/§7/§9 `preview-rich-embed` 含む）
+- **対応仕様:** [doc/systemspec.md](systemspec.md) §1–§10（AD-016 三点モード、§2/§8/§9 GFM 書式ツールバー、§1/§5/§6/§7/§9 `preview-rich-embed`、`§1 Preview 可読性 / §5 Mermaid frontmatter・テーマ` `preview-mode-quality` 含む）
 - **テストコード:** `src/test/suite/unit/**/*.test.ts`（mocha + vscode mock）、`src/test/suite/integration/**/*.test.ts`（@vscode/test-electron）
 - **作成日:** 2026-08-29
 
@@ -36,6 +36,8 @@
 | `imageSrc` | `string` | — | — | Document / `docJson` 内相対パス（例: `img/image-0001.png`）。Host が表示投影時に rewrite |
 | `isMarpDocument` | `(markdown: string) => boolean` | — | — | 共有ユーティリティ。Preview 切入・`markdownText` 更新で再評価 |
 | `previewMarpHtml` | `{ html: string }` | — | — | Host → Webview。サニタイズ済み Marp body 断片 |
+| `themeUpdated` | `{ kind: 'light' \| 'dark' \| 'highContrast' }` | — | — | Host → Webview。`onDidChangeActiveColorTheme` および init/ready 時（§1 / AD-010） |
+| `mermaidSource` (frontmatter) | `string` | — | — | フェンス内全文（YAML frontmatter / `%%{init:...}%%` 含む。Webview strip 禁止 — §5 AD-003） |
 
 ### Outputs & Failure Returns
 
@@ -72,6 +74,9 @@
 | 画像 URI 解決不可 | broken image + Output debug ログ（通知なし） | `img/` 外・`..` 含む・ワークスペース外は rewrite しない | §7, §9 |
 | Preview 内 Marp 描画成功 | `#preview-marp-root` にスライド HTML RO 表示、`#editor` 非表示 | `previewMarpHtml` postMessage。入力は `markdownText` | §1, §6 |
 | Preview Mermaid 表示 | `.mermaid-preview` のみ表示、`.mermaid-source` 非表示 | `body[data-mode="preview"]` CSS | §5 |
+| Mermaid frontmatter 全文 render | YAML frontmatter 含むソースで SVG 表示。`mermaid.render` に全文渡し | Document / serialize はフェンス全文維持 | §5 正常系 6, AD-003 |
+| `themeUpdated` 受信 | `mermaid.initialize` 更新 + 表示中 NodeView 再 render（debounce） | payload は `kind` 列挙のみ | §1 postMessage, §5 正常系 8, AD-005 |
+| Preview 可読性 CSS | `body[data-mode='preview']` スコープで `line-height: 1.6`、`.ProseMirror[contenteditable='false']` の `opacity: 1` | Markdown / Raw スタイル不変、`--vscode-*` トークン使用 | §1 Preview 可読性, AD-006 |
 
 ### Preconditions & Assumptions
 
@@ -115,7 +120,7 @@
 | TC-010 | Happy | wysiwyg-format | P0 | 選択テキストに太字をツールバー適用。ツールバー In は Strike / H3–H6 / Inline Code / Task / Quote / HR を含む（詳細 TC-107–113） | UI に `<strong>` 相当表示、dirty。新 In コマンドも Markdown かつ非 RO で UI 更新 + dirty | WYSIWYG 書式（GFM ツールバー含む） | §2 正常系 1 |
 | TC-011 | Happy | realtime-model | P0 | キー入力で段落を編集 | 内部モデル即時更新、UI 反映 | リアルタイム編集 | §2 正常系 2 |
 | TC-012 | Happy | wysiwyg-serialize | P0 | 見出し（h1–h6）・リスト・リンク・取り消し線（`~~`）・インラインコード・引用（非 paragraph 子含む）・タスクリスト（`- [ ]`/`- [x]`）・水平線（`---`）を含む doc を save | remark パイプラインで Markdown（+許可 HTML）出力。上記 GFM ノードが保持される（往復詳細は TC-107–113） | シリアライズ連携（§2 In ノード含む） | §2 正常系 3, §8 正常系 8 |
-| TC-013 | Happy | theme-integration | P1 | VS Code テーマ切替（dark/light） | Webview が `var(--vscode-*)` で見た目更新 | テーマ統合 | §2 正常系 4 |
+| TC-013 | Happy | theme-integration | P1 | VS Code テーマ切替（dark/light/highContrast）および Webview init/ready | Webview が `var(--vscode-*)` で見た目更新。Host が `themeUpdated: { kind }` を送信（payload は列挙型のみ — §1 / AD-010）。Mermaid 再描画は TC-145 | テーマ統合 + themeUpdated 契約 | §1 postMessage, §2 正常系 4, §5 |
 | TC-014 | Structural | unsupported-syntax | P1 | 脚注（`[^1]`）・GitHub Alerts（`> [!NOTE]`）等 **Out** 記法を含む `.md` を開く | 可能な限り原文保持、読取表示。footnotes / Alerts は GFM 拡張として有効化しない。`~~` と `- [ ]` は **In**（本 TC 対象外 — TC-107, TC-111） | データ損失回避。脚注は引き続き Out | §2 例外系 1, Non-Goals, §8 正常系 10 |
 | TC-015 | Corner | serialize-block | P1 | シリアライズ不能構造（schema 外ノード）で save | 保存ブロック、エラー表示（AD-015） | 保存安全 | §2 例外系 2 |
 | TC-016 | Happy | table-insert-gfm | P0 | 既定 `insertTableFormat='gfm'` で Insert table（3×3・ヘッダ行）→ セルにテキスト入力 → save | 表 UI 表示、`tableFormat:'gfm'`、`.md` に GFM パイプ表出力、dirty→save 成功 | デフォルト GFM 挿入 | §3 正常系 1, 4, AD-005 |
@@ -241,15 +246,45 @@
 | TC-140 | Happy | preview-leave-clears-marp-root | P1 | Preview（Marp 表示中）から Markdown へ切替 | `#preview-marp-root` を空にし `#editor` を復帰表示 | Preview 離脱時クリーンアップ | §1 正常系 4 |
 | TC-141 | Happy | marp-panel-coexists-with-preview | P1 | Marp doc で Preview 内 Marp 表示中に `showMarpPreview` を手動実行 | §6 パネルもスライド表示。三点 Preview 内 Marp と共存（同一 `markdownText` 由来可） | 二系統共存 | §6 正常系 5, TC-038 |
 | TC-142 | Corner | preview-marp-reeval-on-update | P1 | Preview 表示中に Document の `markdownText` を更新（Marp ↔ 非 Marp 境界を跨ぐ fixture） | `isMarpDocument` を再評価し、`#preview-marp-root` / `#editor` の表示を切替。パネルは自動オープンしない | 動的 Marp 検出 | §1, §6 正常系 7 |
+| TC-143 | Happy | mermaid-frontmatter-full-render | P0 | [Fixture: Valid Mermaid frontmatter](#fixture-valid-mermaid-frontmatter-tc-143) を含む doc を Markdown / Preview で表示 | `.mermaid-preview` に SVG 表示。`mermaid.render(id, source)` に YAML frontmatter **含む全文**が渡される（Webview strip なし）。save / serialize でフェンス全文（frontmatter 含む）が維持 | Mermaid v11 frontmatter 委譲（AD-003） | §5 正常系 6, AD-003 |
+| TC-144 | Happy | theme-updated-postmessage | P0 | Webview init/ready および Host `onDidChangeActiveColorTheme`（light / dark / highContrast） | Host → Webview `themeUpdated` `{ kind: 'light' \| 'dark' \| 'highContrast' }` のみ送信。任意 HTML / 設定オブジェクトは含まない | themeUpdated 契約（AD-010） | §1 postMessage, AD-010 |
+| TC-145 | Happy | mermaid-rerender-on-theme-change | P0 | TC-143 相当 doc を Preview 表示中に `themeUpdated` を別 `kind` で受信 | Webview が `mermaid.initialize({ theme: 'base', themeVariables, securityLevel: 'strict' })` を更新し、表示中の全 Mermaid NodeView を debounce 後に再 render。Document / serialize 不変 | テーマ切替再描画（AD-005） | §5 正常系 7–8, AD-004–005 |
+| TC-146 | Happy | preview-line-height-readability | P1 | 非 Marp doc を Preview モード（`body[data-mode='preview']`）で表示 | Preview スコープ CSS で本文 `line-height: 1.6`（目安）。Markdown モードの line-height は変更しない | Preview 可読性 — 行間 | §1 Preview 可読性, AD-006 |
+| TC-147 | Happy | preview-prosemirror-opacity-contrast | P1 | Preview モードで TipTap RO（`.ProseMirror[contenteditable='false']`）を表示 | `body[data-mode='preview']` スコープで `opacity: 1`。ハードコード色なし（`--vscode-*` 継続）。Markdown モードの opacity ルールは Preview 用変更の対象外 | Preview 可読性 — コントラスト | §1 Preview 可読性, AD-006 |
+| TC-148 | Structural | preview-css-scoped-only | P1 | `editor.css`（または同等）の Preview / Markdown / Raw ルールを検査 | line-height・opacity 改善は `body[data-mode='preview']` 配下のみ。Markdown / Raw の同等プロパティに Preview 専用上書きを波及させない | Preview スコープ限定（AD-006） | §1 Preview 可読性, AD-006 |
+| TC-149 | Structural | mermaid-theme-variables-vscode | P1 | Webview 内 Mermaid グローバル initialize 設定を検査 | `theme: 'base'`。`themeVariables` が `--vscode-editor-background` / `--vscode-editor-foreground` / `--vscode-panel-border` / `--vscode-editorWidget-background` / `--vscode-font-family` から導出。`securityLevel: 'strict'` 維持 | VS Code 連動テーマ（AD-004） | §5 正常系 7, AD-004 |
+| TC-150 | Corner | preview-display-layer-document-unchanged | P1 | TC-145 相当（themeUpdated + Mermaid 再描画）および TC-146–147 相当（Preview CSS 適用）後に Document を inspect | `markdownText` / `docJson` / serialize 出力がテーマ・CSS・再描画前と一致。表示層のみの変更（AD-002） | 三者同期 — 表示層非変更 | §1 AD-002, TC-082 |
+
+### Fixtures — preview-mode-quality
+
+#### Fixture: Valid Mermaid frontmatter (TC-143)
+
+`temporary/test.md` の flowchart は `problem` ノード未定義のため構文エラーとなり得る — **成功 path fixture として使用禁止**（RK-005）。
+
+````markdown
+# Mermaid frontmatter sample
+
+```mermaid
+---
+title: Valid Flowchart
+---
+flowchart TD
+    Start[Start] --> End[End]
+```
+````
+
+- **用途:** TC-143（全文 render）、TC-145（テーマ再描画のベース doc）
+- **検証:** frontmatter 3 行 + `flowchart TD` 本体が `mermaid.render` 引数に連結されたまま渡ること
+- **禁止 fixture:** `temporary/test.md` L37–50（未定義 `problem` 参照）
 
 ### Category Coverage
 
 | Category | Covered | N/A Reason |
 |----------|---------|------------|
-| Happy Path | TC-001–004, TC-010–012, TC-016–019, TC-025–027, TC-031, TC-033, TC-038–039, TC-043–044, TC-052–054, TC-057–058, TC-070–072, TC-074–076, TC-079–092, TC-101–102, TC-107–109, TC-111–113, TC-117, TC-120, TC-124–125, TC-128, TC-130–131, TC-134–136, TC-140–141 | — |
+| Happy Path | TC-001–004, TC-010–012, TC-016–019, TC-025–027, TC-031, TC-033, TC-038–039, TC-043–044, TC-052–054, TC-057–058, TC-070–072, TC-074–076, TC-079–092, TC-101–102, TC-107–109, TC-111–113, TC-117, TC-120, TC-124–125, TC-128, TC-130–131, TC-134–136, TC-140–141, TC-143–147 | — |
 | Boundary | TC-008, TC-021–023, TC-121 | — |
-| Structural | TC-014, TC-055, TC-077, TC-110, TC-118, TC-123, TC-133, TC-137, TC-139 | — |
-| Corner | TC-005–009, TC-015, TC-020, TC-024, TC-030, TC-034–037, TC-041–042, TC-047–051, TC-056, TC-059, TC-061, TC-064, TC-067–069, TC-073, TC-078, TC-088, TC-093–096, TC-103–106, TC-114–116, TC-119, TC-122, TC-126–127, TC-129, TC-132, TC-138, TC-142 | — |
+| Structural | TC-014, TC-055, TC-077, TC-110, TC-118, TC-123, TC-133, TC-137, TC-139, TC-148–149 | — |
+| Corner | TC-005–009, TC-015, TC-020, TC-024, TC-030, TC-034–037, TC-041–042, TC-047–051, TC-056, TC-059, TC-061, TC-064, TC-067–069, TC-073, TC-078, TC-088, TC-093–096, TC-103–106, TC-114–116, TC-119, TC-122, TC-126–127, TC-129, TC-132, TC-138, TC-142, TC-150 | — |
 | Stress | TC-065–066 | 書式ツールバー自体の最悪計算量は N/A（既存大 doc TC でカバー） |
 
 ### Complexity Notes
@@ -260,6 +295,7 @@
 - GFM 書式ノード往復は文書サイズ非依存の unit（TC-107–113）。P2 追加なし
 - 画像 URI rewrite / `isSafeImagePath` は O(画像数) の unit（TC-124–129）。P2 追加なし
 - Preview Marp 再描画は Document 更新ごとに Host render（RK-016）— debounce は backlog。P2 省略
+- Mermaid テーマ切替一括再描画の CPU スパイク（RK-002）は debounce + 表示中 NodeView のみ — P2 省略
 
 ---
 
@@ -284,6 +320,8 @@
 | TC-130–132 | ユニット（Webview CSS / `body[data-mode="preview"]` Mermaid NodeView DOM） |
 | TC-133 | ユニット（`isMarpDocument` export 元・Preview / パネル import 一致） |
 | TC-134–142 | ユニット（Preview 分岐・`previewMarpHtml` handler / `#preview-marp-root` DOM）+ 統合（Custom Editor Preview Marp・パネル共存） |
+| TC-143–150 | ユニット（Mermaid NodeView full-source render / `themeUpdated` handler / `mermaid.initialize` themeVariables / Preview CSS スコープ）+ 統合（Host theme listener → postMessage → 再描画） |
+| TC-013, TC-144–145 | ユニット（`messages.ts` `themeUpdated` 型・Host theme listener mock）+ 統合（VS Code テーマ切替） |
 | TC-044 | ユニット（採番ロジック） |
 | TC-067–068, TC-072, TC-074 | ユニット（MarkdownDocument + vscode mock） |
 | TC-070（viewType）, TC-075（readonly key）, TC-077 | ユニット（package.json / 定数 / readonly-state / Preview vs パネル用語） |
@@ -336,6 +374,12 @@ P0 + P1 の机上トレース（実装前）。
 | TC-130 | Preview: `.mermaid-source` hidden、`.mermaid-preview` visible | ✅ Pass — `editor.css` |
 | TC-134 | Marp doc + Preview → `#editor` hidden、`#preview-marp-root` にスライド | ✅ Pass — `preview-projection.ts` |
 | TC-136 | `previewMarpHtml` → `#preview-marp-root` innerHTML 注入 | ✅ Pass — `messages.ts` / `editor.ts` |
+| TC-143 | Valid frontmatter fixture → `mermaid.render` に全文（strip なし）→ SVG | ✅ 期待どおり（未実装 — Red 予定） |
+| TC-144 | init/ready + theme change → `themeUpdated` `{ kind }` のみ | ✅ 期待どおり（未実装 — Red 予定） |
+| TC-145 | `themeUpdated` → `mermaid.initialize` 更新 → NodeView 再 render、Document 不変 | ✅ 期待どおり（未実装 — Red 予定） |
+| TC-146–148 | `body[data-mode='preview']` の line-height / opacity / スコープ限定 | ✅ 期待どおり（未実装 — Red 予定） |
+| TC-149 | `theme: 'base'` + VS Code CSS 変数マッピング | ✅ 期待どおり（未実装 — Red 予定） |
+| TC-150 | テーマ/CSS/再描画後も serialize 不変 | ✅ 期待どおり（未実装 — Red 予定） |
 
 ### gfm-format-toolbar ユニット（2026-08-31、TDD Red）
 
@@ -623,6 +667,9 @@ P0 + P1 の机上トレース（実装前）。
 - [x] `isSafeImagePath` / `localResourceRoots` 整合（TC-060, TC-126–127）
 - [x] Preview Mermaid ソース非表示（TC-130–132）
 - [x] Preview 内 Marp 分岐・`previewMarpHtml`・`isMarpDocument` 共用（TC-133–142）
+- [x] Mermaid frontmatter 全文 render（TC-143）、`themeUpdated` + 再描画（TC-013 拡張, TC-144–145）
+- [x] Preview 可読性 CSS スコープ（TC-146–148）、Mermaid VS Code themeVariables（TC-149）
+- [x] 表示層が Document 正本を変更しない（TC-150, TC-082）
 - [x] 引用の非 paragraph 子（TC-110）、複合 mark（TC-118）、ツールバー 4 群（TC-123）
 
 ### C. Corner & Failure
@@ -633,6 +680,7 @@ P0 + P1 の机上トレース（実装前）。
 - [x] 番号付きタスク正規化（TC-116）、sanitize `mark` 非許可（TC-119）
 - [x] Preview 表示層が Document 正本を変更しない（TC-082, TC-125）
 - [x] `https:` / `data:` 画像 pass-through（TC-129）
+- [x] frontmatter per-diagram `config.theme` 差異（RK-004）は Mermaid 仕様として TC-143 fixture では global テーマ検証を優先。専用 TC は backlog
 
 ### D. Complexity & Resources
 - [x] P2 ストレス TC-065, TC-066 定義
@@ -647,6 +695,7 @@ P0 + P1 の机上トレース（実装前）。
 - 画像サイズ上限は MVP 未定 — backlog（BL-008）で管理、本 testspec では MIME 検証のみ
 - TC-107–123 はユニット Red 実装済み（`gfm-format-toolbar.test.ts`）。Green は build-agent
 - TC-124–142 はユニット Green（`preview-rich-embed.test.ts`、91 passing）
+- TC-143–150 は testspec 設計済み — testspec-implementation / build-agent 向け Red 予定（`preview-mode-quality`）
 - 空選択 strike の stored mark は仕様「でよい」のため専用 TC なし（TipTap 既定）
 - `isMarpDocument()` 偽陽性（RK-013）は既存検出ロール維持。専用 TC は TC-142 で再評価のみ
 
@@ -656,6 +705,7 @@ P0 + P1 の机上トレース（実装前）。
 
 | 日付 | 変更内容 |
 |------|---------|
+| 2026-09-03 | TC-143–150 追加；TC-013 拡張（`themeUpdated`）；Fixture: Valid Mermaid frontmatter；Spec Digest・Coverage・Trace・実行方針更新 | `preview-mode-quality`（§1 Preview 可読性, §5 Mermaid frontmatter/テーマ） |
 | 2026-08-31 | TC-124–142 Green 同期（91 passing）。Trace / Spec Gaps / Summary 更新 | `preview-rich-embed` build-agent 完了 |
 | 2026-08-31 | TC-124–142 ユニット Red（`preview-rich-embed.test.ts`）。Trace / Spec Gaps を TDD Red に同期 | `preview-rich-embed` testspec-implementation |
 | 2026-08-31 | TC-124–142 追加；TC-060 / TC-077 / TC-080–082 Expected 更新；Spec Digest・Coverage・Trace 拡張 | `preview-rich-embed`（§1 / §5 / §6 / §7 / §9）: Host 画像 URI rewrite、Preview Mermaid ソース非表示、Preview 内 Marp（`#preview-marp-root` / `previewMarpHtml` / `isMarpDocument`）、TC-077 RK-017 意味更新、三者同期表示層非変更 |

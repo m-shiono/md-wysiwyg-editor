@@ -223804,6 +223804,46 @@ img.ProseMirror-separator {
 
   // media/editor.ts
   init_purify_es();
+
+  // src/utils/mermaid-render.ts
+  function buildMermaidRenderSource(source3) {
+    return source3;
+  }
+
+  // src/utils/mermaid-theme.ts
+  var VS_CODE_THEME_VAR_KEYS = {
+    background: "--vscode-editor-background",
+    textColor: "--vscode-editor-foreground",
+    primaryTextColor: "--vscode-editor-foreground",
+    lineColor: "--vscode-panel-border",
+    primaryBorderColor: "--vscode-panel-border",
+    primaryColor: "--vscode-editorWidget-background",
+    fontFamily: "--vscode-font-family"
+  };
+  function buildMermaidThemeConfig(_kind) {
+    const themeVariables = {};
+    for (const [key, cssVar] of Object.entries(VS_CODE_THEME_VAR_KEYS)) {
+      themeVariables[key] = `var(${cssVar})`;
+    }
+    return {
+      theme: "base",
+      themeVariables,
+      securityLevel: "strict"
+    };
+  }
+  var runtime;
+  function registerMermaidThemeRuntime(next3) {
+    runtime = next3;
+  }
+  function handleThemeUpdated(kind) {
+    if (!runtime) {
+      return;
+    }
+    runtime.initialize(buildMermaidThemeConfig(kind));
+    runtime.scheduleRerender();
+  }
+
+  // media/editor.ts
   var StrikeWithoutShortcut = Strike.extend({
     addKeyboardShortcuts() {
       return {};
@@ -223816,11 +223856,44 @@ img.ProseMirror-separator {
   });
   var vscode = acquireVsCodeApi();
   var lowlight = createLowlight(grammars);
-  mermaid_default.initialize({ startOnLoad: false, securityLevel: "strict" });
   var MERMAID_DEBOUNCE_MS = 300;
+  var MERMAID_THEME_RERENDER_DEBOUNCE_MS = 300;
   var RAW_SYNC_DEBOUNCE_MS = 200;
   var RAW_UPDATE_DEBOUNCE_MS = 250;
   var mermaidTimers = /* @__PURE__ */ new Map();
+  var mermaidRerenderCallbacks = /* @__PURE__ */ new Set();
+  var mermaidThemeRerenderTimer;
+  function initializeMermaidTheme(kind) {
+    const config3 = buildMermaidThemeConfig(kind);
+    mermaid_default.initialize({
+      startOnLoad: false,
+      theme: "base",
+      themeVariables: config3.themeVariables,
+      securityLevel: "strict"
+    });
+  }
+  initializeMermaidTheme("dark");
+  function scheduleMermaidThemeRerender() {
+    if (mermaidThemeRerenderTimer) {
+      clearTimeout(mermaidThemeRerenderTimer);
+    }
+    mermaidThemeRerenderTimer = setTimeout(() => {
+      for (const rerender of mermaidRerenderCallbacks) {
+        rerender();
+      }
+    }, MERMAID_THEME_RERENDER_DEBOUNCE_MS);
+  }
+  registerMermaidThemeRuntime({
+    initialize: (config3) => {
+      mermaid_default.initialize({
+        startOnLoad: false,
+        theme: "base",
+        themeVariables: config3.themeVariables,
+        securityLevel: "strict"
+      });
+    },
+    scheduleRerender: scheduleMermaidThemeRerender
+  });
   var editor;
   var insertTableFormat = "gfm";
   var readonly = false;
@@ -223912,7 +223985,8 @@ img.ProseMirror-separator {
             viewId,
             setTimeout(async () => {
               try {
-                const { svg: svg2 } = await mermaid_default.render(`${viewId}-svg`, source3 || " ");
+                const renderSource = buildMermaidRenderSource(source3);
+                const { svg: svg2 } = await mermaid_default.render(`${viewId}-svg`, renderSource || " ");
                 preview.innerHTML = purify.sanitize(svg2);
               } catch (err) {
                 preview.innerHTML = `<div class="mermaid-error">${escapeHtml(String(err))}</div>`;
@@ -223921,6 +223995,10 @@ img.ProseMirror-separator {
             }, MERMAID_DEBOUNCE_MS)
           );
         };
+        const rerenderFromDom = () => {
+          renderPreview(code.textContent ?? "");
+        };
+        mermaidRerenderCallbacks.add(rerenderFromDom);
         renderPreview(node2.textContent);
         return {
           dom,
@@ -223936,6 +224014,7 @@ img.ProseMirror-separator {
             return true;
           },
           destroy: () => {
+            mermaidRerenderCallbacks.delete(rerenderFromDom);
             const existing = mermaidTimers.get(viewId);
             if (existing) {
               clearTimeout(existing);
@@ -224734,6 +224813,11 @@ img.ProseMirror-separator {
         if (editor && !readonly && editorMode === "markdown") {
           editor.chain().focus().setImage({ src: message.relativePath, alt: message.relativePath }).run();
           vscode.postMessage({ type: "update", docJson: JSON.stringify(editor.getJSON()) });
+        }
+        break;
+      case "themeUpdated":
+        if (message.kind === "light" || message.kind === "dark" || message.kind === "highContrast") {
+          handleThemeUpdated(message.kind);
         }
         break;
     }

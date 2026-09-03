@@ -19,7 +19,8 @@ export type WebviewOutboundMessage =
   | { type: 'imageInserted'; relativePath: string }
   | { type: 'rawParseFailed'; failed: boolean; message?: string }
   | { type: 'modeChanged'; editorMode: EditorMode }
-  | { type: 'previewMarpHtml'; html: string };
+  | { type: 'previewMarpHtml'; html: string }
+  | { type: 'themeUpdated'; kind: 'light' | 'dark' | 'highContrast' };
 
 export type WebviewInboundMessage =
   | { type: 'ready' }

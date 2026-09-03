@@ -31,6 +31,7 @@ import type { WebviewUriResolver } from '../utils/image-uri-rewrite';
 import { buildPreviewProjectionMessages } from '../utils/preview-projection';
 import { handleCustomEditorDisposed } from '../utils/editor-switch-guard';
 import { shouldAcceptWebviewUpdate } from '../utils/webview-update-epoch';
+import { buildThemeUpdatedMessage, mapColorThemeKind } from '../utils/theme-sync';
 import type { WebviewInboundMessage, WebviewOutboundMessage } from '../webviews/messages';
 
 export class MarkdownEditorProvider implements vscode.CustomEditorProvider<MarkdownDocument> {
@@ -50,7 +51,16 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly marpManager: MarpPreviewManager,
-  ) {}
+  ) {
+    this.context.subscriptions.push(
+      vscode.window.onDidChangeActiveColorTheme((theme) => {
+        const message = buildThemeUpdatedMessage(mapColorThemeKind(theme.kind));
+        for (const panel of this._openPanels.values()) {
+          this.postMessage(panel.webview, message);
+        }
+      }),
+    );
+  }
 
   async openCustomDocument(
     uri: vscode.Uri,
@@ -237,6 +247,14 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     void webview.postMessage(message);
   }
 
+  /** Host → Webview `themeUpdated` on init/ready and VS Code color theme change (TC-013). */
+  private postThemeUpdated(webview: vscode.Webview): void {
+    this.postMessage(
+      webview,
+      buildThemeUpdatedMessage(mapColorThemeKind(vscode.window.activeColorTheme.kind)),
+    );
+  }
+
   private postDisplayMessage(
     document: MarkdownDocument,
     webview: vscode.Webview,
@@ -293,6 +311,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
           uri: document.uri.toString(),
           editorMode: modeState.mode,
         });
+        this.postThemeUpdated(panel.webview);
         if (modeState.mode === 'preview') {
           this.postPreviewProjection(document, panel.webview);
         }
