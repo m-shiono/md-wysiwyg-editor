@@ -306,6 +306,8 @@ function sanitizeMermaidSvg(svg: string): string {
     USE_PROFILES: { svg: true, svgFilters: true, html: true },
     ADD_TAGS: ['foreignObject'],
     ADD_ATTR: ['xmlns'],
+    // foreignObject 内の XHTML ラベルを空シェルにしない（mermaid-contrast-readable P0）
+    HTML_INTEGRATION_POINTS: { foreignobject: true },
   });
 }
 

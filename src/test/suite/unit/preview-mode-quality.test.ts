@@ -203,7 +203,7 @@ suite('preview-mode-quality (TC-013, TC-143–151)', () => {
 
   // --- Mermaid built-in theme mapping (TC-149) ---
 
-  test('TC-149: buildMermaidThemeConfig maps VS Code kind to Mermaid built-in themes and excludes var()', () => {
+  test('TC-149: buildMermaidThemeConfig maps VS Code kind to island-safe Mermaid themes and excludes var()', () => {
     const buildMermaidThemeConfig = getUtilExport<
       (kind: 'light' | 'dark' | 'highContrast') => {
         theme: string;
@@ -213,12 +213,20 @@ suite('preview-mode-quality (TC-013, TC-143–151)', () => {
     >('mermaid-theme', 'buildMermaidThemeConfig');
     assert.ok(buildMermaidThemeConfig, 'buildMermaidThemeConfig export required (TC-149 AD-004)');
 
-    // Test mapping
+    // 島ライトキャンバス方針（mermaid-contrast-readable UD-001=B）: dark/HC も default
     const darkConfig = buildMermaidThemeConfig!('dark');
-    assert.strictEqual(darkConfig.theme, 'dark', 'dark kind should map to dark theme (mermaid-theme-crash-fix)');
-    
+    assert.strictEqual(
+      darkConfig.theme,
+      'default',
+      'dark kind maps to default on light island (not Mermaid dark)',
+    );
+
     const highContrastConfig = buildMermaidThemeConfig!('highContrast');
-    assert.strictEqual(highContrastConfig.theme, 'dark', 'highContrast kind should map to dark theme');
+    assert.strictEqual(
+      highContrastConfig.theme,
+      'default',
+      'highContrast kind maps to default on light island',
+    );
 
     const lightConfig = buildMermaidThemeConfig!('light');
     assert.strictEqual(lightConfig.theme, 'default', 'light kind should map to default theme');

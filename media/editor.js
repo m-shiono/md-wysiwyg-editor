@@ -223812,12 +223812,25 @@ img.ProseMirror-separator {
 
   // src/utils/mermaid-theme.ts
   function buildMermaidThemeConfig(kind) {
-    const theme = kind === "dark" || kind === "highContrast" ? "dark" : "default";
-    return {
-      theme,
-      themeVariables: {},
-      securityLevel: "strict"
-    };
+    switch (kind) {
+      case "light":
+      case "dark":
+      case "highContrast":
+        return {
+          theme: "default",
+          themeVariables: {},
+          securityLevel: "strict"
+        };
+      default: {
+        const _exhaustive = kind;
+        void _exhaustive;
+        return {
+          theme: "default",
+          themeVariables: {},
+          securityLevel: "strict"
+        };
+      }
+    }
   }
   var runtime;
   function registerMermaidThemeRuntime(next3) {
@@ -224044,7 +224057,9 @@ img.ProseMirror-separator {
     return purify.sanitize(svg2, {
       USE_PROFILES: { svg: true, svgFilters: true, html: true },
       ADD_TAGS: ["foreignObject"],
-      ADD_ATTR: ["xmlns"]
+      ADD_ATTR: ["xmlns"],
+      // foreignObject 内の XHTML ラベルを空シェルにしない（mermaid-contrast-readable P0）
+      HTML_INTEGRATION_POINTS: { foreignobject: true }
     });
   }
   function getEditorExtensions() {

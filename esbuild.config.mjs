@@ -35,7 +35,8 @@ const unitTestConfig = {
   outfile: 'out/test/unit-bundle.js',
   // vscode is external + resolved to the unit mock in runUnit so dynamic
   // require('out/commands/*.js') shares the same vscode instance tests patch.
-  external: ['mocha', 'vscode'],
+  // jsdom / dompurify: Node 上で Mermaid SVG sanitize 実行検証（mermaid-contrast-readable）
+  external: ['mocha', 'vscode', 'jsdom', 'dompurify'],
   format: 'cjs',
   platform: 'node',
   sourcemap: true,

@@ -7,12 +7,26 @@ export type MermaidThemeConfig = {
 };
 
 export function buildMermaidThemeConfig(kind: ThemeKind): MermaidThemeConfig {
-  const theme = kind === 'dark' || kind === 'highContrast' ? 'dark' : 'default';
-  return {
-    theme,
-    themeVariables: {},
-    securityLevel: 'strict',
-  };
+  // 島ライトキャンバス上では Mermaid dark を使わない（mermaid-contrast-readable UD-001=B / AD-006）
+  switch (kind) {
+    case 'light':
+    case 'dark':
+    case 'highContrast':
+      return {
+        theme: 'default',
+        themeVariables: {},
+        securityLevel: 'strict',
+      };
+    default: {
+      const _exhaustive: never = kind;
+      void _exhaustive;
+      return {
+        theme: 'default',
+        themeVariables: {},
+        securityLevel: 'strict',
+      };
+    }
+  }
 }
 
 type MermaidThemeRuntime = {

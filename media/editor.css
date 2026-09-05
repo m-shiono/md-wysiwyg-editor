@@ -339,6 +339,8 @@ body[data-readonly='true'] #link-input-bar {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* 島ライトキャンバス — ダークテーマでもノード・ラベルを識別（UD-001=B）。広い面の背景は変えない */
+  background-color: white;
 }
 
 .mermaid-preview svg {
