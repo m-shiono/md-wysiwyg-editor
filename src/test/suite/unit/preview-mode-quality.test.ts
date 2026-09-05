@@ -16,7 +16,6 @@ function loadCompiledUtil(moduleName: string): Record<string, unknown> {
   if (!fs.existsSync(jsPath)) {
     return {};
   }
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   return require(jsPath) as Record<string, unknown>;
 }
 

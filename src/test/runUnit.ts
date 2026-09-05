@@ -5,10 +5,11 @@ import Mocha from 'mocha';
 /** Allow dynamic require('out/commands/*.js') to resolve vscode → unit mock. */
 function installVscodeMockResolver(): void {
   const mockPath = path.resolve(__dirname, 'mocks/vscode.js');
+  type ModuleInstance = InstanceType<typeof Module>;
   const moduleWithResolve = Module as typeof Module & {
     _resolveFilename: (
       request: string,
-      parent: NodeModule | null | undefined,
+      parent: ModuleInstance | null | undefined,
       isMain: boolean,
       options?: unknown,
     ) => string;
@@ -16,7 +17,7 @@ function installVscodeMockResolver(): void {
   const originalResolve = moduleWithResolve._resolveFilename;
   moduleWithResolve._resolveFilename = function (
     request: string,
-    parent: NodeModule | null | undefined,
+    parent: ModuleInstance | null | undefined,
     isMain: boolean,
     options?: unknown,
   ): string {

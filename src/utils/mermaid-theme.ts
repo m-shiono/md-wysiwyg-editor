@@ -33,7 +33,7 @@ export function handleThemeUpdated(kind: ThemeKind): void {
   }
   try {
     runtime.initialize(buildMermaidThemeConfig(kind));
-  } catch (err) {
+  } catch {
     // runtime.initialize might fail in webview context; isolate it
   }
   runtime.scheduleRerender();
