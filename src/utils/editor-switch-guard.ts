@@ -14,6 +14,8 @@ const WYSIWYG_RESTORE_ACTION = 'WYSIWYG Editor で開く';
 
 /**
  * Pattern A: same `.md` URI active but not on WYSIWYG custom editor after dispose.
+ * Markdown Preview tabs (TabInputWebview / markdown.preview.*) must not count as
+ * a builtin text switch — Side Preview opens Preview beside Custom Editor.
  */
 export function isBuiltinSwitchToSameMdFile(
   disposedUri: vscode.Uri,
@@ -24,6 +26,11 @@ export function isBuiltinSwitchToSameMdFile(
     return false;
   }
   if (!disposedUri.fsPath.toLowerCase().endsWith('.md')) {
+    return false;
+  }
+
+  // Standard Markdown Preview (and other webviews) are not Pattern A.
+  if (activeTab.input instanceof vscode.TabInputWebview) {
     return false;
   }
 
@@ -38,6 +45,15 @@ export function isBuiltinSwitchToSameMdFile(
       activeTab.input.uri.toString() === disposedKey &&
       activeTab.input.viewType !== wysiwygViewType
     );
+  }
+
+  // Unknown preview-like inputs (e.g. vscode.markdown.preview.editor) are not Pattern A.
+  const previewLike = activeTab.input as { viewType?: string };
+  if (
+    typeof previewLike.viewType === 'string' &&
+    /markdown\.preview/i.test(previewLike.viewType)
+  ) {
+    return false;
   }
 
   return false;

@@ -42,7 +42,8 @@ export type WebviewInboundMessage =
   | { type: 'checkTableLimits'; rows: number; cols: number }
   | { type: 'pasteImage'; mime: string; dataBase64: string }
   | { type: 'mermaidError'; error: string }
-  | { type: 'log'; message: string };
+  | { type: 'log'; message: string }
+  | { type: 'openNativePreviewToSide' };
 
 export interface VsCodeApi {
   postMessage(message: WebviewInboundMessage): void;

@@ -15,7 +15,7 @@
 |------------|-----|------|------|------|
 | `documentUri` | `vscode.Uri` | — | — | ワークスペース内 `.md` |
 | `fileContent` | `string` (UTF-8) | 0 B | 推奨 500 KB 未満 | 超過時警告のみ（RK-004） |
-| `editorMode` | `"preview" \| "markdown" \| "raw"` | — | — | 初期値 `"markdown"`（AD-016） |
+| `editorMode` | `"preview" \| "markdown" \| "raw"` | — | — | 初期値 `"raw"`（`DEFAULT_EDITOR_MODE` / AD-016）。Side Preview は mode ではない — [testspec-native-preview-side-and-default-raw.md](testspec-native-preview-side-and-default-raw.md) |
 | `modeSwitchCommand` | コマンド / UI 切替 | — | — | モード変更のみ。ディスク I/O なし |
 | `rawSourceEdit` | `string` | — | — | Raw 面からのソース。パース成功時のみ Document 反映 |
 | `isRawParseFailed` | `boolean` | — | — | true の間は save 拒否（§1, §8） |
@@ -43,7 +43,7 @@
 
 | 条件 | 戻り値 / ステータス | 仕様根拠 |
 |------|-------------------|---------|
-| Custom Editor オープン成功 | タブ表示、Webview ロード完了、初期モード Markdown、viewType `vsc-md-editor.wysiwyg` | §1, AD-002, AD-016 |
+| Custom Editor オープン成功 | タブ表示、Webview ロード完了、初期モード **Raw**（Edit Raw Text）、viewType `vsc-md-editor.wysiwyg` | §1, AD-002, AD-016 |
 | モード切替成功 | 対象面表示、Document 維持、ディスク未書込、内容不変なら dirty 不変 | §1 |
 | 保存成功 | ディスク `.md` 更新、`dirty` 解除 | §1, §8 |
 | シリアライズ失敗 | 保存拒否、`dirty` 維持、通知 + Output | §1, §8 |
@@ -177,7 +177,7 @@
 | TC-067 | Corner | regression-edit-display-break | P0 | Webview 起点の `updateFromJson(..., { syncWebview: false })` | `onDidContentChange` は発火しない（echo 抑止）。`onDidChange` は発火（dirty 維持） | Regression: 編集後に setContent echo で表示破壊 | §1 Behavior 2 |
 | TC-068 | Corner | regression-edit-display-break | P0 | 既定の `updateDoc` / undo による Document 変更 | `onDidContentChange` が発火し、docUpdated 用リスナーが通知される | Regression: 外部同期（undo/revert）が途切れないこと | §1 Behavior 4 |
 | TC-069 | Corner | regression-edit-display-break | P0 | Mermaid フェンス付き doc で段落テキストのみ変更後 serialize | ` ```mermaid ` フェンスとソースが残る | Regression: 通常編集で Mermaid が消えないこと | §5 正常系 2 |
-| TC-070 | Happy | editor-mode-init | P0 | Custom Editor（viewType `vsc-md-editor.wysiwyg`）で `.md` を開く | 初期 `editorMode === "markdown"`、タブ viewType が `vsc-md-editor.wysiwyg` | AD-016 初期モード + AD-002 viewType | §1 Inputs, 正常系 1 |
+| TC-070 | Happy | editor-mode-init | P0 | Custom Editor（viewType `vsc-md-editor.wysiwyg`）で `.md` を開く | 初期 `editorMode === "raw"`（`DEFAULT_EDITOR_MODE`）、タブ viewType が `vsc-md-editor.wysiwyg`。詳細・Side Preview は [testspec-native-preview-side-and-default-raw.md](testspec-native-preview-side-and-default-raw.md) TC-001 | AD-016 初期 Raw + AD-002 viewType | §1 Inputs, 正常系 1 |
 | TC-071 | Happy | preview-one-way | P0 | Preview モード表示中に描画面からの編集イベントを送ろうとする / Document のみ更新 | Preview は RO 描画のみ。編集イベントは Document へ送られない。Document 更新時は描画が追随 | Document→一方表示契約 | §1 三点モード定義, 正常系 3 |
 | TC-072 | Happy | markdown-raw-sync | P0 | Markdown 面で段落編集 → Raw 投影；続けて Raw 相当のソースを Document に反映 | 正本は `MarkdownDocument`。一方の変更が他方面へ Document 経由で反映され、`markdownText` / `doc` が一致 | Markdown↔Raw 相互リアルタイム同期 | §1 正常系 2, §8 |
 | TC-073 | Corner | mode-switch-no-io | P0 | dirty=false の Document で Preview↔Markdown↔Raw を切替のみ（内容変更なし） | ディスクへの `writeFile` なし、`onDidChange`（dirty）非発火、Document 内容不変 | モード切替 alone は表示のみ | §1 正常系 4, AD-016 |
@@ -362,7 +362,7 @@ P0 + P1 の机上トレース（実装前）。
 | TC-067 | Webview update → `syncWebview: false` → content-change 未発火、dirty 用 onDidChange のみ | ✅ 回帰（edit-display-break） |
 | TC-068 | 既定 update / undo → onDidContentChange 発火 | ✅ 回帰（edit-display-break） |
 | TC-069 | Mermaid + 段落編集 → serialize でフェンス保持 | ✅ 回帰（edit-display-break） |
-| TC-070 | package.json viewType = `vsc-md-editor.wysiwyg`；初期モード Markdown | ✅ ユニット |
+| TC-070 | package.json viewType = `vsc-md-editor.wysiwyg`；初期モード **Raw**（`DEFAULT_EDITOR_MODE`） | ⏳ 期待更新 — `native-preview-side-and-default-raw` 実装後 Green |
 | TC-072 | updateDoc → markdownText 更新（正本 Document）；parse → updateDoc で Raw 相当同期 | ✅ ユニット |
 | TC-074 | updateDoc → onDidChange → save → mock FS 更新 | ✅ ユニット |
 | TC-075 | setReadonly(true) → isReadonly；Preview 概念と独立 | ✅ ユニット |
@@ -611,10 +611,10 @@ P0 + P1 の机上トレース（実装前）。
 | Step | Value |
 |------|-------|
 | Input | package.json viewType; EditorModeState; Document updateDoc/save/applyRawSource; readonly-state; Marp vs custom editor IDs |
-| Expected | viewType 一致、Preview 一方向、Document 正本同期、mode switch 非 I/O、dirty→save、RO キー、Raw 失敗/回復、Marp≠三点 Preview |
-| Actual | Pass（ユニット実装済み） |
+| Expected | viewType 一致、**初期 `editorMode === "raw"`**（AD-016 更新）、Preview 一方向、Document 正本同期、mode switch 非 I/O、dirty→save、RO キー、Raw 失敗/回復、Marp≠三点 Preview |
+| Actual | TC-071–079: Pass（既存ユニット）。**TC-070 初期モード期待は raw へ変更 — 実装前は Red 予定**（詳細: `testspec-native-preview-side-and-default-raw.md` TC-001） |
 
-**Result:** ✅ Pass（npm run test:unit）
+**Result:** ⏳ TC-070 期待更新済み（実装待ち）。TC-071–079 ✅ Pass（既存）
 
 ### TC-104 (P0): Regression — GFM cell multi-para serializes to `<br />`
 
@@ -707,6 +707,7 @@ P0 + P1 の机上トレース（実装前）。
 
 | 日付 | 変更内容 |
 |------|---------|
+| 2026-09-05 | TC-070 / Spec Digest 初期モードを `"raw"` に整合。Side Preview 詳細は `testspec-native-preview-side-and-default-raw.md` へ | `native-preview-side-and-default-raw`（AD-001 / AD-016） |
 | 2026-09-03 | TC-143–151 追加；TC-013 拡張（`themeUpdated`）；Fixture: Valid Mermaid frontmatter；Spec Digest・Coverage・Trace・実行方針更新 | `preview-mode-quality`（§1 Preview 可読性, §5 Mermaid frontmatter/テーマ） |
 | 2026-08-31 | TC-124–142 Green 同期（91 passing）。Trace / Spec Gaps / Summary 更新 | `preview-rich-embed` build-agent 完了 |
 | 2026-08-31 | TC-124–142 ユニット Red（`preview-rich-embed.test.ts`）。Trace / Spec Gaps を TDD Red に同期 | `preview-rich-embed` testspec-implementation |

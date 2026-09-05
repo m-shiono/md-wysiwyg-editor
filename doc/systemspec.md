@@ -31,7 +31,7 @@ VS Code 拡張 **vsc-md-editor** の振る舞い仕様（WHAT）。実装詳細�
 | AD-013 | 保存時の整形ルールを固定し Git diff 可読性を確保 |
 | AD-014 | ビルトイン Markdown エディタとの共存（エディタ関連付けの切替可能） |
 | AD-015 | Output チャンネルで障害ログ。ユーザー向けはエディタ内インライン表示を優先 |
-| AD-016 | 同一 Custom Editor 内に **Preview / Markdown / Raw** 三点モード。初期モードは Markdown。モード切替 alone ではディスク書き込みしない |
+| AD-016 | 同一 Custom Editor 内に **Preview / Markdown / Raw** 三点モード。初期モードは **Raw**（`DEFAULT_EDITOR_MODE = 'raw'`）。モード切替 alone ではディスク書き込みしない。**Side Preview**（§1 / §10）は mode-toolbar の非モード導線であり、4 つ目の `editorMode` ではない |
 
 ---
 
@@ -48,19 +48,23 @@ VS Code 拡張 **vsc-md-editor** の振る舞い仕様（WHAT）。実装詳細�
 | `documentUri` | `vscode.Uri` | はい | — | — | ワークスペース内 `.md` |
 | `fileContent` | `string` (UTF-8) | はい | 0 B | 推奨 500 KB 未満 | 超過時は警告のみ（RK-004） |
 | `extensionActivation` | イベント | はい | — | — | Custom Editor オープン時に限定起動（AD-002） |
-| `editorMode` | `"preview" \| "markdown" \| "raw"` | はい | — | — | 初期値 `"markdown"`（AD-016） |
-| `modeSwitchCommand` | コマンド / UI 切替 | 任意 | — | — | モード変更のみ。ディスク I/O なし |
+| `editorMode` | `"preview" \| "markdown" \| "raw"` | はい | — | — | 初期値 `"raw"`（`DEFAULT_EDITOR_MODE` / AD-016）。第 4 の mode id は持たない |
+| `modeSwitchCommand` | コマンド / UI 切替 | 任意 | — | — | 三点モード変更のみ。ディスク I/O なし。Side Preview は対象外 |
+| `openNativePreviewToSide` | Webview → Host postMessage | 任意 | — | — | Side Preview ボタン押下。payload 型は `messages.ts`。Host のみ dirty/save/コマンド実行 |
 
 ### Outputs & Failure Returns
 
 | 条件 | 戻り値 / ステータス | 備考 |
 |------|-------------------|------|
-| 成功（オープン） | Custom Editor タブ表示、Webview ロード完了、初期モード Markdown | AD-016 |
-| 成功（モード切替） | 対象面を表示、Document 内容は維持、**ディスク未書込** | dirty 状態も変更しない（内容未変更時） |
+| 成功（オープン） | Custom Editor タブ表示、Webview ロード完了、初期モード **Raw**（表示ラベル Edit Raw Text） | AD-016 |
+| 成功（モード切替） | 対象面を表示、Document 内容は維持、**ディスク未書込** | dirty 状態も変更しない（内容未変更時）。三点往復可（下記受け入れ） |
+| 成功（Side Preview・clean） | 現在面不変のまま `markdown.showPreviewToSide` で標準 Preview を横に開く | Host コマンド §10 |
+| 成功（Side Preview・dirty→Save） | Save 成功後のみ標準 Preview を横に開く | Cancel / 閉じる / save 失敗時は開かない |
 | 成功（保存） | ディスク上 `.md` 更新、`dirty` 解除 | AD-013 整形後 |
 | ファイル読込失敗 | エディタ未表示、通知 + Output | 権限・存在エラー |
-| シリアライズ失敗 | 保存拒否、`dirty` 維持、通知 + Output | Document 正本は維持 |
-| Raw パース失敗 | Document **を更新しない**、通知 + Output、**save ブロック** | 失敗中フラグ。直前の有効 Document を保持 |
+| シリアライズ失敗 | 保存拒否、`dirty` 維持、通知 + Output | Document 正本は維持。Side Preview も開かない |
+| Raw パース失敗 | Document **を更新しない**、通知 + Output、**save ブロック** | 失敗中フラグ。直前の有効 Document を保持。Side Preview Save ゲートも拒否 |
+| Side Preview URI 解決不能 | Warning（`Open a Markdown file first` 相当）、プレビュー非オープン | アクティブ WYSIWYG `TabInputCustom.uri` 前提 |
 | 大ファイル警告 | 編集継続可、Output に警告 | RK-004 |
 
 ### Preconditions
@@ -92,6 +96,22 @@ Webview モード切替バーのボタン文言および `title` 属性は次と
 | `preview` | `Preview` |
 | `markdown` | `Edit Rich Editor` |
 | `raw` | `Edit Raw Text` |
+
+##### mode-toolbar — Side Preview（非モード導線）
+
+三点モードボタンの **右側**にセパレータを置き、続けて **Side Preview** ボタンを配置する（同一 `#mode-toolbar` / `role="toolbar"`）。本ボタンは **モードボタンではない**。
+
+| 項目 | 契約 |
+|------|------|
+| 文言 | `Side Preview` |
+| `title` / `aria-label` | `Open VS Code Markdown Preview to the Side` |
+| 属性 | `data-action="native-preview-to-side"`（または同等）。**`data-mode` を付けない** |
+| クリック | `applyMode` / `setMode` を通さない。Webview は `openNativePreviewToSide` 系 postMessage のみ送る |
+| 押下後の表示面 | `editorMode` / `body[data-mode]` / 三点 toolbar `active` は **不変** |
+| Host | dirty 判定・Save/Cancel・`markdown.showPreviewToSide` はすべて Host（§8 / §10） |
+| editor/title | 本タスクでは Side Preview 用アイコンを **出さない**（Webview バー + Command Palette） |
+
+**受け入れ（モード切替・P0）:** mode-toolbar の三点ボタンで `preview` ↔ `markdown` ↔ `raw` が往復できること。初期 HTML の `active` / `body[data-mode]` は `DEFAULT_EDITOR_MODE = 'raw'` と一致させる。
 
 #### 三者同期（正本: `MarkdownDocument`）
 
@@ -147,19 +167,21 @@ Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdow
 
 #### 正常系
 
-1. ユーザーが `.md` を開くと Custom Editor が起動し、ディスク内容を `MarkdownDocument` に読み込み、初期モード **Markdown** で Webview に表示する
+1. ユーザーが `.md` を開くと Custom Editor が起動し、ディスク内容を `MarkdownDocument` に読み込み、初期モード **Raw**（表示ラベル Edit Raw Text）で Webview に表示する（`DEFAULT_EDITOR_MODE = 'raw'` / AD-016）。セッション永続モードは本タスクで新設しない
 2. **Markdown ↔ Raw 相互リアルタイム同期:** 一方の編集は postMessage 経由で Document に反映され、他方面も Document から再投影される。正本は常に Extension Host の `MarkdownDocument`
 3. **Preview** は Document の現在内容を **厳密 RO** で描画する一方通行。Preview 表示中に Document が更新されれば描画を追随する。**Preview への切替時**は Host が Document 最新を再投影する（Raw 離脱時の flush 後を含む）。非 Marp は rewrite 済み `docJson`、Marp 検出時は `previewMarpHtml` で `#preview-marp-root` を更新
 4. **モード切替**（Preview ↔ Markdown ↔ Raw）は表示面の切替のみであり、**ディスクへの書き込みを行わない**。内容に差分がなければ `dirty` も変化しない。Preview / Markdown への切替時は Document から視覚面を refresh する。Preview 離脱時は `#preview-marp-root` を空にし `#editor` を復帰
 5. Markdown / Raw での内容変更は既存の CustomDocument フローに乗り `dirty` となる。`save` / `saveAs` で Document 内容をシリアライズし UTF-8 で書き込む（§8）
 6. undo/redo は Document 経由で一貫して動作する（モードをまたいでも同一 Document 履歴）
 7. エディタを閉じる際、未保存変更があれば VS Code 標準の確認ダイアログが表示される
+8. **Side Preview:** ツールバー **Side Preview** 押下で Host が対象 URI を解決し、Document が clean なら即 `markdown.showPreviewToSide`。dirty のときは §8 / §10 の Save/Cancel ゲートに従う。押下は三点モード面を変更しない
 
 #### 例外系
 
 1. オープン時にパース不能な Markdown/HTML 混在は可能な範囲で表示し、保存時にシリアライズエラーを報告する
 2. **Raw 編集中のパース失敗:** Document を破壊・上書きしない。ユーザーへ通知し Output に記録する。パース失敗が解消されるまで **save をブロック**する（直前の有効 Document 内容を正本として維持）
 3. 外部プロセスによるファイル変更は VS Code の標準リロード/競合フローに従う
+4. **Side Preview 失敗:** URI 解決不能・Save Cancel・save 失敗・`markdown.showPreviewToSide` 失敗時はプレビューを開かず、Warning / ErrorMessage + Output（§10）
 
 ### Non-Goals
 
@@ -167,6 +189,9 @@ Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdow
 - 仮想スクロールによる大ファイル最適化（RK-004 — backlog）
 - Preview / Markdown / Raw の同時分割表示（同一タブ内の三点切替のみ）
 - モードごとに別 Custom Editor / 別 viewType を登録すること
+- **4 つ目の `editorMode` / mode id**（例: `native-preview`）および Side Preview の mode 化（`data-mode` / `applyMode` 経由）
+- VS Code ビルトイン Markdown Preview の **同一 Webview への埋め込み**・markdown-it HTML パイプラインへの全面置換（三点 Preview は TipTap RO / Marp 分岐を維持）
+- Custom Editor バッファの未保存差分を標準 Preview へリアルタイム同期すること（dirty 時は保存ゲートで整合 — AD-013）
 - Preview 内 Marp のページ送り UI（縦スクロール一覧のみ）
 - Preview 切入時の §6 Marp Preview パネル自動オープン
 - Rich Editor（Markdown モード）での Marp WYSIWYG 描画（§6 Non-Goals と同旨）
@@ -176,6 +201,7 @@ Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdow
 ### Related Tests
 
 - [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-001–009（基盤）および三点モード追加 TC。Preview Marp 分岐・`previewMarpHtml`・`isMarpDocument` 共用: TC-124–142（`preview-rich-embed`）。Preview 可読性・`themeUpdated`: 後続 TC（`preview-mode-quality`）
+- 初期 Raw・Side Preview・dirty Save/Cancel・Pattern A 非干渉・三点往復: 後続 `doc/testspec-native-preview-side-and-default-raw.md`（`native-preview-side-and-default-raw` — testspec 未作成・後続 spec-test-design）
 
 ### Spec Gaps
 
@@ -679,32 +705,35 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 4. 保存時: Document → stringify（固定オプション）→ `.md`
 5. HTML 表・許可 HTML は raw HTML ノードまたは同等手段で保持する
 6. 同一内容に対し、連続保存で byte-identical 出力を目指す（アーキテクチャ AD-013）
-7. **モード切替だけでは本節の保存処理を起動しない**（§1）
-8. **画像参照:** serialize / ディスク出力は **常に相対パス**（例: `img/image-0001.png`）。Host の `asWebviewUri` rewrite は表示投影のみで Document 正本を変更しない（§7 / §9）
-9. **GFM 書式ノードの往復（§2 In）:** 次を parse ↔ stringify で保持する（micromark/mdast の strikethrough・task-list を **direct dependency** として追加。既存 `gfm-table` は維持）
+7. **モード切替だけでは本節の保存処理を起動しない**（§1）。**Side Preview** はモード切替ではないが、Document が dirty のときは次項のゲートで本節の save 経路を経由する
+8. **Side Preview dirty ゲート（§1 / §10）:** Document が dirty のときのみ Host が `showWarningMessage`（**Save** / **Cancel** 二択。「Don't Save で開く」は提供しない）。Cancel またはダイアログ閉じはプレビュー非オープン。Save 選択時は既存 Custom Editor save（`MarkdownDocument` / provider）を待ち、**成功時のみ** `markdown.showPreviewToSide` を実行する。save 失敗（本節の stringify 失敗・Raw パース失敗ブロック含む）時は ErrorMessage + Output（`MD WYSIWYG Editor`）、プレビュー非オープン。clean 時はダイアログなしで即開く
+9. **画像参照:** serialize / ディスク出力は **常に相対パス**（例: `img/image-0001.png`）。Host の `asWebviewUri` rewrite は表示投影のみで Document 正本を変更しない（§7 / §9）
+10. **GFM 書式ノードの往復（§2 In）:** 次を parse ↔ stringify で保持する（micromark/mdast の strikethrough・task-list を **direct dependency** として追加。既存 `gfm-table` は維持）
    - 取り消し線: 入力 `~~` および HTML `<del>` / `<s>` → モデル `strike` → 出力 **常に** `~~text~~`（`<del>`/`<s>` は出さない）
    - 見出し h1–h6: 既存スキーマどおり往復
    - インラインコード: `` `code` `` mark ↔ 出力。フェンスコードブロックとは別経路
    - 引用: GFM `>`。ブロック子（heading, list, taskList, codeBlock, 入れ子 blockquote）を落とさない（paragraph-only フィルタは禁止）
    - タスクリスト: `- [ ]` / `- [x]`（出力のチェックは小文字 `x`）。入力 `[X]` は `[x]` に正規化。`1. [ ]` は unordered タスクリストへ正規化（番号非保持）
    - 水平線: mdast `thematicBreak` ↔ 出力 `---`（既存 `toMarkdown` `rule: '-'`）。前後空行は決定的整形に従う
-10. **複合 mark:** strike+bold / strike+italic 等は意味を保持。ネスト順の入れ替わりは許容（見た目同等なら byte 一致は要求しない）
-11. **非対象 GFM 拡張:** footnotes / GitHub Alerts / autolink-literal / tagfilter の新規有効化はしない（§2 Out）
+11. **複合 mark:** strike+bold / strike+italic 等は意味を保持。ネスト順の入れ替わりは許容（見た目同等なら byte 一致は要求しない）
+12. **非対象 GFM 拡張:** footnotes / GitHub Alerts / autolink-literal / tagfilter の新規有効化はしない（§2 Out）
 
 #### 例外系
 
 1. パース不能部分は raw 保持を優先し、失敗時はユーザーに通知する
-2. Raw パース失敗時は Document を壊さず、失敗解消まで save を拒否する（§1）
+2. Raw パース失敗時は Document を壊さず、失敗解消まで save を拒否する（§1）。Side Preview の Save ゲートも同一契約を尊重する
 
 ### Non-Goals
 
 - 他エディタとの完全な Markdown 相互変換（RK-002）
 - Raw 失敗中の「強制保存（Document 無視で Raw バッファをそのまま書く）」オプション（MVP 非採用）
 - 複合 mark のネスト順の byte-identical 保証（§2 Behavior）
+- Side Preview 時のサイレント自動保存、または Don't Save で未保存バッファのまま標準 Preview を開くこと
 
 ### Related Tests
 
 - [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-052–056、Raw パース失敗 TC、および GFM 書式往復追記 TC（`gfm-format-toolbar`）
+- Side Preview dirty Save/Cancel ゲート: 後続 `doc/testspec-native-preview-side-and-default-raw.md`
 
 ---
 
@@ -785,10 +814,18 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
    - 設定 `vsc-md-editor.autoRestoreOnBuiltinSwitch`（boolean、**既定 `false`**）が `true` のとき: `vscode.openWith` で WYSIWYG を自動再オープン
    - 既定 `false` のとき: 日本語 `InformationMessage` を表示し、エディタ内 **Preview / Edit Rich Editor / Edit Raw Text** 三点ボタンの利用を案内。ボタン **「WYSIWYG Editor で開く」** で `vsc-md-editor.openWithWysiwyg` を実行
    - タブが閉じられた、または別ファイルがアクティブの場合は何もしない
+   - **Side Preview 非干渉:** `markdown.showPreviewToSide` による標準 Markdown Preview タブのオープンは Custom Editor を dispose せず、Pattern A の「ビルトイン Text への切替」と **誤判定してはならない**。必要なら Pattern A 判定から Markdown Preview タブ種別を明示除外する。本コマンドは `openWith` / Reopen Editor With の代替ではない
 5. コマンド `vsc-md-editor.openWithWysiwyg`: 引数 URI またはアクティブ `.md` に対し `vscode.openWith`（viewType `vsc-md-editor.wysiwyg`）を実行。ビルトイン Markdown エディタの editor/title に表示（`resourceExtname == .md` かつ Custom Editor 非アクティブ時）
 6. **拡張更新後の手動リロード:** コマンド `vsc-md-editor.reloadExtension`。確認ダイアログ後に `workbench.action.reloadWindow` を実行する
    - **editor/title** に `$(refresh)` アイコン（`resourceExtname == .md` — WYSIWYG / ビルトインいずれの `.md` 表示中も表示）。Cursor Preview / Markdown 切替で Webview バーが消えてもリロード可能
    - Cursor 組み込み Preview / Markdown トグルの**内部**には挿入不可（API 非提供）。タイトルバー navigation グループの先頭（`navigation@0`）に配置
+7. **標準 Markdown Preview を横に開く:** コマンド `vsc-md-editor.showNativeMarkdownPreviewToSide`
+   - Host がアクティブな WYSIWYG Custom Editor の `TabInputCustom.uri` を解決し（Marp コマンドと同系。`activeTextEditor` 前提にしない）、`vscode.commands.executeCommand('markdown.showPreviewToSide', uri)` を実行する
+   - Webview Side Preview ボタンおよび Command Palette から実行可能（`package.json` contributes + activationEvents）
+   - dirty / Save / Cancel / save 成功ゲートは §8 Behavior 正常系 8 に従う
+   - **Marp 非干渉:** Side Preview オープンで §6 Marp Preview パネルを閉じない・自動オープンしない。三点 Preview 内 Marp 分岐は変更しない。Marp 文書を標準 Preview で開いてもスライド UI にはならない
+   - 標準 Preview は **保存済みディスク内容**（または VS Code が URI 経由で読む内容）を表示する。未保存バッファのライブ同期は Non-Goal（§1）
+   - `markdown.showPreviewToSide` 欠如・失敗時は ErrorMessage + Output で明示する
 
 #### 設定
 
@@ -800,10 +837,13 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 
 - IDE タイトルバーの Preview / Markdown トグル自体の非表示・上書き（VS Code / Cursor API 非提供）
 - Marketplace 公開手順の詳細（`vscode-extension-publish` スキル / deployment.md で扱う）
+- Side Preview 用 editor/title アイコンの追加（本タスク）
+- 標準 Preview の Custom Editor Webview 埋め込み、および 4 つ目の `editorMode`（§1 Non-Goals）
 
 ### Related Tests
 
 - [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-062–064, TC-083–085
+- Side Preview コマンド・Pattern A 非干渉・Marp 非干渉: 後続 `doc/testspec-native-preview-side-and-default-raw.md`
 
 ---
 
@@ -821,6 +861,9 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | Markdown LSP 完全連携 | RK-008 / backlog |
 | Preview / Markdown / Raw の同時分割表示 | §1 Non-Goals |
 | モード別の別 viewType / 別 Custom Editor | §1 Non-Goals / AD-016 |
+| **4 つ目の `editorMode` / Side Preview の mode 化** | §1 / §10 Non-Goals（`native-preview-side-and-default-raw`） |
+| 標準 Markdown Preview の同一 Webview 埋め込み | §1 Non-Goals |
+| 未保存バッファの標準 Preview ライブ同期 | §1 Non-Goals / AD-013 |
 | Raw パース失敗中の強制ディスク書き込み | §8 Non-Goals |
 | 画像挿入ボタン・下線・highlight・脚注・GitHub Alerts | §2 Non-Goals / `gfm-format-toolbar` Scope Out |
 | 書式ツールバーの `package.json` keybindings 追加 | §2 Non-Goals |
@@ -861,6 +904,7 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | ドキュメント | 状態 |
 |-------------|------|
 | [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) | **作成済** — TC-001–142。**preview-rich-embed**（§1 / §5 / §6 / §7 / §9）: TC-124–142 Green。**GFM 書式ツールバー**（§2 / §8 / §9 `del`/`s`）は **要追記**（`gfm-format-toolbar`） |
+| [doc/testspec-native-preview-side-and-default-raw.md](testspec-native-preview-side-and-default-raw.md) | **未作成** — 初期 Raw・Side Preview・dirty ゲート・Pattern A 非干渉・三点往復（後続 spec-test-design） |
 | MVP 外項目 | [doc/backlog-vsc-md-wysiwyg.md](backlog-vsc-md-wysiwyg.md) |
 
 ---
@@ -877,7 +921,8 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | 表の永続化形式 | per-table `tableFormat`（`gfm` \| `html`）。新規挿入デフォルト GFM。セッション `insertTableFormat` は再起動で `gfm` にリセット | `table-gfm-html-mode` |
 | 非 Marp 文書の Marp プレビュー | **「No Marp slides detected」** ガイダンス表示 | TC-042 |
 | RO 未保存ワークスペース | 保存済み WS は `workspaceState` 永続化；未保存 WS はセッション内のみ | TC-027, TC-030 |
-| 三点モード・正本・dirty | 同一 Custom Editor、初期 Markdown、正本 `MarkdownDocument`、モード切替でディスク非書込 | TC-070–074 |
+| 三点モード・正本・dirty | 同一 Custom Editor、初期 **Raw**、正本 `MarkdownDocument`、モード切替でディスク非書込。三点往復可 | TC-070–074（初期モード期待は `native-preview-side-and-default-raw` で更新） |
+| Side Preview（非モード） | mode-toolbar セパレータ + `Side Preview`（`data-action`）。面不変。dirty→Save/Cancel。コマンド `showNativeMarkdownPreviewToSide`。Pattern A / Marp 非干渉。4th mode Out | 後続 TC（`native-preview-side-and-default-raw`） |
 | Raw パース失敗 | Document 非破壊 + 通知 + 失敗中 save ブロック | TC-078–079 |
 | Preview vs Marp Preview | §1 三点 Preview（Marp 検出時は同一 Webview 内 RO 描画可）と §6 Marp Preview **パネル**（別 UI インスタンス）を明示 | TC-077（意味更新 — RK-017） |
 | Preview 厳密 RO・三者同期 | Preview 入力不可、Raw↔Markdown↔Preview が Document 経由で一致。表示層（Marp HTML / 画像 rewrite / Mermaid CSS）は正本非変更 | TC-080–082 |
@@ -908,3 +953,4 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | 2026-08-31 | 概要, AD-008, AD-009, §1, §5, §6, §7, §8, §9, Non-Goals, RK-013–017, Spec Gaps, Related Tests | Preview リッチ表示（`preview-rich-embed`）: Host 画像 URI rewrite（`img/` のみ）、Preview Mermaid ソース非表示、Preview 内 Marp 描画（`#preview-marp-root` / `previewMarpHtml` / `isMarpDocument` 共用）、§6 パネル共存、serialize 相対パス維持。Requirements Brief AD-001–AD-012 |
 | 2026-09-03 | §1, §5, Spec Gaps, Related Tests, 改訂履歴 | Preview 品質改善（`preview-mode-quality`）: §1 Preview 可読性 CSS（`body[data-mode='preview']` スコープ、`line-height`、opacity/コントラスト、`--vscode-*` トークン）、`themeUpdated` postMessage 契約。§5 Mermaid フェンス全文 render（frontmatter 非 strip）、`theme: 'base'` + VS Code `themeVariables`、テーマ切替再描画。Marp 分岐・三点同期は不変。Requirements Brief AD-001–AD-010 |
 | 2026-09-03 | §5, Spec Gaps, 改訂履歴 | Mermaid テーマ初期化クラッシュ修正（`mermaid-theme-crash-fix`）: VS Code kind から Mermaid ビルトインテーマ（dark/default）へのマップ採用、`themeVariables` での `var(...)` 指定を廃止。Mermaid 初期化・テーマ切替を try-catch で隔離し Webview クラッシュを防止 |
+| 2026-09-05 | AD-016, §1, §8, §10, 共通 Non-Goals, Spec Gaps, Related Tests, 改訂履歴 | 初期 `editorMode` を **raw** に変更。mode-toolbar に非モード **Side Preview**（`markdown.showPreviewToSide`、コマンド `vsc-md-editor.showNativeMarkdownPreviewToSide`）。dirty 時 Save/Cancel ゲート。Pattern A / Marp 非干渉。三点 Preview 維持・4th mode / 埋め込みは Non-Goals。三点往復受け入れ。Requirements Brief `native-preview-side-and-default-raw` AD-001–AD-014 |

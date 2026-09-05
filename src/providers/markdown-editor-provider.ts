@@ -33,6 +33,7 @@ import { handleCustomEditorDisposed } from '../utils/editor-switch-guard';
 import { shouldAcceptWebviewUpdate } from '../utils/webview-update-epoch';
 import { buildThemeUpdatedMessage, mapColorThemeKind } from '../utils/theme-sync';
 import type { WebviewInboundMessage, WebviewOutboundMessage } from '../webviews/messages';
+import { showNativeMarkdownPreviewToSide } from '../commands/native-markdown-preview';
 
 export class MarkdownEditorProvider implements vscode.CustomEditorProvider<MarkdownDocument> {
   static readonly viewType = 'vsc-md-editor.wysiwyg';
@@ -204,9 +205,14 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     return this._modeStates.get(uri.toString())?.mode ?? DEFAULT_EDITOR_MODE;
   }
 
+  /** Integration tests / Host commands: open Document for a custom editor tab. */
+  getOpenDocument(uri: vscode.Uri): MarkdownDocument | undefined {
+    return this._openDocuments.get(uri.toString());
+  }
+
   /** Integration tests: open Document for a custom editor tab. */
   getOpenDocumentForTest(uri: vscode.Uri): MarkdownDocument | undefined {
-    return this._openDocuments.get(uri.toString());
+    return this.getOpenDocument(uri);
   }
 
   /** Integration tests: simulate an inbound webview postMessage. */
@@ -274,6 +280,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
 
   private postPreviewProjection(document: MarkdownDocument, webview: vscode.Webview): void {
     const mode = this.modeStateFor(document).mode;
+    // Three-point Preview Marp: isMarpDocument → previewMarpHtml (Side Preview must not remove).
     for (const message of buildPreviewProjectionMessages(
       mode,
       document.docJson,
@@ -456,6 +463,14 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
           logInfo(message.message);
         }
         break;
+      case 'openNativePreviewToSide':
+        await showNativeMarkdownPreviewToSide({
+          uri: document.uri,
+          isDirty: document.isDirty,
+          isRawParseFailed: document.isRawParseFailed,
+          save: () => document.save({ isCancellationRequested: false } as vscode.CancellationToken),
+        });
+        break;
       default:
         break;
     }
@@ -548,11 +563,13 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
   <link rel="stylesheet" href="${styleUri}" nonce="${nonce}" />
   <title>MD WYSIWYG Editor</title>
 </head>
-<body data-readonly="${readonly}" data-mode="markdown">
+<body data-readonly="${readonly}" data-mode="${DEFAULT_EDITOR_MODE}">
   <div id="mode-toolbar" role="toolbar" aria-label="Editor mode">
     <button type="button" data-mode="preview" title="Preview">Preview</button>
-    <button type="button" data-mode="markdown" class="active" title="Edit Rich Editor">Edit Rich Editor</button>
-    <button type="button" data-mode="raw" title="Edit Raw Text">Edit Raw Text</button>
+    <button type="button" data-mode="markdown" title="Edit Rich Editor">Edit Rich Editor</button>
+    <button type="button" data-mode="raw" class="active" title="Edit Raw Text">Edit Raw Text</button>
+    <span class="toolbar-sep" role="separator" aria-hidden="true"></span>
+    <button type="button" data-action="native-preview-to-side" title="Open VS Code Markdown Preview to the Side" aria-label="Open VS Code Markdown Preview to the Side">Side Preview</button>
   </div>
   <div id="toolbar" role="toolbar" aria-label="Formatting">
     <button type="button" data-cmd="bold" title="Bold" aria-pressed="false"><b>B</b></button>

@@ -33,11 +33,9 @@ const unitTestConfig = {
   entryPoints: ['src/test/unit-entry.ts'],
   bundle: true,
   outfile: 'out/test/unit-bundle.js',
-  // vscode is aliased to a shim so Document-level unit tests run outside Extension Host.
-  external: ['mocha'],
-  alias: {
-    vscode: path.resolve(__dirname, 'src/test/mocks/vscode.ts'),
-  },
+  // vscode is external + resolved to the unit mock in runUnit so dynamic
+  // require('out/commands/*.js') shares the same vscode instance tests patch.
+  external: ['mocha', 'vscode'],
   format: 'cjs',
   platform: 'node',
   sourcemap: true,

@@ -223896,7 +223896,7 @@ img.ProseMirror-separator {
   var editor;
   var insertTableFormat = "gfm";
   var readonly = false;
-  var editorMode = "markdown";
+  var editorMode = "raw";
   var previewSurface = "tiptap";
   var suppressUpdate = false;
   var suppressRawUpdate = false;
@@ -224351,6 +224351,19 @@ img.ProseMirror-separator {
         applyMode(mode, true);
       });
     });
+    attachSidePreviewHandler();
+  }
+  function attachSidePreviewHandler() {
+    const btn = document.querySelector(
+      '#mode-toolbar button[data-action="native-preview-to-side"]'
+    );
+    if (!btn || btn.dataset.bound === "1") {
+      return;
+    }
+    btn.dataset.bound = "1";
+    btn.addEventListener("click", () => {
+      vscode.postMessage({ type: "openNativePreviewToSide" });
+    });
   }
   function attachRawEditorHandlers() {
     const raw = getRawEditor();
@@ -224751,7 +224764,7 @@ img.ProseMirror-separator {
         readonly = message.readonly;
         document.body.setAttribute("data-readonly", String(readonly));
         latestMarkdownText = message.markdownText ?? "";
-        editorMode = message.editorMode ?? "markdown";
+        editorMode = message.editorMode ?? "raw";
         if (isEditorInitialized && editor) {
           editor.setEditable(!readonly && editorMode === "markdown", false);
           applyExternalDoc(JSON.parse(message.docJson));
@@ -224761,6 +224774,7 @@ img.ProseMirror-separator {
         }
         initEditor(JSON.parse(message.docJson));
         scheduleRawTextUpdate(latestMarkdownText);
+        setModeUi(editorMode);
         break;
       case "docUpdated":
         latestMarkdownText = message.markdownText ?? latestMarkdownText;

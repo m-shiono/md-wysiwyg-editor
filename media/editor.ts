@@ -118,7 +118,8 @@ interface TipTapDoc {
 let editor: Editor | undefined;
 let insertTableFormat: TableFormat = 'gfm';
 let readonly = false;
-let editorMode: EditorMode = 'markdown';
+/** Must match Host DEFAULT_EDITOR_MODE / initial HTML body[data-mode] (AD-016). */
+let editorMode: EditorMode = 'raw';
 let previewSurface: 'tiptap' | 'marp' = 'tiptap';
 let suppressUpdate = false;
 let suppressRawUpdate = false;
@@ -646,6 +647,21 @@ function attachModeToolbarHandlers(): void {
       applyMode(mode, true);
     });
   });
+  attachSidePreviewHandler();
+}
+
+/** Non-mode Side Preview — must not call applyMode / change editorMode. */
+function attachSidePreviewHandler(): void {
+  const btn = document.querySelector(
+    '#mode-toolbar button[data-action="native-preview-to-side"]',
+  ) as HTMLElement | null;
+  if (!btn || btn.dataset.bound === '1') {
+    return;
+  }
+  btn.dataset.bound = '1';
+  btn.addEventListener('click', () => {
+    vscode.postMessage({ type: 'openNativePreviewToSide' });
+  });
 }
 
 function attachRawEditorHandlers(): void {
@@ -1098,7 +1114,7 @@ window.addEventListener('message', (event) => {
       readonly = message.readonly;
       document.body.setAttribute('data-readonly', String(readonly));
       latestMarkdownText = message.markdownText ?? '';
-      editorMode = (message.editorMode as EditorMode) ?? 'markdown';
+      editorMode = (message.editorMode as EditorMode) ?? 'raw';
       // ready must not force a second full init if already initialized —
       // apply content refresh instead of destroying a live editing session.
       if (isEditorInitialized && editor) {
@@ -1110,6 +1126,8 @@ window.addEventListener('message', (event) => {
       }
       initEditor(JSON.parse(message.docJson));
       scheduleRawTextUpdate(latestMarkdownText);
+      // Ensure UI matches Host mode after init (DEFAULT may be raw before first paint).
+      setModeUi(editorMode);
       break;
     case 'docUpdated':
       latestMarkdownText = message.markdownText ?? latestMarkdownText;

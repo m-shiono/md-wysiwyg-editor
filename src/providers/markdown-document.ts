@@ -29,6 +29,8 @@ export class MarkdownDocument implements vscode.CustomDocument {
   private _markdownText: string;
   private _doc: TipTapDoc;
   private _isRawParseFailed = false;
+  /** Host-side dirty for Side Preview gate — VS Code also tracks via edit events. */
+  private _isDirty = false;
   private readonly _onDidChange = new vscode.EventEmitter<
     vscode.CustomDocumentEditEvent<MarkdownDocument>
   >();
@@ -79,6 +81,11 @@ export class MarkdownDocument implements vscode.CustomDocument {
     return this._isRawParseFailed;
   }
 
+  /** True when Document has unsaved edits (Side Preview Save/Cancel gate). */
+  get isDirty(): boolean {
+    return this._isDirty;
+  }
+
   dispose(): void {
     this._onDidChange.dispose();
     this._onDidContentChange.dispose();
@@ -105,6 +112,7 @@ export class MarkdownDocument implements vscode.CustomDocument {
       const serialized = serializeMarkdown(this._doc);
       this._markdownText = serialized;
       await vscode.workspace.fs.writeFile(targetResource, Buffer.from(serialized, 'utf8'));
+      this._isDirty = false;
     } catch (error) {
       logError('Serialize failure on save', error);
       void vscode.window.showErrorMessage('Failed to save: serialization error');
@@ -117,6 +125,7 @@ export class MarkdownDocument implements vscode.CustomDocument {
     this._markdownText = Buffer.from(data).toString('utf8');
     this._doc = parseMarkdown(this._markdownText);
     this._isRawParseFailed = false;
+    this._isDirty = false;
     this._onDidContentChange.fire();
   }
 
@@ -234,6 +243,7 @@ export class MarkdownDocument implements vscode.CustomDocument {
     this._editStack = this._editStack.slice(0, this._editIndex + 1);
     this._editStack.push({ label, undo, redo });
     this._editIndex = this._editStack.length - 1;
+    this._isDirty = true;
     this._onDidChange.fire({
       document: this,
       label,

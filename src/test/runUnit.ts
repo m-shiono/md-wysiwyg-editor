@@ -1,5 +1,31 @@
 import * as path from 'path';
+import Module from 'module';
 import Mocha from 'mocha';
+
+/** Allow dynamic require('out/commands/*.js') to resolve vscode → unit mock. */
+function installVscodeMockResolver(): void {
+  const mockPath = path.resolve(__dirname, 'mocks/vscode.js');
+  const moduleWithResolve = Module as typeof Module & {
+    _resolveFilename: (
+      request: string,
+      parent: NodeModule | null | undefined,
+      isMain: boolean,
+      options?: unknown,
+    ) => string;
+  };
+  const originalResolve = moduleWithResolve._resolveFilename;
+  moduleWithResolve._resolveFilename = function (
+    request: string,
+    parent: NodeModule | null | undefined,
+    isMain: boolean,
+    options?: unknown,
+  ): string {
+    if (request === 'vscode') {
+      return mockPath;
+    }
+    return originalResolve.call(this, request, parent, isMain, options);
+  };
+}
 
 function readGrepPattern(argv: string[]): string | undefined {
   for (let i = 0; i < argv.length; i += 1) {
@@ -15,6 +41,7 @@ function readGrepPattern(argv: string[]): string | undefined {
 }
 
 async function main(): Promise<void> {
+  installVscodeMockResolver();
   const grep = readGrepPattern(process.argv.slice(2));
   const mocha = new Mocha({
     ui: 'tdd',

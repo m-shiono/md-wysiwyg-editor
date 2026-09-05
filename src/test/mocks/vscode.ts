@@ -97,6 +97,15 @@ class TabInputCustom {
   }
 }
 
+/** Standard Markdown Preview and other webview editors (Pattern A exclusion). */
+class TabInputWebview {
+  readonly viewType: string;
+
+  constructor(viewType: string) {
+    this.viewType = viewType;
+  }
+}
+
 const window = {
   showErrorMessage: async (_message: string): Promise<undefined> => undefined,
   showInformationMessage: async (_message: string): Promise<undefined> => undefined,
@@ -125,4 +134,13 @@ const commands = {
   getCommands: async (_filterInternal?: boolean): Promise<string[]> => [],
 };
 
-export { EventEmitter, Uri, TabInputText, TabInputCustom, workspace, window, commands };
+export {
+  EventEmitter,
+  Uri,
+  TabInputText,
+  TabInputCustom,
+  TabInputWebview,
+  workspace,
+  window,
+  commands,
+};

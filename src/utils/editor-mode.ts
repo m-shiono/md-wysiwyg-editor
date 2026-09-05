@@ -1,7 +1,7 @@
 /** Three-mode editor surface (AD-016). Distinct from Marp Preview (AD-008). */
 export type EditorMode = 'preview' | 'markdown' | 'raw';
 
-export const DEFAULT_EDITOR_MODE: EditorMode = 'markdown';
+export const DEFAULT_EDITOR_MODE: EditorMode = 'raw';
 
 const VALID_MODES: ReadonlySet<EditorMode> = new Set(['preview', 'markdown', 'raw']);
 

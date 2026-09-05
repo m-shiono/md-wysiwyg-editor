@@ -31,7 +31,7 @@ suite('Three-mode integration (AD-016)', () => {
     await vscode.commands.executeCommand('vscode.openWith', uri, VIEW_TYPE);
     await sleep(3500);
 
-    assert.strictEqual(provider.getEditorMode(uri), 'markdown', 'initial mode must be markdown');
+    assert.strictEqual(provider.getEditorMode(uri), 'raw', 'initial mode must be raw');
 
     const doc = provider.getOpenDocumentForTest(uri);
     assert.ok(doc, 'open document should be tracked');
