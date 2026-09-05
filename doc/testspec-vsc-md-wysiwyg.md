@@ -255,6 +255,7 @@
 | TC-149 | Structural | mermaid-theme-built-in | P1 | Webview 内 Mermaid グローバル initialize 設定を検査 | VS Code kind 'dark' / 'highContrast' → 'dark'、'light' → 'default'。`themeVariables` に `var(--vscode-...)` を含めない。`securityLevel: 'strict'` 維持 | ビルトインテーマへの移行（mermaid-theme-crash-fix） | §5 正常系 7 |
 | TC-150 | Corner | mermaid-init-isolation | P1 | `mermaid.initialize` またはテーマ切替処理で例外を発生させる（mock） | try-catch で隔離され、Webview 全体のメッセージングや描画が停止しない。Output にエラーが記録される | 初期化・テーマ切替の隔離（mermaid-theme-crash-fix） | §5 正常系 8 |
 | TC-151 | Structural | preview-display-layer-document-unchanged | P1 | TC-145 相当（themeUpdated + Mermaid 再描画）および TC-146–147 相当（Preview CSS 適用）後に Document を inspect | `markdownText` / `docJson` / serialize 出力がテーマ・CSS・再描画前と一致。表示層のみの変更（AD-002） | 三者同期 — 表示層非変更 | §1 AD-002, TC-082 |
+| TC-152 | Corner | regression-mermaid-foreignobject-sanitize | P0 | Mermaid flowchart 相当 SVG（`foreignObject` 内にノードラベル HTML、例: `Cause A`）を NodeView の DOMPurify sanitize 経路（`media/editor.ts` `.mermaid-preview`）に通す | sanitize 後も `foreignObject` とノードラベル文字列が残る。`script` / `on*` 除去・`securityLevel: 'strict'` は不変（§9） | Regression: Dark/Edit で flowchart ノードラベルが消える（DOMPurify 既定が `foreignObject` を除去） | §5 正常系 1/4, §9 |
 
 ### Fixtures — preview-mode-quality
 
@@ -285,7 +286,7 @@ flowchart TD
 | Happy Path | TC-001–004, TC-010–012, TC-016–019, TC-025–027, TC-031, TC-033, TC-038–039, TC-043–044, TC-052–054, TC-057–058, TC-070–072, TC-074–076, TC-079–092, TC-101–102, TC-107–109, TC-111–113, TC-117, TC-120, TC-124–125, TC-128, TC-130–131, TC-134–136, TC-140–141, TC-143–147 | — |
 | Boundary | TC-008, TC-021–023, TC-121 | — |
 | Structural | TC-014, TC-055, TC-077, TC-110, TC-118, TC-123, TC-133, TC-137, TC-139, TC-148–149 | — |
-| Corner | TC-005–009, TC-015, TC-020, TC-024, TC-030, TC-034–037, TC-041–042, TC-047–051, TC-056, TC-059, TC-061, TC-064, TC-067–069, TC-073, TC-078, TC-088, TC-093–096, TC-103–106, TC-114–116, TC-119, TC-122, TC-126–127, TC-129, TC-132, TC-138, TC-142, TC-150 | — |
+| Corner | TC-005–009, TC-015, TC-020, TC-024, TC-030, TC-034–037, TC-041–042, TC-047–051, TC-056, TC-059, TC-061, TC-064, TC-067–069, TC-073, TC-078, TC-088, TC-093–096, TC-103–106, TC-114–116, TC-119, TC-122, TC-126–127, TC-129, TC-132, TC-138, TC-142, TC-150, TC-152 | — |
 | Stress | TC-065–066 | 書式ツールバー自体の最悪計算量は N/A（既存大 doc TC でカバー） |
 
 ### Complexity Notes
@@ -322,6 +323,7 @@ flowchart TD
 | TC-133 | ユニット（`isMarpDocument` export 元・Preview / パネル import 一致） |
 | TC-134–142 | ユニット（Preview 分岐・`previewMarpHtml` handler / `#preview-marp-root` DOM）+ 統合（Custom Editor Preview Marp・パネル共存） |
 | TC-143–151 | ユニット（Mermaid NodeView full-source render / `themeUpdated` handler / `mermaid.initialize` isolation / Preview CSS スコープ）+ 統合（Host theme listener → postMessage → 再描画） |
+| TC-152 | ユニット（`media/editor.ts` Mermaid NodeView DOMPurify — `foreignObject` ラベル保持） |
 | TC-013, TC-144–145 | ユニット（`messages.ts` `themeUpdated` 型・Host theme listener mock）+ 統合（VS Code テーマ切替） |
 | TC-044 | ユニット（採番ロジック） |
 | TC-067–068, TC-072, TC-074 | ユニット（MarkdownDocument + vscode mock） |
@@ -382,6 +384,18 @@ P0 + P1 の机上トレース（実装前）。
 | TC-149 | `theme: 'dark'` (for dark kind) + `themeVariables` contains NO `var(...)` | ✅ 期待どおり（未実装 — Red 予定） |
 | TC-150 | `mermaid.initialize` exception → try-catch isolated | ✅ 期待どおり（未実装 — Red 予定） |
 | TC-151 | テーマ/CSS/再描画後も serialize 不変 | ✅ 期待どおり（未実装 — Red 予定） |
+| TC-152 | Mermaid SVG sanitize 後も `foreignObject` + ノードラベル残存 | ❌ Red — `DOMPurify.sanitize(svg)` 既定が `foreignObject` 除去（`fix-mermaid-dark-visibility`） |
+
+### TC-152 (P0): Regression — Mermaid flowchart labels survive DOMPurify sanitize
+
+| Step | Value |
+|------|-------|
+| Input | flowchart 相当 SVG: `<foreignObject>…Cause A…</foreignObject>`（Mermaid HTML label） |
+| Expected | NodeView `.mermaid-preview` への sanitize 後も `foreignObject` とラベル文字列が残る。XSS 経路（`script` / `on*`）は除去のまま |
+| Actual (pre-fix) | Fail: `media/editor.ts` が `DOMPurify.sanitize(svg)` 既定呼び出し → `foreignObject` が `DOMPurify.removed` に入りラベル不可視 |
+| Actual (post-fix) | （build-agent 修正後）Pass |
+
+**Result:** ❌ Red（`npm run test:unit -- --grep 'TC-152'` 2026-09-05）— 修正前コードで意図的 Fail
 
 ### gfm-format-toolbar ユニット（2026-08-31、TDD Red）
 
@@ -672,6 +686,7 @@ P0 + P1 の机上トレース（実装前）。
 - [x] Mermaid frontmatter 全文 render（TC-143）、`themeUpdated` + 再描画（TC-013 拡張, TC-144–145）
 - [x] Preview 可読性 CSS スコープ（TC-146–148）、Mermaid VS Code themeVariables（TC-149）
 - [x] 表示層が Document 正本を変更しない（TC-150, TC-082）
+- [x] Mermaid flowchart `foreignObject` ラベルが DOMPurify 後も残る（TC-152）
 - [x] 引用の非 paragraph 子（TC-110）、複合 mark（TC-118）、ツールバー 4 群（TC-123）
 
 ### C. Corner & Failure
@@ -698,6 +713,7 @@ P0 + P1 の机上トレース（実装前）。
 - TC-107–123 はユニット Red 実装済み（`gfm-format-toolbar.test.ts`）。Green は build-agent
 - TC-124–142 はユニット Green（`preview-rich-embed.test.ts`、91 passing）
 - TC-143–151 は testspec 設計済み — testspec-implementation / build-agent 向け Red 予定（`preview-mode-quality`）
+- TC-152 は回帰 Red（`fix-mermaid-dark-visibility`）— build-agent が Mermaid SVG sanitize で `foreignObject` 保持するまで Fail
 - 空選択 strike の stored mark は仕様「でよい」のため専用 TC なし（TipTap 既定）
 - `isMarpDocument()` 偽陽性（RK-013）は既存検出ロール維持。専用 TC は TC-142 で再評価のみ
 
@@ -707,6 +723,7 @@ P0 + P1 の机上トレース（実装前）。
 
 | 日付 | 変更内容 |
 |------|---------|
+| 2026-09-05 | TC-152 追加 | 回帰: Mermaid NodeView DOMPurify 既定が flowchart `foreignObject` ラベルを除去（`fix-mermaid-dark-visibility`） |
 | 2026-09-05 | TC-070 / Spec Digest 初期モードを `"raw"` に整合。Side Preview 詳細は `testspec-native-preview-side-and-default-raw.md` へ | `native-preview-side-and-default-raw`（AD-001 / AD-016） |
 | 2026-09-03 | TC-143–151 追加；TC-013 拡張（`themeUpdated`）；Fixture: Valid Mermaid frontmatter；Spec Digest・Coverage・Trace・実行方針更新 | `preview-mode-quality`（§1 Preview 可読性, §5 Mermaid frontmatter/テーマ） |
 | 2026-08-31 | TC-124–142 Green 同期（91 passing）。Trace / Spec Gaps / Summary 更新 | `preview-rich-embed` build-agent 完了 |

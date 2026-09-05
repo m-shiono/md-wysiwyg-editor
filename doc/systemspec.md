@@ -493,7 +493,7 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 1. Mermaid コードブロック内のテキスト変更を debounce（目安 300 ms）後に再描画する
 2. 保存内容は ```mermaid フェンスとして .md に残る
 3. RO 中も描画は更新される（ソース変更は不可）
-4. **Preview モード**（`body[data-mode="preview"]`）: `.mermaid-source` を CSS で非表示（`display: none` 等）。`.mermaid-preview` のみ表示。構文エラーは `.mermaid-error` に `--vscode-errorForeground` / `--vscode-inputValidation-errorBackground` で表示（`preview-mode-quality` AD-007）。`securityLevel: 'strict'`・DOMPurify SVG サニタイズは不変
+4. **Preview モード**（`body[data-mode="preview"]`）: `.mermaid-source` を CSS で非表示（`display: none` 等）。`.mermaid-preview` のみ表示。構文エラーは `.mermaid-error` に `--vscode-errorForeground` / `--vscode-inputValidation-errorBackground` で表示（`preview-mode-quality` AD-007）。`securityLevel: 'strict'`・DOMPurify SVG サニタイズは不変（下記 10 および §9）
 5. **Markdown / Raw モード**: ソース + 図を従来どおり表示（Markdown モードでソース編集可）
 6. **フェンス全文レンダリング**（`preview-mode-quality` AD-003）: `mermaid.render(id, source)` にはフェンス内 **全文**を渡す。YAML frontmatter および `%%{init:...}%%` による per-diagram 設定は Mermaid ネイティブに委譲し、Webview 側で frontmatter を strip しない。per-diagram 設定はグローバル `mermaid.initialize` より優先（Mermaid v11 仕様）
 7. **グローバルテーマ**（`mermaid-theme-crash-fix`）: `mermaid.initialize` の `theme` は VS Code カラーテーマ kind に応じてマップする。
@@ -505,6 +505,8 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 8. **初期化・テーマ切替の隔離**（`mermaid-theme-crash-fix`）: `mermaid.initialize` およびテーマ更新処理は `try-catch` で隔離し、Mermaid 内部エラーが Webview 全体のメッセージングや描画を停止させないようにする。
 
 9. **テーマ切替再描画**（`preview-mode-quality` AD-005）: §1 `themeUpdated` 受信時、Webview は `mermaid.initialize(...)` を更新し、表示中の全 Mermaid NodeView を debounce 後に再 render する。本処理も上記「隔離」に従う。
+
+10. **Mermaid SVG sanitize**（`fix-mermaid-dark-visibility`）: NodeView の `.mermaid-preview` へ注入する前に DOMPurify でサニタイズする。**flowchart 等の HTML ラベル用 `foreignObject` と、その中の安全なラベル用子（例: `div` / テキスト）は保持する**。`<script>` / `on*` 等の危険要素は除去し続ける（§9）。DOMPurify 既定のみでは `foreignObject` が落ちるため、専用オプションまたは `sanitizeMermaidSvg` 相当で明示許可する。
 
 #### 例外系
 
@@ -522,7 +524,7 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 
 ### Related Tests
 
-- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-031–037。Preview Mermaid ソース非表示: TC-130–132（`preview-rich-embed`）。frontmatter 描画・テーマ切替再描画（TC-013 拡張）・Preview コントラスト: 後続 TC（`preview-mode-quality`）
+- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-031–037。Preview Mermaid ソース非表示: TC-130–132（`preview-rich-embed`）。frontmatter 描画・テーマ切替再描画（TC-013 拡張）・Preview コントラスト: 後続 TC（`preview-mode-quality`）。Mermaid SVG `foreignObject` ラベル保持: TC-152（`fix-mermaid-dark-visibility`）
 
 ---
 
@@ -775,11 +777,12 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 
 1. Webview に格 CSP を設定する（nonce 付き script/style）。Custom Editor の `img-src ${webview.cspSource} data: https: file:` は `getHtml` のまま維持。CSP / `localResourceRoots` / `on*` 除去は本変更で不変
 2. 表示前に HTML をサニタイズする（表・画像・基本書式・Mermaid SVG を許可）。**許可タグに `del` / `s` を含める**（§2 取り消し線の HTML 混在入力を落とさない）。下線・highlight（`mark`）は許可追加しない。`input` checkbox は既存許可のまま
-3. 画像保存先はワークスペース内 `img/` に限定する
-4. **画像 URI rewrite（Host）:** `.md` のディレクトリ基準で実ファイル URI を組み立て、`isSafeImagePath(path)` — **`..` 禁止**、**`img/` プレフィックス必須** — を通過した場合のみ `webview.asWebviewUri` する。対象: TipTap `docJson` 内 `image.src`、Marp 出力 HTML 内 `<img src>`
-5. **`https:` / `data:`** は CSP 上 Webview が直接解決（既存どおり — rewrite 不要）
-6. Marp Preview **パネル**の CSP（`enableScripts: false`）は本タスクでは Preview 整合のため AD-001 rewrite で足りる限り **img-src 拡張しない**
-7. **`img/` 内 SVG** は CSP + サニタイズ経路を通す（Mermaid SVG とは別経路 — RK-015）
+3. **Mermaid SVG sanitize**（Webview NodeView）: Mermaid が出力した SVG を DOMPurify でサニタイズする際、**`foreignObject` とラベル用の安全な子要素を保持する**（§5 正常系 10）。`<script>` / イベントハンドラ属性等は除去し続ける。`securityLevel: 'strict'` は不変
+4. 画像保存先はワークスペース内 `img/` に限定する
+5. **画像 URI rewrite（Host）:** `.md` のディレクトリ基準で実ファイル URI を組み立て、`isSafeImagePath(path)` — **`..` 禁止**、**`img/` プレフィックス必須** — を通過した場合のみ `webview.asWebviewUri` する。対象: TipTap `docJson` 内 `image.src`、Marp 出力 HTML 内 `<img src>`
+6. **`https:` / `data:`** は CSP 上 Webview が直接解決（既存どおり — rewrite 不要）
+7. Marp Preview **パネル**の CSP（`enableScripts: false`）は本タスクでは Preview 整合のため AD-001 rewrite で足りる限り **img-src 拡張しない**
+8. **`img/` 内 SVG** は CSP + サニタイズ経路を通す（Mermaid SVG とは別経路 — RK-015）
 
 #### 例外系
 
@@ -796,7 +799,7 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 
 ### Related Tests
 
-- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-057–061、TC-126–127（`isSafeImagePath` / `localResourceRoots` regression）
+- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-057–061、TC-126–127（`isSafeImagePath` / `localResourceRoots` regression）、TC-152（Mermaid SVG `foreignObject` 保持）
 
 ---
 
@@ -958,3 +961,4 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | 2026-09-03 | §5, Spec Gaps, 改訂履歴 | Mermaid テーマ初期化クラッシュ修正（`mermaid-theme-crash-fix`）: VS Code kind から Mermaid ビルトインテーマ（dark/default）へのマップ採用、`themeVariables` での `var(...)` 指定を廃止。Mermaid 初期化・テーマ切替を try-catch で隔離し Webview クラッシュを防止 |
 | 2026-09-05 | AD-016, §1, §8, §10, 共通 Non-Goals, Spec Gaps, Related Tests, 改訂履歴 | 初期 `editorMode` を **raw** に変更。mode-toolbar に非モード **Side Preview**（`markdown.showPreviewToSide`、コマンド `vsc-md-editor.showNativeMarkdownPreviewToSide`）。dirty 時 Save/Cancel ゲート。Pattern A / Marp 非干渉。三点 Preview 維持・4th mode / 埋め込みは Non-Goals。三点往復受け入れ。Requirements Brief `native-preview-side-and-default-raw` AD-001–AD-014 |
 | 2026-09-05 | §1 mode-toolbar, AD-016, §8, §10, Spec Gaps, Related Tests, README, 改訂履歴 | 表示ラベルを **Default Preview** \| **Editor Preview** \| **Edit Rich Editor** \| **Edit Raw Text** に更新（左→右）。`preview`→Editor Preview。Default Preview は非モード（`data-action=native-preview-to-side`、4th `editorMode` ではない）。セパレータ任意・四ボタン同等優先。Related Tests の testspec 状態を作成済に修正（`toolbar-default-editor-preview-labels`） |
+| 2026-09-05 | §5, §9, 改訂履歴 | Mermaid NodeView の SVG sanitize で flowchart `foreignObject` とラベル用安全な子を保持する契約を追加（`fix-mermaid-dark-visibility` / TC-152）。`script` / `on*` 除去・`securityLevel: 'strict'` は不変 |

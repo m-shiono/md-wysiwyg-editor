@@ -223,7 +223,7 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
             try {
               const renderSource = buildMermaidRenderSource(source);
               const { svg } = await mermaid.render(`${viewId}-svg`, renderSource || ' ');
-              preview.innerHTML = DOMPurify.sanitize(svg);
+              preview.innerHTML = sanitizeMermaidSvg(svg);
             } catch (err) {
               preview.innerHTML = `<div class="mermaid-error">${escapeHtml(String(err))}</div>`;
               vscode.postMessage({ type: 'mermaidError', error: String(err) });
@@ -295,6 +295,18 @@ function escapeHtml(text: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+/**
+ * Sanitize Mermaid-rendered SVG for NodeView preview.
+ * Default DOMPurify strips flowchart foreignObject HTML labels; keep those while still removing script/on*.
+ */
+function sanitizeMermaidSvg(svg: string): string {
+  return DOMPurify.sanitize(svg, {
+    USE_PROFILES: { svg: true, svgFilters: true, html: true },
+    ADD_TAGS: ['foreignObject'],
+    ADD_ATTR: ['xmlns'],
+  });
 }
 
 function getEditorExtensions() {

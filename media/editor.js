@@ -223986,7 +223986,7 @@ img.ProseMirror-separator {
               try {
                 const renderSource = buildMermaidRenderSource(source3);
                 const { svg: svg2 } = await mermaid_default.render(`${viewId}-svg`, renderSource || " ");
-                preview.innerHTML = purify.sanitize(svg2);
+                preview.innerHTML = sanitizeMermaidSvg(svg2);
               } catch (err) {
                 preview.innerHTML = `<div class="mermaid-error">${escapeHtml(String(err))}</div>`;
                 vscode.postMessage({ type: "mermaidError", error: String(err) });
@@ -224039,6 +224039,13 @@ img.ProseMirror-separator {
   }
   function escapeHtml(text4) {
     return text4.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function sanitizeMermaidSvg(svg2) {
+    return purify.sanitize(svg2, {
+      USE_PROFILES: { svg: true, svgFilters: true, html: true },
+      ADD_TAGS: ["foreignObject"],
+      ADD_ATTR: ["xmlns"]
+    });
   }
   function getEditorExtensions() {
     return [
