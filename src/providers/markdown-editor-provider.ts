@@ -565,11 +565,10 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
 </head>
 <body data-readonly="${readonly}" data-mode="${DEFAULT_EDITOR_MODE}">
   <div id="mode-toolbar" role="toolbar" aria-label="Editor mode">
-    <button type="button" data-mode="preview" title="Preview">Preview</button>
-    <button type="button" data-mode="markdown" title="Edit Rich Editor">Edit Rich Editor</button>
-    <button type="button" data-mode="raw" class="active" title="Edit Raw Text">Edit Raw Text</button>
-    <span class="toolbar-sep" role="separator" aria-hidden="true"></span>
-    <button type="button" data-action="native-preview-to-side" title="Open VS Code Markdown Preview to the Side" aria-label="Open VS Code Markdown Preview to the Side">Side Preview</button>
+    <button type="button" data-action="native-preview-to-side" title="Open Default Markdown Preview to the Side" aria-label="Open Default Markdown Preview to the Side">Default Preview</button>
+    <button type="button" data-mode="preview" title="Editor Preview" aria-label="Editor Preview">Editor Preview</button>
+    <button type="button" data-mode="markdown" title="Edit Rich Editor" aria-label="Edit Rich Editor">Edit Rich Editor</button>
+    <button type="button" data-mode="raw" class="active" title="Edit Raw Text" aria-label="Edit Raw Text">Edit Raw Text</button>
   </div>
   <div id="toolbar" role="toolbar" aria-label="Formatting">
     <button type="button" data-cmd="bold" title="Bold" aria-pressed="false"><b>B</b></button>

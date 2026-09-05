@@ -6,13 +6,13 @@ VS Code 向け WYSIWYG Markdown エディタ拡張。チーム技術ドキュメ
 
 | 機能 | 説明 |
 |------|------|
-| 三点モード | 同一 Custom Editor で **Preview**（RO 描画）/ **Edit Rich Editor**（TipTap WYSIWYG）/ **Edit Raw Text**（ソース）を切替。正本は Document。内部 mode id は `preview` / `markdown` / `raw`。**初期表示は Edit Raw Text** |
-| Side Preview | ツールバーの **Side Preview**（三点の右側・非モード）から VS Code 標準 Markdown Preview を横に開く。未保存時は Save / Cancel。Command Palette: `vsc-md-editor.showNativeMarkdownPreviewToSide` |
+| 三点モード | 同一 Custom Editor で **Editor Preview**（RO 描画）/ **Edit Rich Editor**（TipTap WYSIWYG）/ **Edit Raw Text**（ソース）を切替。正本は Document。内部 mode id は `preview` / `markdown` / `raw`。**初期表示は Edit Raw Text** |
+| Default Preview | ツールバー先頭の **Default Preview**（非モード・`editorMode` 非変更）から VS Code 標準 Markdown Preview を横に開く。未保存時は Save / Cancel。Command Palette: `vsc-md-editor.showNativeMarkdownPreviewToSide`。ボタン順: Default Preview \| Editor Preview \| Edit Rich Editor \| Edit Raw Text |
 | WYSIWYG 本文 | Edit Rich Editor で見出し（H1–H6）・太字・斜体・取り消し線（`~~`）・リスト・タスクリスト・引用・リンク・インラインコード・コードブロック・水平線等をビジュアル編集 |
 | HTML 表編集 | セル内改行・箇条書き・チェックボックス対応の Excel 的表操作 |
-| Readonly モード | ファイル単位で全編集面（Markdown / Raw）をロック（三点 Preview とは別） |
+| Readonly モード | ファイル単位で全編集面（Markdown / Raw）をロック（Editor Preview とは別） |
 | Mermaid | ` ```mermaid ` ブロックのリアルタイム描画（テキスト編集） |
-| Marp プレビュー | スライド用サイド/パネル表示（三点 Preview とは別・AD-008） |
+| Marp プレビュー | スライド用サイド/パネル表示（Editor Preview とは別・AD-008） |
 | 画像貼付 | クリップボード画像を同階層 `img/image-NNNN.ext` に保存 |
 
 リッチ表現（HTML 混在・拡張記法）を Markdown 厳密互換より優先する設計。詳細は [doc/systemspec.md](doc/systemspec.md)。
@@ -40,7 +40,7 @@ VS Code で **Run Extension**（F5）を実行し Extension Development Host を
 
 コマンドパレットの **Reopen Editor With…** で VS Code 標準 Markdown エディタへ切替可能。
 
-IDE タイトルバーの Preview / Markdown 切替でビルトインへ移った場合、拡張が検知して WYSIWYG への復帰を案内する（`vsc-md-editor.autoRestoreOnBuiltinSwitch` で自動復帰も可。既定はオフ）。エディタ内の **Preview / Edit Rich Editor / Edit Raw Text** 三点ボタンは WYSIWYG Custom Editor 専用。**Side Preview** は表示面を変えず、標準 Markdown Preview を横に開く（第 4 モードではない）。
+IDE タイトルバーの Preview / Markdown 切替でビルトインへ移った場合、拡張が検知して WYSIWYG への復帰を案内する（`vsc-md-editor.autoRestoreOnBuiltinSwitch` で自動復帰も可。既定はオフ）。エディタ内ツールバーは **Default Preview / Editor Preview / Edit Rich Editor / Edit Raw Text**（WYSIWYG Custom Editor 専用）。**Default Preview** は表示面を変えず、標準 Markdown Preview を横に開く（第 4 モードではない）。
 
 拡張機能を更新したあと、`.md` ファイル表示中のエディタタイトルバー（Cursor の Preview / Markdown 付近）の **Reload Plugin**（$(refresh) アイコン）でウィンドウを再読み込みできる。ビルトインエディタに切り替わって Webview バーが消えても利用可能。
 
@@ -72,3 +72,4 @@ IDE タイトルバーの Preview / Markdown 切替でビルトインへ移っ�
 | 2026-08-31 | 三点モードのツールバー表示名を Preview / Edit Rich Editor / Edit Raw Text に更新 |
 | 2026-08-31 | WYSIWYG 本文の機能表を GFM 書式（取り消し線・H1–H6・タスクリスト・引用・水平線等）に合わせて更新 |
 | 2026-09-05 | 初期モードを Edit Raw Text に変更。Side Preview（標準 Preview 横開き・非モード）を追記 |
+| 2026-09-05 | ツールバー表示名を Default Preview / Editor Preview / Edit Rich Editor / Edit Raw Text に更新（`toolbar-default-editor-preview-labels`） |

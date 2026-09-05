@@ -223829,7 +223829,7 @@ img.ProseMirror-separator {
     }
     try {
       runtime.initialize(buildMermaidThemeConfig(kind));
-    } catch (err) {
+    } catch {
     }
     runtime.scheduleRerender();
   }
@@ -224357,11 +224357,14 @@ img.ProseMirror-separator {
     const btn = document.querySelector(
       '#mode-toolbar button[data-action="native-preview-to-side"]'
     );
-    if (!btn || btn.dataset.bound === "1") {
+    if (!btn) {
       return;
     }
-    btn.dataset.bound = "1";
-    btn.addEventListener("click", () => {
+    const clone8 = btn.cloneNode(true);
+    delete clone8.dataset.bound;
+    btn.parentNode?.replaceChild(clone8, btn);
+    clone8.dataset.bound = "1";
+    clone8.addEventListener("click", () => {
       vscode.postMessage({ type: "openNativePreviewToSide" });
     });
   }
