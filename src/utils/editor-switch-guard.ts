@@ -15,7 +15,7 @@ const WYSIWYG_RESTORE_ACTION = 'WYSIWYG Editor で開く';
 /**
  * Pattern A: same `.md` URI active but not on WYSIWYG custom editor after dispose.
  * Markdown Preview tabs (TabInputWebview / markdown.preview.*) must not count as
- * a builtin text switch — Side Preview opens Preview beside Custom Editor.
+ * a builtin text switch — Default Preview opens Preview in the same group.
  */
 export function isBuiltinSwitchToSameMdFile(
   disposedUri: vscode.Uri,

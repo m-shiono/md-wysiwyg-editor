@@ -1,6 +1,6 @@
 /**
- * TC-001–020: native-preview-side-and-default-raw contracts.
- * Host Default Preview command / Webview wiring for Custom Editor.
+ * TC-001–021: native-preview-side-and-default-raw / default-preview-same-tab-group.
+ * Host Default Preview: markdown.showPreview + same-group move compensation.
  */
 import * as assert from 'assert';
 import * as fs from 'fs';
@@ -23,9 +23,12 @@ type VscodeTestShim = typeof vscode & {
 const mockVscode = vscode as VscodeTestShim;
 
 const WYSIWYG_VIEW_TYPE = 'vsc-md-editor.wysiwyg';
-const SIDE_PREVIEW_COMMAND = 'vsc-md-editor.showNativeMarkdownPreviewToSide';
+const PREVIEW_COMMAND = 'vsc-md-editor.showNativeMarkdownPreview';
+const LEGACY_PREVIEW_COMMAND = 'vsc-md-editor.showNativeMarkdownPreviewToSide';
 const NATIVE_PREVIEW_COMMAND_MODULE = 'src/commands/native-markdown-preview.ts';
-const DEFAULT_PREVIEW_A11Y_LABEL = 'Open Default Markdown Preview to the Side';
+const DEFAULT_PREVIEW_A11Y_LABEL = 'Open Default Markdown Preview';
+const DIRTY_WARNING_MESSAGE =
+  'Document has unsaved changes. Save before opening the Markdown Preview?';
 const OUTPUT_CHANNEL_NAME = 'MD WYSIWYG Editor';
 
 function readRepoFile(...parts: string[]): string {
@@ -65,7 +68,18 @@ function assertNativePreviewCommandSource(): string {
   return readRepoFile(NATIVE_PREVIEW_COMMAND_MODULE);
 }
 
-suite('native-preview-side-and-default-raw (TC-001–020)', () => {
+function getShowNativeMarkdownPreview():
+  | ((args?: {
+      isDirty?: boolean;
+      uri?: vscode.Uri;
+      isRawParseFailed?: boolean;
+      save?: () => Promise<void>;
+    }) => Promise<void>)
+  | undefined {
+  return getCommandExport('showNativeMarkdownPreview');
+}
+
+suite('native-preview-side-and-default-raw (TC-001–021)', () => {
   teardown(() => {
     mockVscode.clearMockFiles();
     setParseFailureMock(false);
@@ -87,7 +101,6 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
       'body data-mode must follow DEFAULT_EDITOR_MODE (raw)',
     );
 
-    // Static fallback HTML (pre-template) must not hardcode markdown as initial active.
     const toolbar = extractModeToolbarHtml(providerSrc);
     const rawActive =
       /data-mode="raw"[^>]*class="[^"]*active|class="[^"]*active[^"]*"[^>]*data-mode="raw"/.test(
@@ -169,53 +182,59 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
       'left→right order: Default Preview | Editor Preview | Edit Rich Editor | Edit Raw Text',
     );
     assert.ok(
-      /data-action="native-preview-to-side"[\s\S]*data-mode="preview"[\s\S]*data-mode="markdown"[\s\S]*data-mode="raw"/.test(
+      /data-action="native-preview"[\s\S]*data-mode="preview"[\s\S]*data-mode="markdown"[\s\S]*data-mode="raw"/.test(
         toolbar,
       ),
-      'Default Preview (data-action) must precede the three data-mode buttons',
+      'Default Preview (data-action=native-preview) must precede the three data-mode buttons',
     );
     assert.ok(/Default Preview/.test(toolbar), 'button label Default Preview required');
     assert.ok(/Editor Preview/.test(toolbar), 'preview mode label Editor Preview required');
     assert.ok(!/>\s*Preview\s*</.test(toolbar), 'legacy Preview label must not remain');
     assert.ok(!/Side Preview/.test(toolbar), 'legacy Side Preview label must not remain');
-
-    const sideBtnMatch = toolbar.match(
-      /<button[^>]*(?:data-action="native-preview-to-side"|Default Preview)[^>]*>[\s\S]*?<\/button>/,
-    );
-    assert.ok(sideBtnMatch, 'Default Preview button element required');
-    const sideBtn = sideBtnMatch[0];
     assert.ok(
-      /data-action="native-preview-to-side"/.test(sideBtn),
-      'data-action="native-preview-to-side" required',
+      !/native-preview-to-side/.test(toolbar),
+      'legacy data-action native-preview-to-side must not remain',
     );
-    assert.ok(!/\sdata-mode=/.test(sideBtn), 'Default Preview must not have data-mode');
+
+    const previewBtnMatch = toolbar.match(
+      /<button[^>]*(?:data-action="native-preview"|Default Preview)[^>]*>[\s\S]*?<\/button>/,
+    );
+    assert.ok(previewBtnMatch, 'Default Preview button element required');
+    const previewBtn = previewBtnMatch[0];
+    assert.ok(
+      /data-action="native-preview"/.test(previewBtn),
+      'data-action="native-preview" required',
+    );
+    assert.ok(!/\sdata-mode=/.test(previewBtn), 'Default Preview must not have data-mode');
   });
 
   test('TC-003: Default Preview click must not change editorMode (source contract)', () => {
     const editorSrc = readRepoFile('media/editor.ts');
     assert.ok(
-      /native-preview-to-side|openNativePreviewToSide/.test(editorSrc),
+      /data-action=["']native-preview["']|openNativePreview/.test(editorSrc),
       'Webview must wire Default Preview action',
     );
     assert.ok(
-      /data-action=["']native-preview-to-side["']/.test(editorSrc) ||
+      /data-action=["']native-preview["']/.test(editorSrc) ||
         /querySelector(?:All)?\([^)]*native-preview/.test(editorSrc),
       'Default Preview listener must target data-action, not data-mode',
     );
     assert.ok(
-      /attachModeToolbarHandlers[\s\S]*attachSidePreviewHandler|attachSidePreviewHandler\(\)/.test(
-        editorSrc,
-      ),
-      'attachSidePreviewHandler must run after mode toolbar init',
+      !/openNativePreviewToSide/.test(editorSrc),
+      'legacy openNativePreviewToSide postMessage name must be abolished',
+    );
+    assert.ok(
+      !/native-preview-to-side/.test(editorSrc),
+      'legacy data-action native-preview-to-side must be abolished',
     );
     // Default Preview path must not call applyMode
-    const sideHandlerSlice =
+    const previewHandlerSlice =
       editorSrc.match(
-        /native-preview-to-side[\s\S]{0,400}|openNativePreviewToSide[\s\S]{0,400}/,
+        /native-preview[\s\S]{0,400}|openNativePreview[\s\S]{0,400}/,
       )?.[0] ?? '';
-    assert.ok(sideHandlerSlice.length > 0, 'Default Preview handler slice required');
+    assert.ok(previewHandlerSlice.length > 0, 'Default Preview handler slice required');
     assert.ok(
-      !/\bapplyMode\s*\(/.test(sideHandlerSlice),
+      !/\bapplyMode\s*\(/.test(previewHandlerSlice),
       'Default Preview must not call applyMode',
     );
   });
@@ -243,16 +262,20 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
   test('TC-018: Default Preview a11y labels and Editor Preview mode label', () => {
     const providerSrc = readRepoFile('src/providers/markdown-editor-provider.ts');
     const toolbar = extractModeToolbarHtml(providerSrc);
-    const sideBtnMatch = toolbar.match(/<button[^>]*native-preview-to-side[^>]*>/);
-    assert.ok(sideBtnMatch, 'Default Preview button with data-action required for a11y check');
-    const sideBtn = sideBtnMatch[0];
+    const previewBtnMatch = toolbar.match(/<button[^>]*data-action="native-preview"[^>]*>/);
+    assert.ok(previewBtnMatch, 'Default Preview button with data-action required for a11y check');
+    const previewBtn = previewBtnMatch[0];
     assert.ok(
-      new RegExp(`title="${DEFAULT_PREVIEW_A11Y_LABEL}"`).test(sideBtn),
+      new RegExp(`title="${DEFAULT_PREVIEW_A11Y_LABEL}"`).test(previewBtn),
       `title must be "${DEFAULT_PREVIEW_A11Y_LABEL}"`,
     );
     assert.ok(
-      new RegExp(`aria-label="${DEFAULT_PREVIEW_A11Y_LABEL}"`).test(sideBtn),
+      new RegExp(`aria-label="${DEFAULT_PREVIEW_A11Y_LABEL}"`).test(previewBtn),
       `aria-label must be "${DEFAULT_PREVIEW_A11Y_LABEL}"`,
+    );
+    assert.ok(
+      !/to the [Ss]ide/.test(previewBtn),
+      'title/aria-label must not include Side wording',
     );
 
     const previewModeMatch = toolbar.match(/<button[^>]*data-mode="preview"[^>]*>[\s\S]*?<\/button>/);
@@ -265,7 +288,7 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
 
   // --- TC-007: command registration ---
 
-  test('TC-007: package.json registers showNativeMarkdownPreviewToSide without editor/title icon', () => {
+  test('TC-007: package.json registers showNativeMarkdownPreview + ToSide alias without editor/title icon', () => {
     const pkg = JSON.parse(fs.readFileSync(packageJsonPath(), 'utf8')) as {
       contributes: {
         commands: Array<{ command: string; title?: string }>;
@@ -276,79 +299,117 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
 
     const commands = pkg.contributes.commands.map((c) => c.command);
     assert.ok(
-      commands.includes(SIDE_PREVIEW_COMMAND),
-      `expected commands to include ${SIDE_PREVIEW_COMMAND}`,
+      commands.includes(PREVIEW_COMMAND),
+      `expected commands to include canonical ${PREVIEW_COMMAND}`,
+    );
+    assert.ok(
+      commands.includes(LEGACY_PREVIEW_COMMAND),
+      `expected commands to include alias ${LEGACY_PREVIEW_COMMAND}`,
+    );
+
+    const canonical = pkg.contributes.commands.find((c) => c.command === PREVIEW_COMMAND);
+    assert.ok(canonical?.title, 'canonical command title required');
+    assert.ok(
+      !/side/i.test(canonical!.title!),
+      'canonical command title must not include Side wording',
     );
 
     const titleMenus = pkg.contributes.menus?.['editor/title'] ?? [];
     assert.ok(
-      !titleMenus.some((m) => m.command === SIDE_PREVIEW_COMMAND),
+      !titleMenus.some(
+        (m) => m.command === PREVIEW_COMMAND || m.command === LEGACY_PREVIEW_COMMAND,
+      ),
       'Default Preview must not add editor/title icon (Non-Goal)',
     );
 
     const extensionSrc = readRepoFile('src/extension.ts');
     assert.ok(
-      /registerNativeMarkdownPreview|showNativeMarkdownPreviewToSide|native-markdown-preview/.test(
+      /registerNativeMarkdownPreview|showNativeMarkdownPreview|native-markdown-preview/.test(
         extensionSrc,
       ),
       'activate must register Default Preview command',
+    );
+
+    const cmdSrc = assertNativePreviewCommandSource();
+    assert.ok(
+      new RegExp(PREVIEW_COMMAND.replace(/\./g, '\\.')).test(cmdSrc),
+      'Host must register canonical command ID',
+    );
+    assert.ok(
+      new RegExp(LEGACY_PREVIEW_COMMAND.replace(/\./g, '\\.')).test(cmdSrc),
+      'Host must keep ToSide command ID as alias',
     );
   });
 
   // --- TC-014: Webview postMessage only ---
 
-  test('TC-014: Webview posts openNativePreviewToSide only — no direct showPreviewToSide', () => {
+  test('TC-014: Webview posts openNativePreview only — no direct markdown.showPreview*', () => {
     const messagesSrc = readRepoFile('src/webviews/messages.ts');
     assert.ok(
-      /type:\s*['"]openNativePreviewToSide['"]/.test(messagesSrc),
-      'WebviewInboundMessage must include openNativePreviewToSide',
+      /type:\s*['"]openNativePreview['"]/.test(messagesSrc),
+      'WebviewInboundMessage must include openNativePreview',
+    );
+    assert.ok(
+      !/openNativePreviewToSide/.test(messagesSrc),
+      'legacy openNativePreviewToSide type must be abolished',
     );
 
     const editorSrc = readRepoFile('media/editor.ts');
     assert.ok(
-      /openNativePreviewToSide/.test(editorSrc),
-      'Webview must postMessage openNativePreviewToSide',
+      /openNativePreview/.test(editorSrc),
+      'Webview must postMessage openNativePreview',
     );
     assert.ok(
-      !/markdown\.showPreviewToSide/.test(editorSrc),
-      'Webview must not call markdown.showPreviewToSide directly',
+      !/openNativePreviewToSide/.test(editorSrc),
+      'Webview must not postMessage openNativePreviewToSide',
     );
     assert.ok(
-      !/executeCommand\s*\(\s*['"]markdown\.showPreviewToSide['"]/.test(editorSrc),
-      'Webview must not executeCommand showPreviewToSide',
+      !/markdown\.showPreview/.test(editorSrc),
+      'Webview must not call markdown.showPreview* directly',
+    );
+    assert.ok(
+      !/executeCommand\s*\(\s*['"]markdown\.showPreview/.test(editorSrc),
+      'Webview must not executeCommand markdown.showPreview*',
     );
 
     const providerSrc = readRepoFile('src/providers/markdown-editor-provider.ts');
     assert.ok(
-      /openNativePreviewToSide/.test(providerSrc),
-      'provider must handle openNativePreviewToSide inbound message',
+      /openNativePreview/.test(providerSrc),
+      'provider must handle openNativePreview inbound message',
     );
     assert.ok(
-      /showNativeMarkdownPreviewToSide|native-markdown-preview/.test(providerSrc),
+      !/openNativePreviewToSide/.test(providerSrc),
+      'provider must not keep openNativePreviewToSide case',
+    );
+    assert.ok(
+      /showNativeMarkdownPreview|native-markdown-preview/.test(providerSrc),
       'provider must delegate Default Preview to Host command helper',
     );
   });
 
   // --- Host gate: TC-004–006, TC-008–011, TC-016–017, TC-019 ---
 
-  test('TC-004: clean document opens markdown.showPreviewToSide without dialog', async () => {
+  test('TC-004: clean document opens markdown.showPreview without dialog or ToSide', async () => {
     const cmdSrc = assertNativePreviewCommandSource();
     assert.ok(
-      /markdown\.showPreviewToSide/.test(cmdSrc),
-      'Host must invoke markdown.showPreviewToSide',
+      /markdown\.showPreview/.test(cmdSrc),
+      'Host must invoke markdown.showPreview',
+    );
+    assert.ok(
+      !/showPreviewToSide/.test(cmdSrc),
+      'Host must not use markdown.showPreviewToSide',
+    );
+    assert.ok(
+      /moveActiveEditor|activeTabGroup/.test(cmdSrc),
+      'Host must compensate same editor group after open',
     );
     assert.ok(
       /openTextDocument/.test(cmdSrc),
-      'Host must openTextDocument before showPreviewToSide for Custom Editor reliability',
+      'Host must openTextDocument before showPreview for Custom Editor reliability',
     );
 
-    const showFn = getCommandExport<
-      (args?: {
-        isDirty?: boolean;
-        uri?: vscode.Uri;
-      }) => Promise<void>
-    >('showNativeMarkdownPreviewToSide');
-    assert.ok(showFn, 'showNativeMarkdownPreviewToSide export required');
+    const showFn = getShowNativeMarkdownPreview();
+    assert.ok(showFn, 'showNativeMarkdownPreview export required');
 
     const executed: Array<{ command: string; args: unknown[] }> = [];
     const dialogCalls: string[] = [];
@@ -369,12 +430,16 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
       mockVscode.setMockFile(uri, '# clean\n');
       await showFn!({ isDirty: false, uri });
       assert.strictEqual(dialogCalls.length, 0, 'clean must not show Save/Cancel dialog');
-      const previewCalls = executed.filter((e) => e.command === 'markdown.showPreviewToSide');
-      assert.strictEqual(previewCalls.length, 1, 'showPreviewToSide must run once');
+      const previewCalls = executed.filter((e) => e.command === 'markdown.showPreview');
+      assert.strictEqual(previewCalls.length, 1, 'showPreview must run once');
       assert.strictEqual(
         (previewCalls[0].args[0] as vscode.Uri).fsPath,
         uri.fsPath,
         'preview must receive a proper file Uri for the same path',
+      );
+      assert.ok(
+        !executed.some((e) => e.command === 'markdown.showPreviewToSide'),
+        'showPreviewToSide must not run',
       );
     } finally {
       vscode.commands.executeCommand = originalExecute;
@@ -382,22 +447,24 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
     }
   });
 
-  test('TC-005: dirty→Save success then showPreviewToSide; Save/Cancel only', async () => {
+  test('TC-005: dirty→Save success then showPreview + same-group; Save/Cancel only', async () => {
     const cmdSrc = assertNativePreviewCommandSource();
     assert.ok(/\bSave\b/.test(cmdSrc) && /\bCancel\b/.test(cmdSrc), 'dialog must offer Save and Cancel');
     assert.ok(
       !/Don't Save|Dont Save|Don't save/i.test(cmdSrc),
       'Don\'t Save must not be offered',
     );
+    assert.ok(
+      !/to the side/i.test(cmdSrc),
+      'dirty warning must not include to the side',
+    );
+    assert.ok(
+      /moveActiveEditor|activeTabGroup/.test(cmdSrc),
+      'save success path must include same-group compensation',
+    );
 
-    const showFn = getCommandExport<
-      (args?: {
-        isDirty?: boolean;
-        uri?: vscode.Uri;
-        save?: () => Promise<void>;
-      }) => Promise<void>
-    >('showNativeMarkdownPreviewToSide');
-    assert.ok(showFn, 'showNativeMarkdownPreviewToSide export required');
+    const showFn = getShowNativeMarkdownPreview();
+    assert.ok(showFn, 'showNativeMarkdownPreview export required');
 
     let saved = false;
     const executed: string[] = [];
@@ -429,8 +496,12 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
       });
       assert.strictEqual(saved, true, 'Save path must run document save');
       assert.ok(
-        executed.includes('markdown.showPreviewToSide'),
+        executed.includes('markdown.showPreview'),
         'preview opens only after successful save',
+      );
+      assert.ok(
+        !executed.includes('markdown.showPreviewToSide'),
+        'showPreviewToSide must not run after save',
       );
     } finally {
       vscode.commands.executeCommand = originalExecute;
@@ -439,14 +510,8 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
   });
 
   test('TC-006: dirty→Cancel does not open preview and keeps dirty', async () => {
-    const showFn = getCommandExport<
-      (args?: {
-        isDirty?: boolean;
-        uri?: vscode.Uri;
-        save?: () => Promise<void>;
-      }) => Promise<void>
-    >('showNativeMarkdownPreviewToSide');
-    assert.ok(showFn, 'showNativeMarkdownPreviewToSide export required');
+    const showFn = getShowNativeMarkdownPreview();
+    assert.ok(showFn, 'showNativeMarkdownPreview export required');
 
     let saved = false;
     const executed: string[] = [];
@@ -469,8 +534,12 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
       });
       assert.strictEqual(saved, false, 'Cancel must not save');
       assert.ok(
-        !executed.includes('markdown.showPreviewToSide'),
+        !executed.includes('markdown.showPreview'),
         'Cancel must not open preview',
+      );
+      assert.ok(
+        !executed.includes('markdown.showPreviewToSide'),
+        'Cancel must not call showPreviewToSide',
       );
     } finally {
       vscode.commands.executeCommand = originalExecute;
@@ -479,10 +548,8 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
   });
 
   test('TC-008: dismissing dirty dialog (undefined) does not open preview', async () => {
-    const showFn = getCommandExport<
-      (args?: { isDirty?: boolean; uri?: vscode.Uri }) => Promise<void>
-    >('showNativeMarkdownPreviewToSide');
-    assert.ok(showFn, 'showNativeMarkdownPreviewToSide export required');
+    const showFn = getShowNativeMarkdownPreview();
+    assert.ok(showFn, 'showNativeMarkdownPreview export required');
 
     const executed: string[] = [];
     const originalExecute = vscode.commands.executeCommand;
@@ -500,8 +567,12 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
         uri: vscode.Uri.file('/tmp/native-preview-dirty-dismiss.md'),
       });
       assert.ok(
-        !executed.includes('markdown.showPreviewToSide'),
+        !executed.includes('markdown.showPreview'),
         'dismiss must not open preview',
+      );
+      assert.ok(
+        !executed.includes('markdown.showPreviewToSide'),
+        'dismiss must not call showPreviewToSide',
       );
     } finally {
       vscode.commands.executeCommand = originalExecute;
@@ -517,14 +588,8 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
       'save failure must report ErrorMessage and Output channel',
     );
 
-    const showFn = getCommandExport<
-      (args?: {
-        isDirty?: boolean;
-        uri?: vscode.Uri;
-        save?: () => Promise<void>;
-      }) => Promise<void>
-    >('showNativeMarkdownPreviewToSide');
-    assert.ok(showFn, 'showNativeMarkdownPreviewToSide export required');
+    const showFn = getShowNativeMarkdownPreview();
+    assert.ok(showFn, 'showNativeMarkdownPreview export required');
 
     const executed: string[] = [];
     const errors: string[] = [];
@@ -552,8 +617,12 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
       });
       assert.ok(errors.length >= 1, 'ErrorMessage required on save failure');
       assert.ok(
-        !executed.includes('markdown.showPreviewToSide'),
+        !executed.includes('markdown.showPreview'),
         'save failure must not open preview',
+      );
+      assert.ok(
+        !executed.includes('markdown.showPreviewToSide'),
+        'save failure must not call showPreviewToSide',
       );
     } finally {
       vscode.commands.executeCommand = originalExecute;
@@ -573,15 +642,8 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
     setParseFailureMock(false);
     assert.strictEqual(doc!.isRawParseFailed, true);
 
-    const showFn = getCommandExport<
-      (args?: {
-        isDirty?: boolean;
-        uri?: vscode.Uri;
-        isRawParseFailed?: boolean;
-        save?: () => Promise<void>;
-      }) => Promise<void>
-    >('showNativeMarkdownPreviewToSide');
-    assert.ok(showFn, 'showNativeMarkdownPreviewToSide export required');
+    const showFn = getShowNativeMarkdownPreview();
+    assert.ok(showFn, 'showNativeMarkdownPreview export required');
 
     const executed: string[] = [];
     const originalExecute = vscode.commands.executeCommand;
@@ -601,8 +663,12 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
         save: async () => doc!.save({ isCancellationRequested: false } as vscode.CancellationToken),
       });
       assert.ok(
-        !executed.includes('markdown.showPreviewToSide'),
+        !executed.includes('markdown.showPreview'),
         'raw parse failure must block preview open',
+      );
+      assert.ok(
+        !executed.includes('markdown.showPreviewToSide'),
+        'raw parse failure must not call showPreviewToSide',
       );
     } finally {
       vscode.commands.executeCommand = originalExecute;
@@ -612,10 +678,8 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
   });
 
   test('TC-011: unresolved URI shows Warning and skips preview', async () => {
-    const showFn = getCommandExport<(args?: { uri?: vscode.Uri }) => Promise<void>>(
-      'showNativeMarkdownPreviewToSide',
-    );
-    assert.ok(showFn, 'showNativeMarkdownPreviewToSide export required');
+    const showFn = getShowNativeMarkdownPreview();
+    assert.ok(showFn, 'showNativeMarkdownPreview export required');
 
     const warnings: string[] = [];
     const executed: string[] = [];
@@ -638,8 +702,12 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
         'Warning must mention Open a Markdown file first',
       );
       assert.ok(
-        !executed.includes('markdown.showPreviewToSide'),
+        !executed.includes('markdown.showPreview'),
         'unresolved URI must not open preview',
+      );
+      assert.ok(
+        !executed.includes('markdown.showPreviewToSide'),
+        'unresolved URI must not call showPreviewToSide',
       );
     } finally {
       vscode.commands.executeCommand = originalExecute;
@@ -647,11 +715,9 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
     }
   });
 
-  test('TC-016: empty clean .md still opens showPreviewToSide without dialog', async () => {
-    const showFn = getCommandExport<
-      (args?: { isDirty?: boolean; uri?: vscode.Uri }) => Promise<void>
-    >('showNativeMarkdownPreviewToSide');
-    assert.ok(showFn, 'showNativeMarkdownPreviewToSide export required');
+  test('TC-016: empty clean .md still opens showPreview without dialog', async () => {
+    const showFn = getShowNativeMarkdownPreview();
+    assert.ok(showFn, 'showNativeMarkdownPreview export required');
 
     const executed: string[] = [];
     const dialogCalls: string[] = [];
@@ -672,18 +738,17 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
       mockVscode.setMockFile(uri, '');
       await showFn!({ isDirty: false, uri });
       assert.strictEqual(dialogCalls.length, 0);
-      assert.ok(executed.includes('markdown.showPreviewToSide'));
+      assert.ok(executed.includes('markdown.showPreview'));
+      assert.ok(!executed.includes('markdown.showPreviewToSide'));
     } finally {
       vscode.commands.executeCommand = originalExecute;
       vscode.window.showWarningMessage = originalWarn;
     }
   });
 
-  test('TC-017: showPreviewToSide+showPreview failure reports ErrorMessage+Output', async () => {
-    const showFn = getCommandExport<
-      (args?: { isDirty?: boolean; uri?: vscode.Uri }) => Promise<void>
-    >('showNativeMarkdownPreviewToSide');
-    assert.ok(showFn, 'showNativeMarkdownPreviewToSide export required');
+  test('TC-017: showPreview failure reports ErrorMessage+Output with no ToSide fallback', async () => {
+    const showFn = getShowNativeMarkdownPreview();
+    assert.ok(showFn, 'showNativeMarkdownPreview export required');
 
     const errors: string[] = [];
     const executed: string[] = [];
@@ -692,7 +757,7 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
 
     vscode.commands.executeCommand = (async (command: string) => {
       executed.push(command);
-      if (command === 'markdown.showPreviewToSide' || command === 'markdown.showPreview') {
+      if (command === 'markdown.showPreview') {
         throw new Error('command not found');
       }
       return undefined;
@@ -708,14 +773,14 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
         uri: vscode.Uri.file('/tmp/native-preview-cmd-missing.md'),
       });
       assert.ok(
-        executed.includes('markdown.showPreviewToSide'),
-        'must attempt showPreviewToSide first',
+        executed.includes('markdown.showPreview'),
+        'must attempt markdown.showPreview',
       );
       assert.ok(
-        executed.includes('markdown.showPreview'),
-        'must fall back to markdown.showPreview when side preview fails',
+        !executed.includes('markdown.showPreviewToSide'),
+        'must not fall back to markdown.showPreviewToSide',
       );
-      assert.ok(errors.length >= 1, 'ErrorMessage required when both preview commands fail');
+      assert.ok(errors.length >= 1, 'ErrorMessage required when showPreview fails');
     } finally {
       vscode.commands.executeCommand = originalExecute;
       vscode.window.showErrorMessage = originalError;
@@ -728,11 +793,15 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
     );
     assert.ok(
       /markdown\.showPreview/.test(cmdSrc),
-      'Host must attempt markdown.showPreview fallback',
+      'Host must attempt markdown.showPreview',
+    );
+    assert.ok(
+      !/showPreviewToSide/.test(cmdSrc),
+      'Host must not reference showPreviewToSide fallback',
     );
   });
 
-  test('TC-019: dirty dialog choices are Save and Cancel only', () => {
+  test('TC-019: dirty dialog choices are Save and Cancel only without Side wording', () => {
     const cmdSrc = assertNativePreviewCommandSource();
     const warnCall = cmdSrc.match(/showWarningMessage\([\s\S]*?\);/);
     assert.ok(warnCall, 'showWarningMessage call required for dirty gate');
@@ -740,6 +809,120 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
     assert.ok(/['"]Save['"]/.test(call), 'Save option required');
     assert.ok(/['"]Cancel['"]/.test(call), 'Cancel option required');
     assert.ok(!/Don't Save|Dont Save/i.test(call), 'Don\'t Save must be absent');
+    assert.ok(
+      call.includes(DIRTY_WARNING_MESSAGE) ||
+        /Document has unsaved changes\. Save before opening the Markdown Preview\?/.test(cmdSrc),
+      `dirty warning must be "${DIRTY_WARNING_MESSAGE}"`,
+    );
+    assert.ok(!/to the side/i.test(call), 'dirty warning must not include to the side');
+  });
+
+  // --- TC-021: same-group move compensation ---
+
+  test('TC-021: same-group move after showPreview with preferred activeIndex+1', async () => {
+    const cmdSrc = assertNativePreviewCommandSource();
+    assert.ok(
+      /moveActiveEditor/.test(cmdSrc),
+      'Host must call moveActiveEditor (stable equivalent) after open',
+    );
+    assert.ok(
+      !/tabGroups\.move\s*\(/.test(cmdSrc),
+      'Host must not call non-existent tabGroups.move()',
+    );
+    assert.ok(
+      /activeIndex\s*\+\s*2|preferredTabPosition/.test(cmdSrc),
+      'preferred tab position must encode activeIndex+1 as 1-based moveActiveEditor value',
+    );
+    assert.ok(
+      !/showTextDocument/.test(cmdSrc),
+      'Host must not fabricate activeTextEditor via showTextDocument',
+    );
+    assert.ok(
+      !/showPreviewToSide/.test(cmdSrc),
+      'same-group path must not use showPreviewToSide',
+    );
+
+    const showFn = getShowNativeMarkdownPreview();
+    assert.ok(showFn, 'showNativeMarkdownPreview export required');
+
+    const viewColumn = 2;
+    const activeIndex = 0;
+    type MoveActiveEditorArgs = {
+      to?: string;
+      by?: string;
+      value?: number;
+    };
+
+    const executed: Array<{ command: string; args: unknown[] }> = [];
+    const originalExecute = vscode.commands.executeCommand;
+    const originalTabGroups = vscode.window.tabGroups;
+    const originalActiveTextEditor = vscode.window.activeTextEditor;
+
+    const fakeTab = { input: { viewType: WYSIWYG_VIEW_TYPE } };
+    const fakeGroup = {
+      viewColumn,
+      activeTab: fakeTab,
+      tabs: [fakeTab],
+    };
+
+    (vscode.window as { activeTextEditor: undefined }).activeTextEditor = undefined;
+    (vscode.window as { tabGroups: typeof vscode.window.tabGroups }).tabGroups = {
+      ...originalTabGroups,
+      activeTabGroup: fakeGroup as unknown as vscode.TabGroup,
+    };
+
+    vscode.commands.executeCommand = (async (command: string, ...args: unknown[]) => {
+      executed.push({ command, args });
+      return undefined;
+    }) as typeof vscode.commands.executeCommand;
+
+    try {
+      const uri = vscode.Uri.file('/tmp/native-preview-same-group.md');
+      mockVscode.setMockFile(uri, '# same group\n');
+      await showFn!({ isDirty: false, uri });
+
+      assert.strictEqual(
+        executed.filter((e) => e.command === 'markdown.showPreview').length,
+        1,
+        'showPreview must run once',
+      );
+      assert.ok(
+        !executed.some((e) => e.command === 'markdown.showPreviewToSide'),
+        'showPreviewToSide must not run',
+      );
+      assert.ok(
+        !executed.some((e) => e.command === 'vscode.open' || /showTextDocument/.test(e.command)),
+        'must not fabricate activeTextEditor via showTextDocument',
+      );
+
+      const moveCalls = executed.filter((e) => e.command === 'moveActiveEditor');
+      assert.ok(moveCalls.length >= 1, 'moveActiveEditor must be observed after open');
+
+      const groupMove = moveCalls.find((e) => {
+        const arg = e.args[0] as MoveActiveEditorArgs | undefined;
+        return arg?.by === 'group' && arg?.to === 'position' && arg?.value === viewColumn;
+      });
+      assert.ok(groupMove, 'same-group moveActiveEditor by group/position is required');
+
+      const preferredTabMove = moveCalls.find((e) => {
+        const arg = e.args[0] as MoveActiveEditorArgs | undefined;
+        return (
+          arg?.by === 'tab' &&
+          arg?.to === 'position' &&
+          arg?.value === activeIndex + 2
+        );
+      });
+      assert.ok(
+        preferredTabMove,
+        'preferred tab position activeIndex+1 (1-based value) should be observed (best-effort)',
+      );
+    } finally {
+      vscode.commands.executeCommand = originalExecute;
+      (vscode.window as { tabGroups: typeof vscode.window.tabGroups }).tabGroups =
+        originalTabGroups;
+      (vscode.window as { activeTextEditor: typeof originalActiveTextEditor }).activeTextEditor =
+        originalActiveTextEditor;
+    }
   });
 
   // --- TC-012 / TC-013: non-interference ---
@@ -762,6 +945,17 @@ suite('native-preview-side-and-default-raw (TC-001–020)', () => {
       false,
       'Markdown Preview tab kind must not be Pattern A builtin switch',
     );
+
+    if (typeof vscode.TabInputWebview === 'function') {
+      const webviewPreviewTab = {
+        input: new vscode.TabInputWebview('vscode.markdown.preview.editor'),
+      } as vscode.Tab;
+      assert.strictEqual(
+        isBuiltinSwitchToSameMdFile(uri, webviewPreviewTab, WYSIWYG_VIEW_TYPE),
+        false,
+        'TabInputWebview Preview must be excluded from Pattern A',
+      );
+    }
 
     const cmdSrc = assertNativePreviewCommandSource();
     assert.ok(

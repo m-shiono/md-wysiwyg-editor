@@ -21,6 +21,7 @@
     "onLanguage:markdown",
     "onCommand:vsc-md-editor.openWithWysiwyg",
     "onCommand:vsc-md-editor.reloadExtension",
+    "onCommand:vsc-md-editor.showNativeMarkdownPreview",
     "onCommand:vsc-md-editor.showNativeMarkdownPreviewToSide"
   ],
   "main": "./dist/extension.js",
@@ -61,8 +62,13 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "vsc-md-editor.showNativeMarkdownPreview",
+        "title": "Open VS Code Markdown Preview",
+        "category": "MD WYSIWYG Editor"
+      },
+      {
         "command": "vsc-md-editor.showNativeMarkdownPreviewToSide",
-        "title": "Open VS Code Markdown Preview to the Side",
+        "title": "Open VS Code Markdown Preview",
         "category": "MD WYSIWYG Editor"
       }
     ],

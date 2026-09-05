@@ -33,7 +33,7 @@ import { handleCustomEditorDisposed } from '../utils/editor-switch-guard';
 import { shouldAcceptWebviewUpdate } from '../utils/webview-update-epoch';
 import { buildThemeUpdatedMessage, mapColorThemeKind } from '../utils/theme-sync';
 import type { WebviewInboundMessage, WebviewOutboundMessage } from '../webviews/messages';
-import { showNativeMarkdownPreviewToSide } from '../commands/native-markdown-preview';
+import { showNativeMarkdownPreview } from '../commands/native-markdown-preview';
 
 export class MarkdownEditorProvider implements vscode.CustomEditorProvider<MarkdownDocument> {
   static readonly viewType = 'vsc-md-editor.wysiwyg';
@@ -463,8 +463,8 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
           logInfo(message.message);
         }
         break;
-      case 'openNativePreviewToSide':
-        await showNativeMarkdownPreviewToSide({
+      case 'openNativePreview':
+        await showNativeMarkdownPreview({
           uri: document.uri,
           isDirty: document.isDirty,
           isRawParseFailed: document.isRawParseFailed,
@@ -565,7 +565,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
 </head>
 <body data-readonly="${readonly}" data-mode="${DEFAULT_EDITOR_MODE}">
   <div id="mode-toolbar" role="toolbar" aria-label="Editor mode">
-    <button type="button" data-action="native-preview-to-side" title="Open Default Markdown Preview to the Side" aria-label="Open Default Markdown Preview to the Side">Default Preview</button>
+    <button type="button" data-action="native-preview" title="Open Default Markdown Preview" aria-label="Open Default Markdown Preview">Default Preview</button>
     <button type="button" data-mode="preview" title="Editor Preview" aria-label="Editor Preview">Editor Preview</button>
     <button type="button" data-mode="markdown" title="Edit Rich Editor" aria-label="Edit Rich Editor">Edit Rich Editor</button>
     <button type="button" data-mode="raw" class="active" title="Edit Raw Text" aria-label="Edit Raw Text">Edit Raw Text</button>

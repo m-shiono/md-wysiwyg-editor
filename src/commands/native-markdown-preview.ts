@@ -1,17 +1,21 @@
 import * as vscode from 'vscode';
-import { logError } from '../utils/logger';
+import { logError, logInfo } from '../utils/logger';
 import type { MarkdownEditorProvider } from '../providers/markdown-editor-provider';
 
-const SIDE_PREVIEW_COMMAND = 'vsc-md-editor.showNativeMarkdownPreviewToSide';
+const PREVIEW_COMMAND = 'vsc-md-editor.showNativeMarkdownPreview';
+const LEGACY_PREVIEW_COMMAND = 'vsc-md-editor.showNativeMarkdownPreviewToSide';
 const DIRTY_WARNING =
-  'Document has unsaved changes. Save before opening the Markdown Preview to the side?';
+  'Document has unsaved changes. Save before opening the Markdown Preview?';
 
-export interface ShowNativeMarkdownPreviewToSideArgs {
+export interface ShowNativeMarkdownPreviewArgs {
   uri?: vscode.Uri;
   isDirty?: boolean;
   isRawParseFailed?: boolean;
   save?: () => Promise<void>;
 }
+
+/** @deprecated Use ShowNativeMarkdownPreviewArgs — kept for call-site compatibility. */
+export type ShowNativeMarkdownPreviewToSideArgs = ShowNativeMarkdownPreviewArgs;
 
 /** Dirty gate — Save / Cancel only (two choices). First showWarningMessage in this module for TC-019. */
 async function promptSaveOrCancelBeforePreview(): Promise<string | undefined> {
@@ -19,7 +23,7 @@ async function promptSaveOrCancelBeforePreview(): Promise<string | undefined> {
 }
 
 /**
- * Ensure a proper file Uri for markdown.showPreview* — Custom Editor tabs
+ * Ensure a proper file Uri for markdown.showPreview — Custom Editor tabs
  * may pass a Uri that the built-in Markdown preview ignores unless the
  * TextDocument is opened first and/or Uri.file(fsPath) is used.
  */
@@ -35,12 +39,68 @@ async function resolvePreviewUri(uri: vscode.Uri): Promise<vscode.Uri> {
 }
 
 /**
- * Host gate for Default Preview: resolve URI, optional Save/Cancel, then
- * markdown.showPreviewToSide (fallback: showPreview). Injectable args keep
- * unit tests free of Custom Editor UI.
+ * Host same-group compensation (AD-002/003): built-in showPreview may place the
+ * Preview in column 1 when Custom Editor is focused (activeTextEditor undefined).
+ * After open, move the active Preview via stable `moveActiveEditor` (public
+ * TabGroups in @types/vscode / engines ^1.85 has close only — no tab move API).
+ * Preferred tab slot activeIndex+1 is best-effort (1-based command value).
  */
-export async function showNativeMarkdownPreviewToSide(
-  args?: ShowNativeMarkdownPreviewToSideArgs,
+async function movePreviewIntoSameGroup(
+  targetGroup: vscode.TabGroup,
+  activeIndex: number,
+): Promise<void> {
+  const targetColumn = targetGroup.viewColumn;
+  if (typeof targetColumn !== 'number' || targetColumn < 1) {
+    logInfo('Invalid target viewColumn; same-group compensation skipped (no Beside fallback)');
+    return;
+  }
+
+  // moveActiveEditor tab `value` is 1-based; preferred 0-based index is activeIndex+1.
+  const preferredTabPosition = activeIndex + 2;
+
+  try {
+    await vscode.commands.executeCommand('moveActiveEditor', {
+      to: 'position',
+      by: 'group',
+      value: targetColumn,
+    });
+  } catch (error) {
+    logError('Same-group moveActiveEditor (by group) failed', error);
+    return;
+  }
+
+  try {
+    await vscode.commands.executeCommand('moveActiveEditor', {
+      to: 'position',
+      by: 'tab',
+      value: preferredTabPosition,
+    });
+  } catch {
+    logInfo(
+      'Preferred tab index moveActiveEditor failed or skipped (same-group already applied)',
+    );
+  }
+}
+
+function captureActiveGroupPlacement(): {
+  targetGroup: vscode.TabGroup;
+  activeIndex: number;
+} {
+  const targetGroup = vscode.window.tabGroups.activeTabGroup;
+  const tabs = targetGroup.tabs ?? [];
+  const activeTab = targetGroup.activeTab;
+  const activeIndex =
+    activeTab && tabs.length > 0 ? Math.max(0, tabs.indexOf(activeTab)) : Math.max(0, tabs.length - 1);
+  return { targetGroup, activeIndex };
+}
+
+/**
+ * Host gate for Default Preview: resolve URI, optional Save/Cancel, then
+ * markdown.showPreview + same-group move compensation.
+ * Injectable args keep unit tests free of Custom Editor UI.
+ */
+export async function showNativeMarkdownPreview(
+  args?: ShowNativeMarkdownPreviewArgs,
 ): Promise<void> {
   const uri = args?.uri;
   if (!uri) {
@@ -76,35 +136,37 @@ export async function showNativeMarkdownPreviewToSide(
     }
   }
 
+  const { targetGroup, activeIndex } = captureActiveGroupPlacement();
   const previewUri = await resolvePreviewUri(uri);
 
   try {
-    await vscode.commands.executeCommand('markdown.showPreviewToSide', previewUri);
-  } catch (sideError) {
-    logError('markdown.showPreviewToSide failed', sideError);
-    try {
-      await vscode.commands.executeCommand('markdown.showPreview', previewUri);
-    } catch (previewError) {
-      logError('markdown.showPreview fallback failed', previewError);
-      void vscode.window.showErrorMessage(
-        'Failed to open Markdown Preview. The markdown.showPreviewToSide / markdown.showPreview commands may be unavailable.',
-      );
-    }
+    await vscode.commands.executeCommand('markdown.showPreview', previewUri);
+  } catch (previewError) {
+    logError('markdown.showPreview failed', previewError);
+    void vscode.window.showErrorMessage(
+      'Failed to open Markdown Preview. The markdown.showPreview command may be unavailable.',
+    );
+    return;
   }
+
+  await movePreviewIntoSameGroup(targetGroup, activeIndex);
 }
+
+/** @deprecated Alias of showNativeMarkdownPreview — legacy name for older call sites. */
+export const showNativeMarkdownPreviewToSide = showNativeMarkdownPreview;
 
 export function registerNativeMarkdownPreviewCommand(
   _context: vscode.ExtensionContext,
   provider: MarkdownEditorProvider,
 ): vscode.Disposable {
-  return vscode.commands.registerCommand(SIDE_PREVIEW_COMMAND, async () => {
+  const handler = async (): Promise<void> => {
     const uri = provider.getActiveUri();
     if (!uri) {
-      await showNativeMarkdownPreviewToSide({ uri: undefined });
+      await showNativeMarkdownPreview({ uri: undefined });
       return;
     }
     const document = provider.getOpenDocument(uri);
-    await showNativeMarkdownPreviewToSide({
+    await showNativeMarkdownPreview({
       uri,
       isDirty: document?.isDirty === true,
       isRawParseFailed: document?.isRawParseFailed === true,
@@ -112,5 +174,9 @@ export function registerNativeMarkdownPreviewCommand(
         ? () => document.save({ isCancellationRequested: false } as vscode.CancellationToken)
         : undefined,
     });
-  });
+  };
+
+  const primary = vscode.commands.registerCommand(PREVIEW_COMMAND, handler);
+  const legacy = vscode.commands.registerCommand(LEGACY_PREVIEW_COMMAND, handler);
+  return vscode.Disposable.from(primary, legacy);
 }

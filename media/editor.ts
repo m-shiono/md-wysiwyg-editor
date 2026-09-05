@@ -662,13 +662,13 @@ function attachModeToolbarHandlers(): void {
     });
   });
   // Re-bind after mode-button clones so Default Preview keeps its click handler.
-  attachSidePreviewHandler();
+  attachNativePreviewHandler();
 }
 
 /** Non-mode Default Preview — must not call applyMode / change editorMode. */
-function attachSidePreviewHandler(): void {
+function attachNativePreviewHandler(): void {
   const btn = document.querySelector(
-    '#mode-toolbar button[data-action="native-preview-to-side"]',
+    '#mode-toolbar button[data-action="native-preview"]',
   ) as HTMLElement | null;
   if (!btn) {
     return;
@@ -679,7 +679,7 @@ function attachSidePreviewHandler(): void {
   btn.parentNode?.replaceChild(clone, btn);
   clone.dataset.bound = '1';
   clone.addEventListener('click', () => {
-    vscode.postMessage({ type: 'openNativePreviewToSide' });
+    vscode.postMessage({ type: 'openNativePreview' });
   });
 }
 

@@ -224373,11 +224373,11 @@ img.ProseMirror-separator {
         applyMode(mode, true);
       });
     });
-    attachSidePreviewHandler();
+    attachNativePreviewHandler();
   }
-  function attachSidePreviewHandler() {
+  function attachNativePreviewHandler() {
     const btn = document.querySelector(
-      '#mode-toolbar button[data-action="native-preview-to-side"]'
+      '#mode-toolbar button[data-action="native-preview"]'
     );
     if (!btn) {
       return;
@@ -224387,7 +224387,7 @@ img.ProseMirror-separator {
     btn.parentNode?.replaceChild(clone8, btn);
     clone8.dataset.bound = "1";
     clone8.addEventListener("click", () => {
-      vscode.postMessage({ type: "openNativePreviewToSide" });
+      vscode.postMessage({ type: "openNativePreview" });
     });
   }
   function attachRawEditorHandlers() {
