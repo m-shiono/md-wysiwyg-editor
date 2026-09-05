@@ -16,4 +16,5 @@ import './suite/unit/preview-rich-embed.test';
 import './suite/unit/preview-mode-quality.test';
 import './suite/unit/fix-mermaid-dark-visibility.test';
 import './suite/unit/mermaid-contrast-readable.test';
+import './suite/unit/mermaid-snap-style-with-source.test';
 import './suite/unit/native-preview-side-and-default-raw.test';

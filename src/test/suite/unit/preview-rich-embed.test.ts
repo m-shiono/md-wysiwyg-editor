@@ -273,18 +273,21 @@ suite('preview-rich-embed (TC-124–142)', () => {
     assert.ok(!dataProjected.includes('vscode-webview://'));
   });
 
-  // --- Preview Mermaid CSS (TC-130–132) ---
+  // --- Preview Mermaid CSS (TC-130–132) — snap-style: source visible in Preview ---
 
-  test('TC-130: Preview mode hides mermaid-source and keeps mermaid-preview visible', () => {
+  test('TC-130: Preview mode shows mermaid-source and mermaid-preview', () => {
     const css = readRepoFile('media/editor.css');
     assert.ok(
-      /body\[data-mode=['"]preview['"]\][\s\S]*\.mermaid-source[\s\S]*display:\s*none/.test(css),
-      'Preview must hide .mermaid-source via CSS',
+      !/body\[data-mode=['"]preview['"]\][\s\S]*\.mermaid-source[\s\S]*display:\s*none/.test(css),
+      'Preview must not hide .mermaid-source via CSS (source co-display; old hide withdrawn)',
     );
     assert.ok(
       !/body\[data-mode=['"]preview['"]\][\s\S]*\.mermaid-preview[\s\S]*display:\s*none/.test(css),
       'Preview must not hide .mermaid-preview',
     );
+    const editorSrc = readRepoFile('media/editor.ts');
+    assert.ok(editorSrc.includes('mermaid-source'), 'NodeView must render mermaid-source');
+    assert.ok(editorSrc.includes('mermaid-preview'), 'NodeView must render mermaid-preview');
   });
 
   test('TC-131: Markdown mode keeps mermaid-source and mermaid-preview visible', () => {
@@ -298,11 +301,11 @@ suite('preview-rich-embed (TC-124–142)', () => {
     assert.ok(editorSrc.includes('mermaid-preview'), 'NodeView must render mermaid-preview');
   });
 
-  test('TC-132: Preview mermaid syntax error shows preview error while source stays hidden', () => {
+  test('TC-132: Preview mermaid syntax error shows preview error while source stays visible', () => {
     const css = readRepoFile('media/editor.css');
     assert.ok(
-      /body\[data-mode=['"]preview['"]\][\s\S]*\.mermaid-source[\s\S]*display:\s*none/.test(css),
-      'Preview must hide mermaid-source even on syntax error',
+      !/body\[data-mode=['"]preview['"]\][\s\S]*\.mermaid-source[\s\S]*display:\s*none/.test(css),
+      'Preview must not hide mermaid-source on syntax error',
     );
     const editorSrc = readRepoFile('media/editor.ts');
     assert.ok(editorSrc.includes('mermaid-error'), 'invalid mermaid must render error in preview area');

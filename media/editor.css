@@ -364,10 +364,6 @@ body[data-readonly='true'] #link-input-bar {
   margin-top: 8px;
 }
 
-body[data-mode='preview'] .mermaid-source {
-  display: none;
-}
-
 #preview-marp-root {
   overflow: auto;
   flex: 1;

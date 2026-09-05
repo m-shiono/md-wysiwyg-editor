@@ -6,7 +6,7 @@ VS Code 拡張 **vsc-md-editor** の振る舞い仕様（WHAT）。実装詳細�
 
 ## 概要
 
-チーム向け技術ドキュメントを Git 管理しながら、Word/Excel に近い WYSIWYG 体験で Markdown（`.md`）を編集する VS Code 拡張機能。MVP では同一 Custom Editor 上の **Preview / Markdown / Raw 三点モード**、**GFM 書式ツールバー**（§2 — 取り消し線・H1–H6・インラインコード・引用・タスクリスト・水平線等）、**GFM / HTML 二形式表編集**（§3・アーキテクチャ AD-005）、ファイル単位 Readonly 切替、Mermaid リアルタイム描画（Preview では図のみ表示 — §5）、**Marp プレビュー**（§6 — サイド/パネル。**Preview モードでも Marp 検出時は同一 Webview 内にスライド描画可** — §1 / AD-008）、**Host 側 `img/` 画像 URI 解決**（§7 / §9）、クリップボード画像のローカル保存を提供する。リッチ表現（拡張記法・HTML 混在）を Markdown 厳密互換より優先する（UD-001）。今回追加の書式ノードは GFM として往復できること（§8）。
+チーム向け技術ドキュメントを Git 管理しながら、Word/Excel に近い WYSIWYG 体験で Markdown（`.md`）を編集する VS Code 拡張機能。MVP では同一 Custom Editor 上の **Preview / Markdown / Raw 三点モード**、**GFM 書式ツールバー**（§2 — 取り消し線・H1–H6・インラインコード・引用・タスクリスト・水平線等）、**GFM / HTML 二形式表編集**（§3・アーキテクチャ AD-005）、ファイル単位 Readonly 切替、Mermaid リアルタイム描画（島ライト＋`theme: 'default'`、Preview / Markdown で図下ソース併記 — §5）、**Marp プレビュー**（§6 — サイド/パネル。**Preview モードでも Marp 検出時は同一 Webview 内にスライド描画可** — §1 / AD-008）、**Host 側 `img/` 画像 URI 解決**（§7 / §9）、クリップボード画像のローカル保存を提供する。リッチ表現（拡張記法・HTML 混在）を Markdown 厳密互換より優先する（UD-001）。今回追加の書式ノードは GFM として往復できること（§8）。
 
 **feature-slug:** `vsc-md-wysiwyg`
 
@@ -22,7 +22,7 @@ VS Code 拡張 **vsc-md-editor** の振る舞い仕様（WHAT）。実装詳細�
 | AD-004 | 編集内容 ↔ ディスク `.md` は remark/unified パイプラインで変換。HTML 混在・拡張ブロックを許容。出力は決定的（AD-013） |
 | AD-005 | 表は per-table `tableFormat`（`gfm` \| `html`）で永続化する。新規挿入のデフォルトは GFM パイプ表。形式切替は Table メニューの明示操作のみ（§3） |
 | AD-006 | ファイル単位 Readonly は **全編集面**（Markdown / Raw）をロック。Preview モードとは別概念。状態はワークスペースに永続化 |
-| AD-007 | Mermaid はコードブロック + リアルタイム描画。Preview では図のみ（ソース非表示 — §5）。編集はテキストのみ |
+| AD-007 | Mermaid はコードブロック + リアルタイム描画。島ライトキャンバス＋グローバル `theme: 'default'`（Snap 風見た目条件 — §5）。**Preview / Markdown とも図の下にソース併記**（旧「Preview ソース非表示」は撤回）。編集はテキストのみ（Preview は厳密 RO） |
 | AD-008 | **Marp Preview** はサイド/パネル（§6）を維持。**Preview モード**（§1）でも `isMarpDocument(markdownText)` 検出時は同一 Webview 内 `#preview-marp-root` に Host 生成 HTML を RO 表示可。別 UI インスタンス・別責務は維持。編集は Markdown / Raw 側 |
 | AD-009 | 画像 paste → 同階層 `img/image-NNNN.ext` に保存し相対パスを挿入。表示時は Host が `img/` 配下のみ `asWebviewUri` で rewrite（§7 / §9）。serialize / ディスクは常に相対パス |
 | AD-010 | Webview CSP + HTML サニタイズ。許可タグ・属性を限定 |
@@ -83,7 +83,7 @@ VS Code 拡張 **vsc-md-editor** の振る舞い仕様（WHAT）。実装詳細�
 
 | モード（概念） | mode id | 役割 | 編集可否 | Document との関係 |
 |----------------|---------|------|----------|-------------------|
-| **Preview** | `preview` | 読み取り専用の描画表示。**非 Marp:** TipTap RO + Host 解決済み画像 + Mermaid 図のみ（§5）。**Marp 検出時:** `#preview-marp-root` に Host 生成サニタイズ HTML（縦スクロール一覧） | **不可（厳密 RO）** | **Document → 一方表示**のみ。キー入力・paste・ツールバー等の編集イベントを Document へ送らない |
+| **Preview** | `preview` | 読み取り専用の描画表示。**非 Marp:** TipTap RO + Host 解決済み画像 + Mermaid 図＋ソース併記（§5・ソース領域は RO・Document へ編集イベントを送らない）。**Marp 検出時:** `#preview-marp-root` に Host 生成サニタイズ HTML（縦スクロール一覧） | **不可（厳密 RO）** | **Document → 一方表示**のみ。キー入力・paste・ツールバー等の編集イベントを Document へ送らない |
 | **Markdown** | `markdown` | TipTap WYSIWYG 本文編集（§2）。画像は Host rewrite 済み `docJson` を投影（§7） | 可（ファイル RO 時は不可 — §4） | Markdown 面 ↔ Document 双方向。変更で `dirty` |
 | **Raw** | `raw` | Markdown ソース文字列の直接編集 | 可（ファイル RO 時は不可 — §4） | Raw 面 ↔ Document 双方向。変更で `dirty` |
 
@@ -147,7 +147,7 @@ Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdow
 
 #### Preview 可読性（`preview-mode-quality`）
 
-非 Marp Preview（TipTap RO 表示層）の Typography・コントラストは **`body[data-mode='preview']` スコープの CSS のみ**で改善する。Markdown / Raw モードのスタイルは変更しない。色は **`--vscode-*` CSS 変数**を正とし、ハードコード色は用いない。**例外（Mermaid 島のみ）:** ダーク VS Code 時の図可読性のため、`.mermaid-preview` / `.mermaid-block` にスコープした明るいサーフェス色を許可する（§5 / `mermaid-contrast-readable` UD-001=B・AD-007）。`#editor` 全体や広い Preview 面の背景は変えない。
+非 Marp Preview（TipTap RO 表示層）の Typography・コントラストは **`body[data-mode='preview']` スコープの CSS のみ**で改善する。Markdown / Raw モードのスタイルは変更しない。色は **`--vscode-*` CSS 変数**を正とし、ハードコード色は用いない。**例外（Mermaid 島のみ）:** Snap 風見た目のため、`.mermaid-preview` / `.mermaid-block` にスコープした明るいサーフェス色を許可する（§5 / `mermaid-contrast-readable` UD-001=B 継承・`mermaid-snap-style-with-source`）。`#editor` 全体や広い Preview 面の背景は変えない。
 
 | 要素 | 要件 |
 |------|------|
@@ -463,7 +463,7 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 
 ### 概要
 
-` ```mermaid ` フェンスブロックをリアルタイムに図として描画する。編集はテキストのみ（UD-004, AD-007）。**Preview モード**ではソース（`.mermaid-source`）を非表示とし、描画（`.mermaid-preview`）のみ表示する（`preview-rich-embed`）。フェンス内 YAML frontmatter / `%%{init:...}%%` は Mermaid ネイティブに委譲する（`preview-mode-quality` AD-003）。Mermaid 島は明るいサーフェス＋ライト系テーマで可読性を確保し、広い面の背景は変えない（`mermaid-contrast-readable` UD-001=B）。`securityLevel: 'strict'`・DOMPurify は不変（§9）。
+` ```mermaid ` フェンスブロックをリアルタイムに図として描画する。編集はテキストのみ（UD-004, AD-007）。**Editor Preview（`preview`）および Edit Rich Editor（`markdown`）の両方**で、ブロック内順は **図（`.mermaid-preview`）→ ソース（`.mermaid-source`）**（図の下にソース併記）。旧「Preview ソース非表示」（`preview-rich-embed`）は **撤回**する（`mermaid-snap-style-with-source`）。Preview でもソースは表示するが **厳密 RO** を維持し、ソース領域の編集イベントを Document へ送らない（§1）。フェンス内 YAML frontmatter / `%%{init:...}%%` は Mermaid ネイティブに委譲する（`preview-mode-quality` AD-003）。見た目条件は [Mermaid Snap](https://github.com/lyuwenhan/vscode-extensions/tree/main/mermaid-snap) 参考の **島ライトキャンバス＋グローバル `theme: 'default'`**（コード取り込みはしない）。`mermaid-contrast-readable` UD-001=B / HIP sanitize を継承する。`securityLevel: 'strict'`・DOMPurify・**`HTML_INTEGRATION_POINTS: { foreignobject: true }`** は不変（§9）。
 
 ### Inputs & Types
 
@@ -471,15 +471,15 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 |------|-----|------|------|------|------|
 | `mermaidSource` | `string` | はい | 0 文字 | — | フェンス内**全文**（YAML frontmatter / `%%{init:...}%%` 含む。Webview は strip しない — AD-003） |
 | `debounceMs` | 数値 | いいえ | — | — | 目安 300 ms。テーマ切替再描画にも適用 |
-| `editorMode` | `"preview" \| "markdown" \| "raw"` | はい | — | — | Preview 時はソース非表示（§1） |
+| `editorMode` | `"preview" \| "markdown" \| "raw"` | はい | — | — | Preview / Markdown ともソース表示。Preview は RO（§1） |
 | `themeUpdated` | postMessage | 任意 | — | — | §1 `{ kind: 'light' \| 'dark' \| 'highContrast' }` |
 
 ### Outputs & Failure Returns
 
 | 条件 | 戻り値 / ステータス | 備考 |
 |------|-------------------|------|
-| 成功 | ブロック内に SVG/図表示 | ソースは Document に保持。Preview では DOM 上非表示 |
-| 構文エラー | ブロック内にエラーメッセージ | ソースは Document に保持。Preview ではソース非表示のまま preview 領域にエラー。Output に記録（AD-015） |
+| 成功 | ブロック内に SVG/図表示＋ソース表示 | ソースは Document に保持。Preview / Markdown とも `.mermaid-source` を DOM 上表示（図の下） |
+| 構文エラー | ブロック内にエラーメッセージ | ソースは Document に保持。**Preview でもソースは表示したまま**、preview 領域に `.mermaid-error`。Output に記録（AD-015） |
 | レンダリングタイムアウト | エラー表示 | RK-004 |
 
 ### Preconditions
@@ -493,46 +493,46 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 1. Mermaid コードブロック内のテキスト変更を debounce（目安 300 ms）後に再描画する
 2. 保存内容は ```mermaid フェンスとして .md に残る
 3. RO 中も描画は更新される（ソース変更は不可）
-4. **Preview モード**（`body[data-mode="preview"]`）: `.mermaid-source` を CSS で非表示（`display: none` 等）。`.mermaid-preview` のみ表示。構文エラーは `.mermaid-error` に `--vscode-errorForeground` / `--vscode-inputValidation-errorBackground` で表示（`preview-mode-quality` AD-007）。`securityLevel: 'strict'`・DOMPurify SVG サニタイズは不変（下記 10 および §9）
-5. **Markdown / Raw モード**: ソース + 図を従来どおり表示（Markdown モードでソース編集可）
+4. **ソース併記レイアウト**（`mermaid-snap-style-with-source`）: 既存 Mermaid NodeView DOM を維持し、ブロック内順は **図（`.mermaid-preview`）→ ソース（`.mermaid-source`）**。`body[data-mode='preview'] .mermaid-source { display: none }`（または同等の Preview 専用非表示ルール）は **撤廃**する。構文エラーは `.mermaid-error` に `--vscode-errorForeground` / `--vscode-inputValidation-errorBackground` で表示（`preview-mode-quality` AD-007）。`securityLevel: 'strict'`・DOMPurify SVG サニタイズは不変（下記 10 および §9）
+5. **モード別編集可否**: **Preview** — 図＋ソースを表示するが厳密 RO（ソース領域は編集イベントを Document へ送らない）。**Markdown** — 図＋ソース表示、ソース編集可（ファイル RO 時は不可 — §4）。**Raw** — フェンスはテキストとして編集（NodeView 島は Markdown / Preview 面の契約）
 6. **フェンス全文レンダリング**（`preview-mode-quality` AD-003）: `mermaid.render(id, source)` にはフェンス内 **全文**を渡す。YAML frontmatter および `%%{init:...}%%` による per-diagram 設定は Mermaid ネイティブに委譲し、Webview 側で frontmatter を strip しない。per-diagram 設定はグローバル `mermaid.initialize` より優先（Mermaid v11 仕様）
-7. **グローバルテーマ**（`mermaid-theme-crash-fix` / `mermaid-contrast-readable`）: 島上の実効テーマは明るいサーフェスと整合させる（AD-006）。
-   - Mermaid 島がライトキャンバスのとき（UD-001=B）: VS Code kind が `dark` / `highContrast` でも島上は `theme: 'default'`（または同等のライト系）。明るいキャンバス上で `theme: 'dark'` を使わない。
-   - VS Code `light`: `theme: 'default'`。ライトで既に読める見た目は変えない（AD-004）。
-   - `highContrast` 専用パレットは本タスク Out。少なくとも黒シルエット化で破綻しないこと（AD-010）。
-   - `themeVariables` への `var(--vscode-...)` 指定（khroma color parser が "Unsupported color format" でクラッシュする原因）は廃止し、Mermaid ビルトインテーマを優先する。
-   `securityLevel: 'strict'` は不変（§9）。
+7. **グローバルテーマ（Snap 条件）**（`mermaid-snap-style-with-source` / `mermaid-contrast-readable` 継承）: グローバル `mermaid.initialize` は VS Code kind（`light` / `dark` / `highContrast`）いずれも **`theme: 'default'`**＋`securityLevel: 'strict'`。島上で `theme: 'dark'` を使わない。`themeVariables` への `var(--vscode-...)` 指定は廃止済み（`mermaid-theme-crash-fix`）。`highContrast` 専用パレットは本タスク Out。
 
 8. **初期化・テーマ切替の隔離**（`mermaid-theme-crash-fix`）: `mermaid.initialize` およびテーマ更新処理は `try-catch` で隔離し、Mermaid 内部エラーが Webview 全体のメッセージングや描画を停止させないようにする。
 
-9. **テーマ切替再描画**（`preview-mode-quality` AD-005）: §1 `themeUpdated` 受信時、Webview は `mermaid.initialize(...)` を更新し、表示中の全 Mermaid NodeView を debounce 後に再 render する。本処理も上記「隔離」に従う。
+9. **テーマ切替再描画**（`preview-mode-quality` AD-005 / `mermaid-snap-style-with-source` AD-013）: §1 `themeUpdated` 受信時、Webview は `mermaid.initialize(...)` を更新し、表示中の全 Mermaid NodeView を debounce 後に再 render する。kind 変更時も島上は `theme: 'default'` のまま（再描画経路は維持）。本処理も上記「隔離」に従う。
 
 10. **Mermaid SVG sanitize**（`fix-mermaid-dark-visibility` / `mermaid-contrast-readable` P0）: NodeView の `.mermaid-preview` へ注入する前に DOMPurify でサニタイズする。**`foreignObject` シェルだけでなく、その内部のラベル用 HTML（例: `div` / `span` / テキスト）を保持する**。そのため DOMPurify に **`HTML_INTEGRATION_POINTS: { foreignobject: true }`**（または同等）を必須とする。`ADD_TAGS: ['foreignObject']` のみでは子 HTML が除去され空シェルになり得るため不十分。可読性に必要な style / presentation は XSS 面を広げない範囲で最小限許可してよい（AD-002）。`<script>` / `on*` 等の危険要素は除去し続ける（§9）。`securityLevel: 'strict'` は不変。
 
-11. **Mermaid 島ライトキャンバス**（`mermaid-contrast-readable` UD-001=B / P1）: ダーク VS Code 時、`.mermaid-preview`（または `.mermaid-block`）にスコープした明るいサーフェスを適用する。`#editor` や広い Preview 面の背景は変更しない。**受け入れ条件:** Editor Preview および Edit Rich Editor で、ノード・ラベル・矢印・図タイトル／見出しが識別できること（AD-005）。構文エラーは既存 `.mermaid-error` 契約を維持。変更は Mermaid 表示層に限定し、`docJson` / `markdownText` / serialize / dirty に触れない（AD-003）。
+11. **Mermaid 島ライトキャンバス（Snap 条件）**（`mermaid-contrast-readable` UD-001=B 継承 / `mermaid-snap-style-with-source`）: `.mermaid-preview`（必要なら `.mermaid-block`）にスコープした**明るいサーフェス**を維持・調整する（薄い灰など Snap 参考の明るい灰に寄せてよい）。`#editor` や広い Preview 面の背景は変更しない。**受け入れ条件:** Editor Preview および Edit Rich Editor で、ノード・ラベル・矢印・図タイトル／見出しが識別できること。構文エラーは既存 `.mermaid-error` 契約を維持。変更は Mermaid 表示層（CSS / 必要なら NodeView 表示制御）に限定し、`docJson` / `markdownText` / serialize / dirty / Host / Marp / 画像 rewrite に触れない。
 
 #### 例外系
 
 1. 悪意ある入力はサニタイズし、スクリプト実行を行わない（RK-003）
 2. Mermaid パッケージ更新による見た目変化は許容（RK-007 — lockfile 固定推奨）。sanitize allowlist が再び不足し得る（`mermaid-contrast-readable` RK-005）
-3. frontmatter 内 `config.theme` が島キャンバス方針と異なる場合、当該図のみ意図的に別配色となる（Mermaid 仕様 — `preview-mode-quality` RK-004 / `mermaid-contrast-readable` RK-003）
+3. frontmatter 内 `config.theme` が島キャンバス方針と異なる場合、当該図のみ意図的に別配色となる（Mermaid 仕様 — `preview-mode-quality` RK-004 / `mermaid-contrast-readable` RK-003 / `mermaid-snap-style-with-source` RK-003）
 4. 文書内 Mermaid ブロックが多数ある場合、テーマ切替の一括再描画で短時間 CPU 負荷が上がり得る（debounce + 表示中 NodeView のみ — RK-004 系 / `preview-mode-quality` RK-002）
-5. Mermaid テーマのマッピングは VS Code ネイティブ Markdown Preview とのピクセル一致を保証しない（`preview-mode-quality` RK-001）
+5. Mermaid テーマのマッピングは VS Code ネイティブ Markdown Preview および Mermaid Snap とのピクセル一致を保証しない（`preview-mode-quality` RK-001 / `mermaid-snap-style-with-source` RK-002）
 6. 背景だけ明るくしても、sanitize でラベル HTML / style が欠落していれば黒塗り・不可読は残る（`mermaid-contrast-readable` RK-001 — P0 HIP 必須）
+7. Preview でソース表示により長いフェンスが画面を占有し得る（表示層のみ・許容 — `mermaid-snap-style-with-source` RK-004）
+8. ダーク VS Code 面と明るい Mermaid 島のコントラスト差は意図的（Snap 優先）。面全体の統一は別タスク（RK-001）
 
 ### Non-Goals
 
 - Mermaid ビジュアルダイアグラムエディタ（backlog）
 - オフライン以外での外部レンダリング API 呼び出し
-- VS Code ネイティブ Markdown Preview との Mermaid 配色ピクセル一致（`preview-mode-quality` RK-001）
+- VS Code ネイティブ Markdown Preview / Mermaid Snap との配色・レイアウト **ピクセル完全一致**
+- Mermaid Snap / 標準 Preview の**ソースコード取り込み**（見た目・初期化条件の観察のみ）
+- 公式 Mermaid / VS Code dark テーマ寄せ（別タスク）
 - Mermaid 島以外の広い面（`#editor` 等）の背景色変更（UD-001=B）
-- `highContrast` 専用パレット（AD-010 — Out 可）
-- 三点モード / Marp / 画像 URI 契約の変更（AD-009）
+- `highContrast` 専用パレット（Out）
+- 三点モード / Marp / 画像 URI / serialize / dirty 契約の変更
 
 ### Related Tests
 
-- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-031–037。Preview Mermaid ソース非表示: TC-130–132（`preview-rich-embed`）。frontmatter 描画・テーマ切替再描画（TC-013 拡張）・Preview コントラスト: 後続 TC（`preview-mode-quality`）。Mermaid SVG `foreignObject` シェル保持: TC-152（`fix-mermaid-dark-visibility` — 回帰維持）
-- 後続 testspec（`mermaid-contrast-readable`）: HIP 付き sanitize 後のラベル HTML 残存（P0）、ダーク kind でもプレビュー上でラベル文字列が DOM に残ること、島ライトキャンバス＋ライト系テーマでのノード・ラベル・矢印識別（P1 / AD-008）
+- [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-031–037。**TC-130–132（Preview Mermaid）はソース併記へ更新予定**（旧「Preview ソース非表示」撤回 — `mermaid-snap-style-with-source` / `preview-rich-embed`）。frontmatter 描画・テーマ切替再描画（TC-013 拡張）・Preview コントラスト: 後続 TC（`preview-mode-quality`）。Mermaid SVG `foreignObject` シェル保持: TC-152（`fix-mermaid-dark-visibility` — 回帰維持）。表示層が Document を変えない回帰: TC-082 等
+- [doc/testspec-mermaid-contrast-readable.md](testspec-mermaid-contrast-readable.md) — HIP 付き sanitize・島ライトキャンバス可読性（回帰維持）
+- 後続 testspec（`mermaid-snap-style-with-source`）: Preview / Markdown で `.mermaid-source` 表示・図下レイアウト、Preview RO、全 kind → `theme: 'default'`、島ライト維持、HIP / strict 回帰。TC-130–132 Expected 更新（後続 `spec-test-design`）
 
 ---
 
@@ -917,9 +917,10 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 
 | ドキュメント | 状態 |
 |-------------|------|
-| [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) | **作成済** — TC-001–142。**preview-rich-embed**（§1 / §5 / §6 / §7 / §9）: TC-124–142 Green。**GFM 書式ツールバー**（§2 / §8 / §9 `del`/`s`）は **要追記**（`gfm-format-toolbar`）。TC-152（foreignObject）回帰維持 |
+| [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) | **作成済** — TC-001–142。**preview-rich-embed**（§1 / §5 / §6 / §7 / §9）: TC-124–142 Green（**TC-130–132 は Preview ソース併記へ更新予定** — `mermaid-snap-style-with-source`）。**GFM 書式ツールバー**（§2 / §8 / §9 `del`/`s`）は **要追記**（`gfm-format-toolbar`）。TC-152（foreignObject）回帰維持 |
 | [doc/testspec-native-preview-side-and-default-raw.md](testspec-native-preview-side-and-default-raw.md) | **作成済** — 初期 Raw・Default Preview・dirty ゲート・Pattern A 非干渉・三点往復・表示ラベル（`toolbar-default-editor-preview-labels`） |
-| `doc/testspec-mermaid-contrast-readable.md` | **未作成** — HIP 付き sanitize・島ライトキャンバス可読性（後続 `spec-test-design`） |
+| [doc/testspec-mermaid-contrast-readable.md](testspec-mermaid-contrast-readable.md) | **作成済** — HIP 付き sanitize・島ライトキャンバス可読性（回帰維持） |
+| `doc/testspec-mermaid-snap-style-with-source.md` | **未作成** — Preview/Markdown ソース併記・Snap 風 default テーマ・島ライト（後続 `spec-test-design`） |
 | MVP 外項目 | [doc/backlog-vsc-md-wysiwyg.md](backlog-vsc-md-wysiwyg.md) |
 
 ---
@@ -943,11 +944,12 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | Preview 厳密 RO・三者同期 | Preview 入力不可、Raw↔Markdown↔Preview が Document 経由で一致。表示層（Marp HTML / 画像 rewrite / Mermaid CSS）は正本非変更 | TC-080–082 |
 | GFM 書式ツールバー | §2 In（strike / H3–H6 / inline code / quote / task / HR）往復、Out（画像ボタン・下線・highlight・脚注・Alerts）、RO/モード既存ガード、sanitize `del`/`s` | 後続 TC（`gfm-format-toolbar`） |
 | 画像 URI Host 解決 | `img/` 配下のみ `isSafeImagePath` + `asWebviewUri`。serialize は相対パス維持 | 後続 TC（`preview-rich-embed`） |
-| Preview Mermaid ソース非表示 | `body[data-mode="preview"]` で `.mermaid-source` 非表示 | 後続 TC（`preview-rich-embed`） |
+| Preview Mermaid ソース併記 | Preview / Markdown とも図（`.mermaid-preview`）の下に `.mermaid-source` 表示。旧「Preview ソース非表示」撤回。Preview は厳密 RO | TC-130–132 更新予定（`mermaid-snap-style-with-source`） |
 | Preview 内 Marp 描画 | `isMarpDocument` 共用、`#preview-marp-root`、`previewMarpHtml`、§6 パネル共存 | 後続 TC（`preview-rich-embed`） |
 | Preview 可読性 CSS | `body[data-mode='preview']` スコープ、`line-height`、opacity/コントラスト、`--vscode-*` トークン | 後続 TC（`preview-mode-quality`） |
-| Mermaid frontmatter / VS Code テーマ | フェンス全文 render、VS Code kind マップ（dark/default）、try-catch 隔離、var(...) 廃止、`themeUpdated` 再描画 | `mermaid-theme-crash-fix` |
-| Mermaid コントラスト可読 | 島のみライトキャンバス＋`theme: 'default'`（または同等）、HIP 付き sanitize（ラベル HTML 保持）、ダークでノード・ラベル・矢印識別。広い面背景不変。strict + DOMPurify 維持 | 後続 TC（`mermaid-contrast-readable`） |
+| Mermaid frontmatter / VS Code テーマ | フェンス全文 render、全 kind → `theme: 'default'`（Snap 条件）、try-catch 隔離、var(...) 廃止、`themeUpdated` 再描画 | `mermaid-theme-crash-fix` / `mermaid-snap-style-with-source` |
+| Mermaid コントラスト可読 | 島のみライトキャンバス＋`theme: 'default'`、HIP 付き sanitize（ラベル HTML 保持）、ダークでノード・ラベル・矢印識別。広い面背景不変。strict + DOMPurify 維持 | [testspec-mermaid-contrast-readable.md](testspec-mermaid-contrast-readable.md) |
+| Mermaid Snap 風見た目＋ソース | 島ライト＋全 kind `theme: 'default'`＋両モード図下ソース併記。HIP / strict 維持。公式 dark Out | 後続 TC（`mermaid-snap-style-with-source`） |
 
 ---
 
@@ -973,3 +975,4 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | 2026-09-05 | §1 mode-toolbar, AD-016, §8, §10, Spec Gaps, Related Tests, README, 改訂履歴 | 表示ラベルを **Default Preview** \| **Editor Preview** \| **Edit Rich Editor** \| **Edit Raw Text** に更新（左→右）。`preview`→Editor Preview。Default Preview は非モード（`data-action=native-preview-to-side`、4th `editorMode` ではない）。セパレータ任意・四ボタン同等優先。Related Tests の testspec 状態を作成済に修正（`toolbar-default-editor-preview-labels`） |
 | 2026-09-05 | §5, §9, 改訂履歴 | Mermaid NodeView の SVG sanitize で flowchart `foreignObject` とラベル用安全な子を保持する契約を追加（`fix-mermaid-dark-visibility` / TC-152）。`script` / `on*` 除去・`securityLevel: 'strict'` は不変 |
 | 2026-09-05 | §1, §5, §9, Spec Gaps, Related Tests, 改訂履歴 | Mermaid ダーク可読性（`mermaid-contrast-readable`）: UD-001=B 島のみライトキャンバス＋ライト系テーマ。sanitize に `HTML_INTEGRATION_POINTS: { foreignobject: true }` 必須（P0）。広い面背景は不変。`securityLevel: 'strict'` / DOMPurify 維持。Requirements Brief AD-001–AD-010 |
+| 2026-09-05 | 概要, AD-007, §1, §5, Spec Gaps, Related Tests, 改訂履歴 | Mermaid Snap 風見た目＋ソース併記（`mermaid-snap-style-with-source`）: 旧「Preview ソース非表示」撤回。Preview / Markdown とも図下に `.mermaid-source` 表示（Preview は厳密 RO）。全 kind → `theme: 'default'`＋島ライトキャンバス。HIP / `securityLevel: 'strict'` / DOMPurify 維持。Requirements Brief AD-001–AD-013 |
