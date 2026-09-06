@@ -80,9 +80,9 @@
 |----|----------|------------|----------|-------|----------|-----------|----------|
 | TC-001 | Happy | edge-visible-via-presentation-or-safety-net | P0 | Host HTML / `media/editor.css`／（実装後は）nonce 再注入経路を検査 | flowchart エッジが黒塗りブロブにならない契約。**優先:** presentation nonce 再注入（[redux-elk-fidelity](testspec-mermaid-redux-elk-fidelity.md) TC-004/006）。静的 Host CSS は欠落時の最小安全網に限定可。永続必須の全面 `stroke: var(--vscode-foreground)` を唯一正としない。ユーザー／ソース由来の任意 CSS 注入経路はない | CSP 下のエッジ可視（Host CSS 縮小後） | §5 正常系 11、`mermaid-redux-elk-fidelity` AD-002/003 |
 | TC-002 | Structural | csp-no-unsafe-inline | P0 | Custom Editor Webview CSP 生成（`markdown-editor-provider` 等） | `style-src` に `'unsafe-inline'` **なし**。`nonce-` 付き許可あり。Marp パネル CSP は本 TC 対象外 | セキュリティ不変（AD-001） | §9、AD-001 |
-| TC-003 | Happy | theme-light-redux | P0 | `buildMermaidThemeConfig('light')` | `theme: 'redux'`、`securityLevel: 'strict'`、`themeVariables` に `var(--vscode-...)` なし | redux マップ light | §5 正常系 7、`mermaid-redux-elk-fidelity` AD-004 |
-| TC-004 | Happy | theme-dark-redux-dark | P0 | `buildMermaidThemeConfig('dark')` | `theme: 'redux-dark'`（classic `'dark'` / `'default'` 強制ではない）。strict。`var(--vscode-...)` なし | redux-dark マップ | §5 正常系 7、`mermaid-redux-elk-fidelity` AD-004 |
-| TC-005 | Happy | theme-hc-redux-dark | P0 | `buildMermaidThemeConfig('highContrast')` | `theme: 'redux-dark'`。専用 HC パレット不要。strict | HC 同マップ | §5 正常系 7、`mermaid-redux-elk-fidelity` AD-004 |
+| TC-003 | Happy | theme-light-redux | P0 | `buildMermaidThemeConfig('light')` | `theme: 'redux'`、`securityLevel: 'strict'`、`themeVariables.fontSize === '13px'`、`themeVariables` に `var(--vscode-...)` なし | redux マップ light＋密度 | §5 正常系 7 / 7a、`mermaid-display-density` |
+| TC-004 | Happy | theme-dark-redux-dark | P0 | `buildMermaidThemeConfig('dark')` | `theme: 'redux-dark'`（classic `'dark'` / `'default'` 強制ではない）。strict。`themeVariables.fontSize === '13px'`。`var(--vscode-...)` なし | redux-dark マップ＋密度 | §5 正常系 7 / 7a、`mermaid-display-density` |
+| TC-005 | Happy | theme-hc-redux-dark | P0 | `buildMermaidThemeConfig('highContrast')` | `theme: 'redux-dark'`。専用 HC パレット不要。strict。`themeVariables.fontSize === '13px'`。`var(--vscode-...)` なし | HC 同マップ＋密度 | §5 正常系 7 / 7a、`mermaid-display-density` |
 | TC-006 | Structural | no-island-light-forced | P0 | `.mermaid-preview` / `.mermaid-block` の CSS | 明るい固定サーフェス強制（例: `background-color: white` / 同等の島ライト強制）が**存在しない** | 島ライト撤回（AD-005） | §5 正常系 11、AD-005 |
 | TC-007 | Corner | hip-regression | P0 | sanitize options（または contrast-readable TC-001/002 相当） | `HTML_INTEGRATION_POINTS: { foreignobject: true }`（または同等）。ラベル HTML 残存契約は contrast-readable と整合 | セキュリティ／可読性不変（AD-006） | §5 正常系 10、AD-006 |
 | TC-008 | Structural | security-level-strict | P0 | `buildMermaidThemeConfig` 全 kind および initialize 経路 | いずれも `securityLevel: 'strict'` | strict 不変 | §5 正常系 7、AD-006 |
@@ -244,6 +244,7 @@
 
 | 日付 | 変更内容 |
 |------|---------|
+| 2026-09-06 | `mermaid-display-density`: TC-003–005 Expected に `themeVariables.fontSize === '13px'`（`var(--vscode-...)` なし）を追加 |
 | 2026-09-06 | `mermaid-redux-elk-fidelity`: TC-001/003–005/013–014 Expected を redux マップ＋ Host CSS 縮小（再注入優先）へ更新。classic `default`/`dark`・永続必須 `vscode-foreground` stroke 正本を撤回 |
 | 2026-09-06 | testspec-implementation: suite + 関連 Expected 追随。Trace 更新（意図的 Red） |
 | 2026-09-06 | 初版 — nonce CSS エッジフォールバック・標準 kind マップ・島ライト撤廃・HIP/strict/ソース併記/Preview RO 回帰（設計のみ） |

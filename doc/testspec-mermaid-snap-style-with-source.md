@@ -81,7 +81,7 @@
 | TC-002 | Structural | preview-hide-css-removed | P0 | `media/editor.css`（または同等）を検査 | `body[data-mode='preview'] .mermaid-source { display: none }`（および同等の Preview 専用ソース非表示ルール）が**存在しない** | CSS 撤廃の静的検知（AD-003） | §5 正常系 4、AD-003 |
 | TC-003 | Structural | source-below-preview-order | P0 | Mermaid NodeView のブロック内 DOM（Preview または Markdown） | `.mermaid-preview` が `.mermaid-source` より**先**（図の下にソース） | Snap 風上下併記・DOM 再発明禁止（AD-002） | §5 正常系 4、AD-002 |
 | TC-004 | Happy | markdown-source-visible | P0 | Markdown モードで同一 Mermaid ブロック | `.mermaid-preview` と `.mermaid-source` の両方が表示。DOM 順は preview → source | Markdown 併記維持・強化（TC-131 整合） | §5 正常系 5、AD-002 |
-| TC-005 | Happy | kind-theme-redux-map | P0 | kind `light` / `dark` / `highContrast` それぞれで `buildMermaidThemeConfig`（または同等） | light→`redux`、dark→`redux-dark`、highContrast→`redux-dark`。`themeVariables` に `var(--vscode-...)` なし。`securityLevel: 'strict'`。classic `default`/`dark` マップは Fail | redux kind マップ（`mermaid-redux-elk-fidelity`） | §5 正常系 7、AD-004 |
+| TC-005 | Happy | kind-theme-redux-map | P0 | kind `light` / `dark` / `highContrast` それぞれで `buildMermaidThemeConfig`（または同等） | light→`redux`、dark→`redux-dark`、highContrast→`redux-dark`。全 kind で `themeVariables.fontSize === '13px'`。`themeVariables` に `var(--vscode-...)` なし。`securityLevel: 'strict'`。classic `default`/`dark` マップは Fail | redux kind マップ＋表示密度 | §5 正常系 7 / 7a、`mermaid-display-density` |
 | TC-006 | Structural | no-island-light-forced | P0 | `.mermaid-preview` / `.mermaid-block` の CSS | 明るい固定サーフェス強制（例: `background-color: white`）が**存在しない** | 島ライト撤回。エッジ可視は `mermaid-redux-elk-fidelity` | §5 正常系 11、AD-005 |
 | TC-007 | Corner | preview-error-source-still-visible | P0 | Preview で不正 Mermaid 構文 | preview 領域に `.mermaid-error`（または同等）。`.mermaid-source` は**表示のまま**。Document ソース保持 | エラー時も非表示に戻さない（AD-010）。TC-132 新契約 | §5 Outputs、AD-010 |
 | TC-008 | Corner | preview-source-readonly | P0 | Preview 表示中にソース領域へ編集イベント相当を送る / contenteditable 検査 | Document へ編集が反映されない。ソースは RO（`contenteditable=false` またはイベント非送出） | Preview 厳密 RO 維持（AD-004） | §1、§5 正常系 5、AD-004 |
@@ -217,6 +217,7 @@
 
 | 日付 | 変更内容 |
 |------|---------|
+| 2026-09-06 | `mermaid-display-density`: TC-005 Expected に全 kind `themeVariables.fontSize === '13px'`（`var(--vscode-...)` なし）を追加 |
 | 2026-09-06 | `mermaid-redux-elk-fidelity`: TC-005/012 Expected を `redux`/`redux-dark` へ更新。classic マップ撤回。概要・Digest・Trace 整合 |
 | 2026-09-06 | testspec-implementation: TC-005/006/012/014 テストコード追随。Trace 更新（意図的 Red） |
 | 2026-09-06 | `fix-mermaid-edge-styles`: TC-005/006/012/014 Expected を標準 kind マップ＋島ライト撤廃へ更新。概要・Digest・Trace 整合 |

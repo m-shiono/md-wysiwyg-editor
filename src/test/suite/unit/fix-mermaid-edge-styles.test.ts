@@ -189,6 +189,11 @@ suite('fix-mermaid-edge-styles', () => {
     const config = buildMermaidThemeConfig!('light');
     assert.strictEqual(config.theme, 'redux', "light kind must map to theme 'redux'");
     assert.strictEqual(config.securityLevel, 'strict');
+    assert.strictEqual(
+      config.themeVariables?.fontSize,
+      '13px',
+      "themeVariables.fontSize must be '13px' (mermaid-display-density)",
+    );
     for (const value of Object.values(config.themeVariables ?? {})) {
       assert.ok(!value.includes('var(--vscode-'), `themeVariables must not use var(--vscode-*): ${value}`);
     }
@@ -207,6 +212,11 @@ suite('fix-mermaid-edge-styles', () => {
       "dark kind must map to theme 'redux-dark' (not classic 'dark' / 'default')",
     );
     assert.strictEqual(config.securityLevel, 'strict');
+    assert.strictEqual(
+      config.themeVariables?.fontSize,
+      '13px',
+      "themeVariables.fontSize must be '13px' (mermaid-display-density)",
+    );
     for (const value of Object.values(config.themeVariables ?? {})) {
       assert.ok(!value.includes('var(--vscode-'), `themeVariables must not use var(--vscode-*): ${value}`);
     }
@@ -225,6 +235,14 @@ suite('fix-mermaid-edge-styles', () => {
       "highContrast maps to theme 'redux-dark' (AD-004)",
     );
     assert.strictEqual(config.securityLevel, 'strict');
+    assert.strictEqual(
+      config.themeVariables?.fontSize,
+      '13px',
+      "themeVariables.fontSize must be '13px' (mermaid-display-density)",
+    );
+    for (const value of Object.values(config.themeVariables ?? {})) {
+      assert.ok(!value.includes('var(--vscode-'), `themeVariables must not use var(--vscode-*): ${value}`);
+    }
   });
 
   test('TC-006: mermaid island CSS does not force a light surface', () => {

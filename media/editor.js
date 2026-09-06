@@ -223822,14 +223822,14 @@ img.ProseMirror-separator {
       case "light":
         return {
           theme: "redux",
-          themeVariables: {},
+          themeVariables: { fontSize: "13px" },
           securityLevel: "strict"
         };
       case "dark":
       case "highContrast":
         return {
           theme: "redux-dark",
-          themeVariables: {},
+          themeVariables: { fontSize: "13px" },
           securityLevel: "strict"
         };
       default: {
@@ -223837,7 +223837,7 @@ img.ProseMirror-separator {
         void _exhaustive;
         return {
           theme: "redux",
-          themeVariables: {},
+          themeVariables: { fontSize: "13px" },
           securityLevel: "strict"
         };
       }

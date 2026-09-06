@@ -160,6 +160,11 @@ suite('mermaid-redux-elk-fidelity', () => {
     const config = buildMermaidThemeConfig!('light');
     assert.strictEqual(config.theme, 'redux', "light kind must map to theme 'redux' (not classic 'default')");
     assert.strictEqual(config.securityLevel, 'strict');
+    assert.strictEqual(
+      config.themeVariables?.fontSize,
+      '13px',
+      "themeVariables.fontSize must be '13px' (mermaid-display-density)",
+    );
     for (const value of Object.values(config.themeVariables ?? {})) {
       assert.ok(!value.includes('var(--vscode-'), `themeVariables must not use var(--vscode-*): ${value}`);
     }
@@ -178,6 +183,11 @@ suite('mermaid-redux-elk-fidelity', () => {
       "dark kind must map to theme 'redux-dark' (not classic 'dark' / 'default')",
     );
     assert.strictEqual(config.securityLevel, 'strict');
+    assert.strictEqual(
+      config.themeVariables?.fontSize,
+      '13px',
+      "themeVariables.fontSize must be '13px' (mermaid-display-density)",
+    );
     for (const value of Object.values(config.themeVariables ?? {})) {
       assert.ok(!value.includes('var(--vscode-'), `themeVariables must not use var(--vscode-*): ${value}`);
     }
@@ -196,6 +206,14 @@ suite('mermaid-redux-elk-fidelity', () => {
       "highContrast maps to theme 'redux-dark' (AD-004; dedicated HC palette not required)",
     );
     assert.strictEqual(config.securityLevel, 'strict');
+    assert.strictEqual(
+      config.themeVariables?.fontSize,
+      '13px',
+      "themeVariables.fontSize must be '13px' (mermaid-display-density)",
+    );
+    for (const value of Object.values(config.themeVariables ?? {})) {
+      assert.ok(!value.includes('var(--vscode-'), `themeVariables must not use var(--vscode-*): ${value}`);
+    }
   });
 
   test('TC-004: Mermaid presentation style is reinjected with Host-identical nonce', () => {
@@ -328,6 +346,14 @@ suite('mermaid-redux-elk-fidelity', () => {
     for (const kind of ['light', 'dark', 'highContrast'] as const) {
       const config = buildMermaidThemeConfig!(kind);
       assert.strictEqual(config.securityLevel, 'strict', `kind ${kind} must keep securityLevel strict`);
+      assert.strictEqual(
+        config.themeVariables?.fontSize,
+        '13px',
+        `kind ${kind}: themeVariables.fontSize must be '13px' (mermaid-display-density)`,
+      );
+      for (const value of Object.values(config.themeVariables ?? {})) {
+        assert.ok(!value.includes('var(--vscode-'), `themeVariables must not use var(--vscode-*): ${value}`);
+      }
     }
   });
 

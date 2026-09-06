@@ -160,6 +160,11 @@ suite('mermaid-snap-style-with-source', () => {
         `kind ${kind} must map to theme '${expected[kind]}' (redux kind map)`,
       );
       assert.strictEqual(config.securityLevel, 'strict', 'securityLevel strict must remain');
+      assert.strictEqual(
+        config.themeVariables?.fontSize,
+        '13px',
+        `kind ${kind}: themeVariables.fontSize must be '13px' (mermaid-display-density)`,
+      );
       for (const value of Object.values(config.themeVariables ?? {})) {
         assert.ok(!value.includes('var(--vscode-'), `themeVariables must not use var(--vscode-*): ${value}`);
       }

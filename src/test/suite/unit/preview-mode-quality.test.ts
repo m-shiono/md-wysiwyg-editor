@@ -232,6 +232,11 @@ suite('preview-mode-quality (TC-013, TC-143–151)', () => {
     assert.strictEqual(lightConfig.theme, 'redux', 'light kind should map to redux theme');
 
     [darkConfig, highContrastConfig, lightConfig].forEach(config => {
+      assert.strictEqual(
+        config.themeVariables?.fontSize,
+        '13px',
+        "themeVariables.fontSize must be '13px' (mermaid-display-density)",
+      );
       if (config.themeVariables) {
         Object.values(config.themeVariables).forEach(val => {
           assert.ok(!val.includes('var(--vscode-'), `themeVariables must NOT contain var(): ${val}`);

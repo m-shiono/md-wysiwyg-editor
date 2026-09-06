@@ -178,6 +178,11 @@ suite('mermaid-contrast-readable', () => {
         `kind ${kind}: must use theme 'redux-dark' (classic 'dark' / forced 'default' is Fail)`,
       );
       assert.strictEqual(config.securityLevel, 'strict', 'securityLevel strict must remain');
+      assert.strictEqual(
+        config.themeVariables?.fontSize,
+        '13px',
+        `kind ${kind}: themeVariables.fontSize must be '13px' (mermaid-display-density)`,
+      );
       for (const value of Object.values(config.themeVariables ?? {})) {
         assert.ok(!value.includes('var(--vscode-'), `themeVariables must not use var(--vscode-*): ${value}`);
       }
@@ -209,6 +214,14 @@ suite('mermaid-contrast-readable', () => {
     const config = buildMermaidThemeConfig!('light');
     assert.strictEqual(config.theme, 'redux', 'light kind must map to theme redux');
     assert.strictEqual(config.securityLevel, 'strict');
+    assert.strictEqual(
+      config.themeVariables?.fontSize,
+      '13px',
+      "themeVariables.fontSize must be '13px' (mermaid-display-density)",
+    );
+    for (const value of Object.values(config.themeVariables ?? {})) {
+      assert.ok(!value.includes('var(--vscode-'), `themeVariables must not use var(--vscode-*): ${value}`);
+    }
   });
 
   test('TC-008: empty foreignObject shell sanitizes without throw', () => {
@@ -264,6 +277,14 @@ suite('mermaid-contrast-readable', () => {
       "highContrast must map to theme 'redux-dark' (same as dark kind; AD-004)",
     );
     assert.strictEqual(config.securityLevel, 'strict');
+    assert.strictEqual(
+      config.themeVariables?.fontSize,
+      '13px',
+      "themeVariables.fontSize must be '13px' (mermaid-display-density)",
+    );
+    for (const value of Object.values(config.themeVariables ?? {})) {
+      assert.ok(!value.includes('var(--vscode-'), `themeVariables must not use var(--vscode-*): ${value}`);
+    }
   });
 
   test('TC-012: sanitize keeps SVG text label Simple Approach', () => {
