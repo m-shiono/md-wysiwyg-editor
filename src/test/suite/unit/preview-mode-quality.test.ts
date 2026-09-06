@@ -203,7 +203,7 @@ suite('preview-mode-quality (TC-013, TC-143–151)', () => {
 
   // --- Mermaid built-in theme mapping (TC-149) ---
 
-  test('TC-149: buildMermaidThemeConfig maps VS Code kind to standard Mermaid themes and excludes var()', () => {
+  test('TC-149: buildMermaidThemeConfig maps VS Code kind to Mermaid redux themes and excludes var()', () => {
     const buildMermaidThemeConfig = getUtilExport<
       (kind: 'light' | 'dark' | 'highContrast') => {
         theme: string;
@@ -213,23 +213,23 @@ suite('preview-mode-quality (TC-013, TC-143–151)', () => {
     >('mermaid-theme', 'buildMermaidThemeConfig');
     assert.ok(buildMermaidThemeConfig, 'buildMermaidThemeConfig export required (TC-149 AD-004)');
 
-    // 標準 kind マップ（fix-mermaid-edge-styles AD-004）: light→default、dark/HC→dark
+    // redux kind マップ（mermaid-redux-elk-fidelity AD-004）: light→redux、dark/HC→redux-dark
     const darkConfig = buildMermaidThemeConfig!('dark');
     assert.strictEqual(
       darkConfig.theme,
-      'dark',
-      "dark kind maps to Mermaid theme 'dark'",
+      'redux-dark',
+      "dark kind maps to Mermaid theme 'redux-dark'",
     );
 
     const highContrastConfig = buildMermaidThemeConfig!('highContrast');
     assert.strictEqual(
       highContrastConfig.theme,
-      'dark',
-      "highContrast kind maps to Mermaid theme 'dark'",
+      'redux-dark',
+      "highContrast kind maps to Mermaid theme 'redux-dark'",
     );
 
     const lightConfig = buildMermaidThemeConfig!('light');
-    assert.strictEqual(lightConfig.theme, 'default', 'light kind should map to default theme');
+    assert.strictEqual(lightConfig.theme, 'redux', 'light kind should map to redux theme');
 
     [darkConfig, highContrastConfig, lightConfig].forEach(config => {
       if (config.themeVariables) {

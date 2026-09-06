@@ -63,6 +63,108 @@ const RAW_UPDATE_DEBOUNCE_MS = 250;
 const mermaidTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const mermaidRerenderCallbacks = new Set<() => void>();
 let mermaidThemeRerenderTimer: ReturnType<typeof setTimeout> | undefined;
+/** ELK ローダは初回 layout:elk 要求時のみ動的 import（AD-007）。 */
+let elkLayoutRegisterPromise: Promise<void> | undefined;
+
+function getHostCspNonce(): string {
+  return document.body?.getAttribute('data-csp-nonce') ?? '';
+}
+
+function sourceRequestsElkLayout(source: string): boolean {
+  return (
+    /(?:^|[\s,{])layout\s*:\s*['"]?elk\b/i.test(source) || /flowchart-elk/i.test(source)
+  );
+}
+
+async function ensureElkLayoutRegistered(source: string): Promise<void> {
+  if (!sourceRequestsElkLayout(source)) {
+    return;
+  }
+  if (!elkLayoutRegisterPromise) {
+    elkLayoutRegisterPromise = (async () => {
+      try {
+        // Host 注入 URI を優先（classic script の相対 import 解決を避ける）。
+        // パッケージ名の dynamic import はソース契約（TC-014）と非 Webview フォールバック用。
+        const chunkUri = document.body?.getAttribute('data-elk-chunk-uri');
+        const elkModule = chunkUri
+          ? await import(/* webpackIgnore: true */ chunkUri)
+          : await import('@mermaid-js/layout-elk');
+        const elkLayouts = (elkModule as { default?: unknown }).default ?? elkModule;
+        mermaid.registerLayoutLoaders(elkLayouts as Parameters<typeof mermaid.registerLayoutLoaders>[0]);
+      } catch (err) {
+        // 再試行可能にするため失敗時は Promise を破棄（図単位エラーは呼び出し側）
+        elkLayoutRegisterPromise = undefined;
+        throw err;
+      }
+    })();
+  }
+  await elkLayoutRegisterPromise;
+}
+
+/**
+ * Strip dangerous CSS constructs before Host-nonce reinjection (AD-002).
+ * Does not pass through arbitrary user/Mermaid-source CSS via HTML string concat.
+ */
+function sanitizeMermaidPresentationCss(css: string): string {
+  return css
+    .replace(/@import\b[^;]*;?/gi, '')
+    .replace(/expression\s*\(/gi, '(')
+    .replace(/javascript\s*:/gi, '')
+    .replace(/-moz-binding\s*:/gi, 'moz-binding-blocked:')
+    .replace(/behavior\s*:/gi, 'behavior-blocked:');
+}
+
+/**
+ * Extract Mermaid presentation <style> from render SVG; reinject under .mermaid-preview
+ * with Host-identical CSP nonce (AD-002). SVG inline styles are CSP-blocked without nonce.
+ */
+function applyMermaidPresentationStyle(viewId: string, svg: string): string {
+  const styleChunks: string[] = [];
+  const svgWithoutStyles = svg.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_match, css: string) => {
+    const cleaned = sanitizeMermaidPresentationCss(css);
+    if (cleaned.trim()) {
+      styleChunks.push(cleaned);
+    }
+    return '';
+  });
+
+  const styleId = `mermaid-presentation-${viewId}`;
+  let styleEl = document.getElementById(styleId) as HTMLStyleElement | null;
+  if (!styleEl) {
+    styleEl = document.createElement('style');
+    styleEl.id = styleId;
+    const nonce = getHostCspNonce();
+    if (nonce) {
+      styleEl.setAttribute('nonce', nonce);
+    }
+    document.head.appendChild(styleEl);
+  }
+
+  // Scope reinjected rules under .mermaid-preview; keep fill:none safety for edge paths
+  const scopedChunks = styleChunks.map((css) =>
+    css.replace(/(^|})\s*([^{}@/][^{]*)\{/g, (_m, brace: string, selectors: string) => {
+      const scoped = selectors
+        .split(',')
+        .map((sel) => {
+          const trimmed = sel.trim();
+          if (!trimmed) {
+            return trimmed;
+          }
+          if (trimmed.startsWith('.mermaid-preview')) {
+            return trimmed;
+          }
+          return `.mermaid-preview ${trimmed}`;
+        })
+        .join(', ');
+      return `${brace} ${scoped}{`;
+    }),
+  );
+  const safetyNet =
+    '.mermaid-preview .edgePath .path, .mermaid-preview .edgePaths .path, .mermaid-preview .flowchart-link, .mermaid-preview path.flowchart-link { fill: none; }';
+  styleEl.textContent = [...scopedChunks, safetyNet].join('\n');
+
+  return svgWithoutStyles;
+}
 
 function initializeMermaidTheme(kind: ThemeKind): void {
   try {
@@ -222,7 +324,12 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
           setTimeout(async () => {
             try {
               const renderSource = buildMermaidRenderSource(source);
-              const { svg } = await mermaid.render(`${viewId}-svg`, renderSource || ' ');
+              await ensureElkLayoutRegistered(renderSource);
+              const { svg: renderedSvg } = await mermaid.render(
+                `${viewId}-svg`,
+                renderSource || ' ',
+              );
+              const svg = applyMermaidPresentationStyle(viewId, renderedSvg);
               preview.innerHTML = sanitizeMermaidSvg(svg);
             } catch (err) {
               preview.innerHTML = `<div class="mermaid-error">${escapeHtml(String(err))}</div>`;
@@ -259,6 +366,7 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
             clearTimeout(existing);
           }
           mermaidTimers.delete(viewId);
+          document.getElementById(`mermaid-presentation-${viewId}`)?.remove();
         },
       };
     };

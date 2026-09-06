@@ -7,18 +7,18 @@ export type MermaidThemeConfig = {
 };
 
 export function buildMermaidThemeConfig(kind: ThemeKind): MermaidThemeConfig {
-  // 標準 kind マップ（fix-mermaid-edge-styles AD-004）— 島ライト強制は撤回済み
+  // redux kind マップ（mermaid-redux-elk-fidelity AD-004）— classic default/dark は撤回
   switch (kind) {
     case 'light':
       return {
-        theme: 'default',
+        theme: 'redux',
         themeVariables: {},
         securityLevel: 'strict',
       };
     case 'dark':
     case 'highContrast':
       return {
-        theme: 'dark',
+        theme: 'redux-dark',
         themeVariables: {},
         securityLevel: 'strict',
       };
@@ -26,7 +26,7 @@ export function buildMermaidThemeConfig(kind: ThemeKind): MermaidThemeConfig {
       const _exhaustive: never = kind;
       void _exhaustive;
       return {
-        theme: 'default',
+        theme: 'redux',
         themeVariables: {},
         securityLevel: 'strict',
       };

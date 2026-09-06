@@ -1,7 +1,7 @@
 /**
- * fix-mermaid-edge-styles — edge CSS fallback, standard kind theme map, no island light,
- * HIP / CSP / source co-display / Preview RO regressions.
- * Intentional Red until build-agent lands production fix (tests-only phase).
+ * fix-mermaid-edge-styles — edge visibility (nonce reinject preferred / shrunk safety net),
+ * redux kind theme map, no island light, HIP / CSP / source co-display / Preview RO regressions.
+ * Theme/presentation canonical suite: mermaid-redux-elk-fidelity.
  */
 import * as assert from 'assert';
 import * as fs from 'fs';
@@ -124,22 +124,35 @@ const XSS_LABEL_SVG = [
 ].join('');
 
 const KIND_THEME_MAP: Record<'light' | 'dark' | 'highContrast', string> = {
-  light: 'default',
-  dark: 'dark',
-  highContrast: 'dark',
+  light: 'redux',
+  dark: 'redux-dark',
+  highContrast: 'redux-dark',
 };
+
+/** Host 同一 nonce 付き presentation `<style>` 再注入経路があるか */
+function hasPresentationNonceReinject(editorSrc: string): boolean {
+  const hasNonceAttr =
+    /setAttribute\(\s*['"]nonce['"]/.test(editorSrc) ||
+    /\.nonce\s*=/.test(editorSrc);
+  const hasStyleInject =
+    /createElement\(\s*['"]style['"]\s*\)/.test(editorSrc) ||
+    /reinject.*[Ss]tyle|injectMermaid.*[Ss]tyle|applyMermaidPresentation/i.test(editorSrc);
+  return hasNonceAttr && hasStyleInject;
+}
 
 suite('fix-mermaid-edge-styles', () => {
   // --- P0 ---
 
-  test('TC-001: Host CSS provides .mermaid-preview edge fill:none fallback', () => {
+  test('TC-001: edge visibility via presentation reinject or shrunk safety net', () => {
     const css = readRepoFile('media/editor.css');
+    const editorSrc = readRepoFile('media/editor.ts');
+    const hasReinject = hasPresentationNonceReinject(editorSrc);
+    const hasSafetyNet = hasMermaidPreviewEdgeFillNone(css);
     assert.ok(
-      hasMermaidPreviewEdgeFillNone(css),
-      '.mermaid-preview scope must include fill:none (and stroke-visible rules) for flowchart edges under CSP (AD-002)',
+      hasReinject || hasSafetyNet,
+      'flowchart edges: prefer presentation nonce reinject; minimal fill:none safety net allowed (not mandatory vscode-foreground stroke)',
     );
     // ユーザー／Mermaid ソース由来の任意 CSS 注入経路がないこと（静的近似）
-    const editorSrc = readRepoFile('media/editor.ts');
     assert.ok(
       !/insertAdjacentHTML\s*\(\s*['"]beforeend['"]\s*,\s*[^)]*style/i.test(editorSrc),
       'must not inject arbitrary style from Mermaid/user source',
@@ -167,21 +180,21 @@ suite('fix-mermaid-edge-styles', () => {
     }
   });
 
-  test('TC-003: light kind maps to Mermaid theme default with strict', () => {
+  test('TC-003: light kind maps to Mermaid theme redux with strict', () => {
     const buildMermaidThemeConfig = getUtilExport<(kind: string) => MermaidThemeConfig>(
       'mermaid-theme',
       'buildMermaidThemeConfig',
     );
     assert.ok(buildMermaidThemeConfig, 'buildMermaidThemeConfig export required');
     const config = buildMermaidThemeConfig!('light');
-    assert.strictEqual(config.theme, 'default');
+    assert.strictEqual(config.theme, 'redux', "light kind must map to theme 'redux'");
     assert.strictEqual(config.securityLevel, 'strict');
     for (const value of Object.values(config.themeVariables ?? {})) {
       assert.ok(!value.includes('var(--vscode-'), `themeVariables must not use var(--vscode-*): ${value}`);
     }
   });
 
-  test('TC-004: dark kind maps to Mermaid theme dark with strict', () => {
+  test('TC-004: dark kind maps to Mermaid theme redux-dark with strict', () => {
     const buildMermaidThemeConfig = getUtilExport<(kind: string) => MermaidThemeConfig>(
       'mermaid-theme',
       'buildMermaidThemeConfig',
@@ -190,8 +203,8 @@ suite('fix-mermaid-edge-styles', () => {
     const config = buildMermaidThemeConfig!('dark');
     assert.strictEqual(
       config.theme,
-      'dark',
-      "dark kind must map to theme 'dark' (not forced 'default')",
+      'redux-dark',
+      "dark kind must map to theme 'redux-dark' (not classic 'dark' / 'default')",
     );
     assert.strictEqual(config.securityLevel, 'strict');
     for (const value of Object.values(config.themeVariables ?? {})) {
@@ -199,14 +212,18 @@ suite('fix-mermaid-edge-styles', () => {
     }
   });
 
-  test('TC-005: highContrast kind maps to Mermaid theme dark with strict', () => {
+  test('TC-005: highContrast kind maps to Mermaid theme redux-dark with strict', () => {
     const buildMermaidThemeConfig = getUtilExport<(kind: string) => MermaidThemeConfig>(
       'mermaid-theme',
       'buildMermaidThemeConfig',
     );
     assert.ok(buildMermaidThemeConfig, 'buildMermaidThemeConfig export required');
     const config = buildMermaidThemeConfig!('highContrast');
-    assert.strictEqual(config.theme, 'dark', "highContrast maps to theme 'dark' (AD-004)");
+    assert.strictEqual(
+      config.theme,
+      'redux-dark',
+      "highContrast maps to theme 'redux-dark' (AD-004)",
+    );
     assert.strictEqual(config.securityLevel, 'strict');
   });
 
@@ -285,7 +302,7 @@ suite('fix-mermaid-edge-styles', () => {
     assert.ok(/buildMermaidThemeConfig/.test(themeSrc), 'theme helper stays in display-layer utils');
   });
 
-  test('TC-013: themeUpdated re-init follows standard kind theme map', () => {
+  test('TC-013: themeUpdated re-init follows redux kind theme map', () => {
     const themeSrc = readRepoFile('src/utils/mermaid-theme.ts');
     assert.ok(/handleThemeUpdated/.test(themeSrc), 'handleThemeUpdated must exist');
     assert.ok(
@@ -308,32 +325,35 @@ suite('fix-mermaid-edge-styles', () => {
     }
   });
 
-  test('TC-014: related suites Expected align with standard kind map and no island', () => {
+  test('TC-014: related suites Expected align with redux kind map and no island', () => {
     const contrast = readRepoFile('doc/testspec-mermaid-contrast-readable.md');
     const snap = readRepoFile('doc/testspec-mermaid-snap-style-with-source.md');
     const wysiwyg = readRepoFile('doc/testspec-vsc-md-wysiwyg.md');
+    const reduxFidelity = readRepoFile('doc/testspec-mermaid-redux-elk-fidelity.md');
 
     assert.ok(
       /島ライト.*撤回|島ライト強制.*なし|no-island-light/i.test(contrast),
       'contrast-readable must withdraw island-light-required Expected',
     );
     assert.ok(
-      /theme:\s*'dark'|→\s*`dark`|maps-to-dark|dark-kind-theme-dark/i.test(contrast),
-      'contrast-readable must expect dark/HC → dark',
+      /redux-dark|theme:\s*'redux'|→\s*`redux`/i.test(contrast),
+      'contrast-readable must expect dark/HC → redux-dark',
     );
     assert.ok(
-      /標準 kind マップ|kind-theme-standard-map|dark→`dark`/i.test(snap),
-      'snap-style must expect standard kind map',
+      /redux|kind-theme-redux|→\s*`redux`/i.test(snap),
+      'snap-style must expect redux kind map',
     );
     assert.ok(
       /島ライト.*撤回|島ライト強制.*なし|no-island-light/i.test(snap),
       'snap-style must withdraw island-light-required Expected',
     );
     assert.ok(
-      /TC-149[\s\S]*?'dark'[\s\S]*?'default'|TC-149[\s\S]*dark.*→.*dark|TC-149[\s\S]*light.*→.*default/i.test(
-        wysiwyg,
-      ),
-      'wysiwyg TC-149 must keep light→default / dark|HC→dark',
+      /TC-149[\s\S]*redux-dark|TC-149[\s\S]*'redux'|TC-149[\s\S]*→\s*`redux`/i.test(wysiwyg),
+      'wysiwyg TC-149 must expect light→redux / dark|HC→redux-dark',
+    );
+    assert.ok(
+      /nonce|redux-dark|layout-elk/i.test(reduxFidelity),
+      'redux-elk-fidelity testspec must remain the presentation/ELK canonical suite',
     );
 
     const contrastSuite = readRepoFile('src/test/suite/unit/mermaid-contrast-readable.test.ts');
@@ -344,12 +364,15 @@ suite('fix-mermaid-edge-styles', () => {
       'contrast-readable suite must not assert old island default-everywhere',
     );
     assert.ok(
-      !/must use theme 'default' \(AD-005\)/.test(snapSuite),
-      'snap-style suite must not assert all-kinds → default',
+      !/must use theme 'default' \(AD-005\)/.test(snapSuite) &&
+        !/light:\s*'default'|dark:\s*'dark'/.test(snapSuite),
+      'snap-style suite must not assert classic default/dark map',
     );
     assert.ok(
-      !/maps to default on light island/.test(previewQuality),
-      'preview-mode-quality TC-149 must not assert island-safe default for dark/HC',
+      !/maps to default on light island|map to default theme|Mermaid theme 'dark'/.test(
+        previewQuality,
+      ),
+      'preview-mode-quality TC-149 must not assert classic default/dark',
     );
   });
 

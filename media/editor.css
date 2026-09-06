@@ -346,16 +346,14 @@ body[data-readonly='true'] #link-input-bar {
 }
 
 /*
- * CSP blocks Mermaid SVG inline <style>, so edge presentation must live here
- * (fix-mermaid-edge-styles AD-002/003). Without fill:none, SVG paths paint black blobs.
+ * Safety net / 安全網 only when presentation CSS is missing after nonce reinject
+ * (mermaid-redux-elk-fidelity AD-003). Do not override redux stroke colors.
  */
 .mermaid-preview .edgePath .path,
 .mermaid-preview .edgePaths .path,
 .mermaid-preview .flowchart-link,
 .mermaid-preview path.flowchart-link {
   fill: none;
-  stroke: var(--vscode-foreground);
-  stroke-width: 2px;
 }
 
 .mermaid-error {

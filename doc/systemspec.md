@@ -6,7 +6,7 @@ VS Code 拡張 **vsc-md-editor** の振る舞い仕様（WHAT）。実装詳細�
 
 ## 概要
 
-チーム向け技術ドキュメントを Git 管理しながら、Word/Excel に近い WYSIWYG 体験で Markdown（`.md`）を編集する VS Code 拡張機能。MVP では同一 Custom Editor 上の **Preview / Markdown / Raw 三点モード**、**GFM 書式ツールバー**（§2 — 取り消し線・H1–H6・インラインコード・引用・タスクリスト・水平線等）、**GFM / HTML 二形式表編集**（§3・アーキテクチャ AD-005）、ファイル単位 Readonly 切替、Mermaid リアルタイム描画（VS Code kind 標準テーママップ＋CSP 下 nonce CSS フォールバック、Preview / Markdown で図下ソース併記 — §5）、**Marp プレビュー**（§6 — サイド/パネル。**Preview モードでも Marp 検出時は同一 Webview 内にスライド描画可** — §1 / AD-008）、**Host 側 `img/` 画像 URI 解決**（§7 / §9）、クリップボード画像のローカル保存を提供する。リッチ表現（拡張記法・HTML 混在）を Markdown 厳密互換より優先する（UD-001）。今回追加の書式ノードは GFM として往復できること（§8）。
+チーム向け技術ドキュメントを Git 管理しながら、Word/Excel に近い WYSIWYG 体験で Markdown（`.md`）を編集する VS Code 拡張機能。MVP では同一 Custom Editor 上の **Preview / Markdown / Raw 三点モード**、**GFM 書式ツールバー**（§2 — 取り消し線・H1–H6・インラインコード・引用・タスクリスト・水平線等）、**GFM / HTML 二形式表編集**（§3・アーキテクチャ AD-005）、ファイル単位 Readonly 切替、Mermaid リアルタイム描画（VS Code kind → Mermaid `redux` / `redux-dark`、CSP 下 Host 同一 nonce による presentation `<style>` 再注入、frontmatter オプトイン ELK、Preview / Markdown で図下ソース併記 — §5）、**Marp プレビュー**（§6 — サイド/パネル。**Preview モードでも Marp 検出時は同一 Webview 内にスライド描画可** — §1 / AD-008）、**Host 側 `img/` 画像 URI 解決**（§7 / §9）、クリップボード画像のローカル保存を提供する。リッチ表現（拡張記法・HTML 混在）を Markdown 厳密互換より優先する（UD-001）。今回追加の書式ノードは GFM として往復できること（§8）。
 
 **feature-slug:** `vsc-md-wysiwyg`
 
@@ -22,7 +22,7 @@ VS Code 拡張 **vsc-md-editor** の振る舞い仕様（WHAT）。実装詳細�
 | AD-004 | 編集内容 ↔ ディスク `.md` は remark/unified パイプラインで変換。HTML 混在・拡張ブロックを許容。出力は決定的（AD-013） |
 | AD-005 | 表は per-table `tableFormat`（`gfm` \| `html`）で永続化する。新規挿入のデフォルトは GFM パイプ表。形式切替は Table メニューの明示操作のみ（§3） |
 | AD-006 | ファイル単位 Readonly は **全編集面**（Markdown / Raw）をロック。Preview モードとは別概念。状態はワークスペースに永続化 |
-| AD-007 | Mermaid はコードブロック + リアルタイム描画。VS Code kind → 標準 Mermaid テーママップ（`light`→`default`、`dark`/`highContrast`→`dark`）＋ CSP 下の nonce 付き presentation CSS フォールバック（§5）。島ライト強制・全 kind `theme: 'default'` は撤回（`fix-mermaid-edge-styles`）。**Preview / Markdown とも図の下にソース併記**。編集はテキストのみ（Preview は厳密 RO） |
+| AD-007 | Mermaid はコードブロック + リアルタイム描画。VS Code kind → Mermaid `redux` / `redux-dark` マップ、CSP 下 Host 同一 nonce による presentation `<style>` 再注入、`@mermaid-js/layout-elk` 登録＋ frontmatter / `%%{init}%%` オプトイン ELK（遅延ロード・グローバル強制なし — §5）。classic `default`/`dark` マップおよび静的 Host CSS エッジフォールバック優先は撤回（`mermaid-redux-elk-fidelity`）。**Preview / Markdown とも図の下にソース併記**。編集はテキストのみ（Preview は厳密 RO）。`securityLevel: 'strict'`・HIP・`'unsafe-inline'` なしは不変 |
 | AD-008 | **Marp Preview** はサイド/パネル（§6）を維持。**Preview モード**（§1）でも `isMarpDocument(markdownText)` 検出時は同一 Webview 内 `#preview-marp-root` に Host 生成 HTML を RO 表示可。別 UI インスタンス・別責務は維持。編集は Markdown / Raw 側 |
 | AD-009 | 画像 paste → 同階層 `img/image-NNNN.ext` に保存し相対パスを挿入。表示時は Host が `img/` 配下のみ `asWebviewUri` で rewrite（§7 / §9）。serialize / ディスクは常に相対パス |
 | AD-010 | Webview CSP + HTML サニタイズ。許可タグ・属性を限定 |
@@ -466,13 +466,13 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 
 ### 概要
 
-` ```mermaid ` フェンスブロックをリアルタイムに図として描画する。編集はテキストのみ（UD-004, AD-007）。**Editor Preview（`preview`）および Edit Rich Editor（`markdown`）の両方**で、ブロック内順は **図（`.mermaid-preview`）→ ソース（`.mermaid-source`）**（図の下にソース併記）。旧「Preview ソース非表示」（`preview-rich-embed`）は **撤回**する（`mermaid-snap-style-with-source`）。Preview でもソースは表示するが **厳密 RO** を維持し、ソース領域の編集イベントを Document へ送らない（§1）。フェンス内 YAML frontmatter / `%%{init:...}%%` は Mermaid ネイティブに委譲する（`preview-mode-quality` AD-003）。グローバル見た目は **VS Code kind 標準テーママップ**（`light`→Mermaid `default`、`dark`/`highContrast`→Mermaid `dark`）とし、島ライト強制・全 kind `theme: 'default'` は **撤回**する（`fix-mermaid-edge-styles`）。CSP が SVG 内インライン `<style>` を無効化する前提で、**Host 発行 nonce 付き**の presentation CSS フォールバック（特にエッジ `fill: none` / stroke 系）を用いる。`style-src` に `'unsafe-inline'` は追加しない（§9）。HIP sanitize・`securityLevel: 'strict'`・DOMPurify・**`HTML_INTEGRATION_POINTS: { foreignobject: true }`** は不変（§9）。
+` ```mermaid ` フェンスブロックをリアルタイムに図として描画する。編集はテキストのみ（UD-004, AD-007）。**Editor Preview（`preview`）および Edit Rich Editor（`markdown`）の両方**で、ブロック内順は **図（`.mermaid-preview`）→ ソース（`.mermaid-source`）**（図の下にソース併記）。旧「Preview ソース非表示」（`preview-rich-embed`）は **撤回**する（`mermaid-snap-style-with-source`）。Preview でもソースは表示するが **厳密 RO** を維持し、ソース領域の編集イベントを Document へ送らない（§1）。フェンス内 YAML frontmatter / `%%{init:...}%%` は Mermaid ネイティブに委譲する（`preview-mode-quality` AD-003）— per-diagram の `theme` / `layout` はグローバル initialize より優先。グローバル見た目は **VS Code kind → Mermaid redux 系マップ**（`light`→`redux`、`dark`/`highContrast`→`redux-dark`）とし、classic `default`/`dark` マップおよび島ライト強制・全 kind `theme: 'default'` は **撤回**する（`mermaid-redux-elk-fidelity` / `fix-mermaid-edge-styles`）。CSP が SVG 内インライン `<style>` を無効化する前提で、Mermaid `render` 結果の presentation `<style>` を抽出し **Host 発行と同一 nonce** を付与して Webview に再注入する（セレクタは `.mermaid-preview` / 当該図スコープ）。静的 Host CSS エッジフォールバックは再注入が効く前提で **縮小または撤廃**する。`style-src` に `'unsafe-inline'` は追加しない（§9）。`@mermaid-js/layout-elk` を登録し、図が `layout: elk`（等）を要求したときのみ ELK を用いる（グローバル強制なし・遅延ロード）。HIP sanitize・`securityLevel: 'strict'`・DOMPurify・**`HTML_INTEGRATION_POINTS: { foreignobject: true }`** は不変（§9）。Mermaid Chart 拡張依存・ピクセル完全一致は Out。
 
 ### Inputs & Types
 
 | 入力 | 型 | 必須 | 最小 | 最大 | 備考 |
 |------|-----|------|------|------|------|
-| `mermaidSource` | `string` | はい | 0 文字 | — | フェンス内**全文**（YAML frontmatter / `%%{init:...}%%` 含む。Webview は strip しない — AD-003） |
+| `mermaidSource` | `string` | はい | 0 文字 | — | フェンス内**全文**（YAML frontmatter / `%%{init:...}%%` 含む。Webview は strip しない — AD-003）。`config.layout: elk` 等はネイティブ委譲 |
 | `debounceMs` | 数値 | いいえ | — | — | 目安 300 ms。テーマ切替再描画にも適用 |
 | `editorMode` | `"preview" \| "markdown" \| "raw"` | はい | — | — | Preview / Markdown ともソース表示。Preview は RO（§1） |
 | `themeUpdated` | postMessage | 任意 | — | — | §1 `{ kind: 'light' \| 'dark' \| 'highContrast' }` |
@@ -481,13 +481,15 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 
 | 条件 | 戻り値 / ステータス | 備考 |
 |------|-------------------|------|
-| 成功 | ブロック内に SVG/図表示＋ソース表示 | ソースは Document に保持。Preview / Markdown とも `.mermaid-source` を DOM 上表示（図の下） |
+| 成功 | ブロック内に SVG/図表示＋ソース表示 | ソースは Document に保持。Preview / Markdown とも `.mermaid-source` を DOM 上表示（図の下）。presentation CSS は Host 同一 nonce 再注入後に効く |
 | 構文エラー | ブロック内にエラーメッセージ | ソースは Document に保持。**Preview でもソースは表示したまま**、preview 領域に `.mermaid-error`。Output に記録（AD-015） |
+| ELK 登録・ロード失敗 | 当該図のみエラー表示 | Webview 全体は止めない（既存 try-catch 隔離）。Output に記録可 |
 | レンダリングタイムアウト | エラー表示 | RK-004 |
 
 ### Preconditions
 
 - Webview 内で Mermaid レンダラがロード済みであること
+- `layout: elk`（等）を要求する図を描画する前に、`@mermaid-js/layout-elk` のローダ登録が完了していること（遅延ロード可）
 
 ### Behavior
 
@@ -498,36 +500,42 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 3. RO 中も描画は更新される（ソース変更は不可）
 4. **ソース併記レイアウト**（`mermaid-snap-style-with-source`）: 既存 Mermaid NodeView DOM を維持し、ブロック内順は **図（`.mermaid-preview`）→ ソース（`.mermaid-source`）**。`body[data-mode='preview'] .mermaid-source { display: none }`（または同等の Preview 専用非表示ルール）は **撤廃**する。構文エラーは `.mermaid-error` に `--vscode-errorForeground` / `--vscode-inputValidation-errorBackground` で表示（`preview-mode-quality` AD-007）。`securityLevel: 'strict'`・DOMPurify SVG サニタイズは不変（下記 10 および §9）
 5. **モード別編集可否**: **Preview** — 図＋ソースを表示するが厳密 RO（ソース領域は編集イベントを Document へ送らない）。**Markdown** — 図＋ソース表示、ソース編集可（ファイル RO 時は不可 — §4）。**Raw** — フェンスはテキストとして編集（NodeView 島は Markdown / Preview 面の契約）
-6. **フェンス全文レンダリング**（`preview-mode-quality` AD-003）: `mermaid.render(id, source)` にはフェンス内 **全文**を渡す。YAML frontmatter および `%%{init:...}%%` による per-diagram 設定は Mermaid ネイティブに委譲し、Webview 側で frontmatter を strip しない。per-diagram 設定はグローバル `mermaid.initialize` より優先（Mermaid v11 仕様）
-7. **グローバルテーマ（標準 kind マップ）**（`fix-mermaid-edge-styles` / `mermaid-theme-crash-fix` 継承）: `buildMermaidThemeConfig`（または同等）は VS Code kind を次のとおりマップする — `light` → Mermaid `theme: 'default'`、`dark` / `highContrast` → Mermaid `theme: 'dark'`。いずれも `securityLevel: 'strict'`。全 kind 強制 `theme: 'default'` は廃止。`themeVariables` への `var(--vscode-...)` 指定は再導入しない（`mermaid-theme-crash-fix`）。`highContrast` 専用パレットは本タスク Out。
+6. **フェンス全文レンダリング**（`preview-mode-quality` AD-003 / `mermaid-redux-elk-fidelity` AD-013）: `mermaid.render(id, source)` にはフェンス内 **全文**を渡す。YAML frontmatter および `%%{init:...}%%` による per-diagram 設定（`theme`・`layout` 含む）は Mermaid ネイティブに委譲し、Webview 側で frontmatter を strip しない。per-diagram 設定はグローバル `mermaid.initialize` より優先（Mermaid v11 仕様）
+7. **グローバルテーマ（redux kind マップ）**（`mermaid-redux-elk-fidelity` / `mermaid-theme-crash-fix` 継承）: `buildMermaidThemeConfig`（または同等）は VS Code kind を次のとおりマップする — `light` → Mermaid `theme: 'redux'`、`dark` / `highContrast` → Mermaid `theme: 'redux-dark'`（同等の redux 系が必要なら同系に限る）。いずれも `securityLevel: 'strict'`。classic `default`/`dark` マップおよび全 kind 強制 `theme: 'default'` は廃止。`themeVariables` への `var(--vscode-...)` 指定は再導入しない（`mermaid-theme-crash-fix`）。`highContrast` 専用パレット・Chart テーマピッカーは本タスク Out。
 
-8. **初期化・テーマ切替の隔離**（`mermaid-theme-crash-fix`）: `mermaid.initialize` およびテーマ更新処理は `try-catch` で隔離し、Mermaid 内部エラーが Webview 全体のメッセージングや描画を停止させないようにする。
+8. **初期化・テーマ切替・ELK 登録の隔離**（`mermaid-theme-crash-fix` / `mermaid-redux-elk-fidelity` AD-012）: `mermaid.initialize`、テーマ更新、および ELK ローダ登録処理は `try-catch` で隔離し、Mermaid / layout-elk 内部エラーが Webview 全体のメッセージングや描画を停止させないようにする。
 
-9. **テーマ切替再描画**（`preview-mode-quality` AD-005 / `fix-mermaid-edge-styles`）: §1 `themeUpdated` 受信時、Webview は kind マップに従い `mermaid.initialize(...)` を更新し、表示中の全 Mermaid NodeView を debounce 後に再 render する。本処理も上記「隔離」に従う。
+9. **テーマ切替再描画**（`preview-mode-quality` AD-005 / `mermaid-redux-elk-fidelity`）: §1 `themeUpdated` 受信時、Webview は redux kind マップに従い `mermaid.initialize(...)` を更新し、表示中の全 Mermaid NodeView を debounce 後に再 render する。本処理も上記「隔離」に従う。
 
 10. **Mermaid SVG sanitize**（`fix-mermaid-dark-visibility` / `mermaid-contrast-readable` P0）: NodeView の `.mermaid-preview` へ注入する前に DOMPurify でサニタイズする。**`foreignObject` シェルだけでなく、その内部のラベル用 HTML（例: `div` / `span` / テキスト）を保持する**。そのため DOMPurify に **`HTML_INTEGRATION_POINTS: { foreignobject: true }`**（または同等）を必須とする。`ADD_TAGS: ['foreignObject']` のみでは子 HTML が除去され空シェルになり得るため不十分。可読性に必要な style / presentation は XSS 面を広げない範囲で最小限許可してよい（AD-002）。`<script>` / `on*` 等の危険要素は除去し続ける（§9）。`securityLevel: 'strict'` は不変。
 
-11. **CSP 下 presentation CSS フォールバック**（`fix-mermaid-edge-styles`）: Mermaid が SVG 内に埋め込む presentation CSS（特にエッジ／パスの `fill: none`・stroke 系）は Custom Editor Webview の CSP（`style-src` に `'unsafe-inline'` なし）により無効化され得る。Host が発行する**同一 nonce**付きの `<style>`、または既存 `media` スタイルシートへ、`.mermaid-preview`（および必要なら `.mermaid-block`）スコープのフォールバック規則を追加する。ユーザー入力や Mermaid ソース由来の任意 CSS は注入しない。セレクタは flowchart エッジ／リンク相当の最小集合から始め、他 diagram kind で同根因の欠線が出た場合のみ保守的に追加する。**島ライト強制 CSS は撤廃**する。`#editor` や広い Preview 面の背景は変更しない。**受け入れ条件:** Editor Preview および Edit Rich Editor で、flowchart エッジが黒塗りブロブにならず stroke が可視であること；`dark` / `highContrast` では標準 `dark` テーマでノード・ラベル・エッジが識別できること。構文エラーは既存 `.mermaid-error` 契約を維持。変更は Mermaid 表示層（Webview CSS / NodeView 周辺 / テーマヘルパー）に限定し、`docJson` / `markdownText` / serialize / dirty / Host 画像 rewrite / Marp / 三点モード同期に触れない。
+11. **CSP 下 presentation CSS（nonce 再注入優先）**（`mermaid-redux-elk-fidelity` AD-002 / AD-003）: Mermaid が SVG 内に埋め込む presentation CSS は Custom Editor Webview の CSP（`style-src` に `'unsafe-inline'` なし）により無効化され得る。**優先手段:** Mermaid `render` 結果に含まれる presentation `<style>` を抽出し、**Host が発行する同一 nonce** を付与して Webview に再注入する（セレクタは `.mermaid-preview` / 当該図スコープに閉じる）。ユーザー入力や Mermaid ソース由来の任意 CSS 文字列を素通ししない。DOMPurify / 既存サニタイズ契約と衝突する場合は **style 本文の危険構文を落としたうえで** nonce 付き再注入を優先し、不足分のみ最小フォールバックで補う。`fix-mermaid-edge-styles` 由来の静的 Host CSS（`stroke: var(--vscode-foreground)` 等）は再注入が効く前提で **縮小または撤廃**する。残す場合は「本物 CSS 欠落時の安全網」に限定し、redux 配色を上書きして見た目を壊さないこと。**島ライト強制 CSS は撤廃**済み。`#editor` や広い Preview 面の背景は変更しない。`style-src` への `'unsafe-inline'` 追加および CSP の意図的緩和は行わない（§9）。
+
+12. **ELK レイアウト（登録・オプトイン・遅延ロード）**（`mermaid-redux-elk-fidelity` AD-005–AD-007）: オープンな `@mermaid-js/layout-elk` を依存追加し、Webview 起動時または初回 ELK 要求時に `mermaid.registerLayoutLoaders(...)` する。パッケージ（および ELK 本体）は **動的 import / コード分割**し、初期 Webview バンドルを不用意に肥大化させない。グローバル `mermaid.initialize` で全図に `layout: 'elk'` を **強制しない**。既定レイアウトは Mermaid オープン既定（dagre 系）のままとし、図が frontmatter / `%%{init}%%` 等で `layout: elk`（および互換の flowchart ELK 指定）を要求したときのみ ELK を用いる。登録・ロード失敗時は当該図単位のエラー表示＋既存 try-catch 隔離（Webview 全体は止めない）。未対応 diagram kind は既存レイアウトのまま（ELK 全 kind 同等品質は非保証）。
+
+13. **表示層限定・受け入れ**（`mermaid-redux-elk-fidelity` AD-009 / AD-011）: 変更は Mermaid 表示層（Webview / `media` バンドル / NodeView / テーマ・レイアウトヘルパー / Host `getHtml` nonce 経路）に限定し、`docJson` / `markdownText` / serialize / dirty / Host 画像 rewrite / Marp / 三点モード同期に触れない。**受け入れ条件:** (a) kind→`redux`/`redux-dark` マップ、(b) nonce 再注入（または同等）で presentation が CSP 下で効き、flowchart エッジが黒塗りブロブにならず stroke が可視、(c) `layout: elk` 指定図で ELK ローダ登録後に描画成功、(d) グローバル強制 ELK なし、(e) HIP / `securityLevel: 'strict'` / ソース併記 / Preview RO / `'unsafe-inline'` なし回帰。構文エラーは既存 `.mermaid-error` 契約を維持。Chart 拡張依存・Chart 専用アイコンパック一式・ピクセル完全一致は Out。
 
 #### 例外系
 
 1. 悪意ある入力はサニタイズし、スクリプト実行を行わない（RK-003）
-2. Mermaid パッケージ更新による見た目変化・SVG クラス名変更は許容（RK-007 — lockfile 固定推奨）。フォールバックセレクタが陳腐化し得る（`fix-mermaid-edge-styles` RK-001）。sanitize allowlist が再び不足し得る（`mermaid-contrast-readable` RK-005 / `fix-mermaid-edge-styles` RK-003）
-3. frontmatter 内 `config.theme` がグローバル kind マップと異なる場合、当該図のみ意図的に別配色となる（Mermaid 仕様 — `preview-mode-quality` RK-004 / `fix-mermaid-edge-styles` RK-006）。ダーク面＋`theme: default` 等のコントラスト差はユーザー意図として許容
+2. Mermaid / `@mermaid-js/layout-elk` パッケージ更新による見た目変化・SVG クラス名・API 変更は許容（RK-007 — lockfile 固定推奨）。sanitize allowlist が再び不足し得る（`mermaid-contrast-readable` RK-005 / `fix-mermaid-edge-styles` RK-003 / `mermaid-redux-elk-fidelity` RK-005）
+3. frontmatter 内 `config.theme` / `config.layout` がグローバル kind マップ・既定レイアウトと異なる場合、当該図のみ意図的に別配色・別レイアウトとなる（Mermaid 仕様 — `preview-mode-quality` RK-004 / `mermaid-redux-elk-fidelity` AD-013）。ダーク面＋明示 `theme: default` 等のコントラスト差はユーザー意図として許容
 4. 文書内 Mermaid ブロックが多数ある場合、テーマ切替の一括再描画で短時間 CPU 負荷が上がり得る（debounce + 表示中 NodeView のみ — RK-004 系 / `preview-mode-quality` RK-002）
-5. Mermaid テーマのマッピングは VS Code ネイティブ Markdown Preview および Mermaid Snap とのピクセル一致を保証しない（`preview-mode-quality` RK-001 / `mermaid-snap-style-with-source` RK-002）
-6. sanitize でラベル HTML / presentation が欠落していれば黒塗り・不可読は残り得る（`mermaid-contrast-readable` RK-001 — P0 HIP 必須）。CSS フォールバックだけでは不足する場合は最小の属性／タグ許可を security レビュー付きで検討（`fix-mermaid-edge-styles` RK-003 / AD-006）
+5. Mermaid テーマ／レイアウトのマッピングは VS Code ネイティブ Markdown Preview・Mermaid Snap・Mermaid Chart とのピクセル一致を保証しない（`preview-mode-quality` RK-001 / `mermaid-snap-style-with-source` RK-002 / `mermaid-redux-elk-fidelity`）
+6. sanitize でラベル HTML / presentation が欠落していれば黒塗り・不可読は残り得る（`mermaid-contrast-readable` RK-001 — P0 HIP 必須）。再注入と DOMPurify の相互作用で一部 presentation が落ちる／二重定義で競合し得る — 実装時に sanitize 前後を確認し、静的 Host CSS 安全網の要否を決める（`mermaid-redux-elk-fidelity` RK-002）。不足時は最小の属性／タグ許可を security レビュー付きで検討
 7. Preview でソース表示により長いフェンスが画面を占有し得る（表示層のみ・許容 — `mermaid-snap-style-with-source` RK-004）
-8. flowchart 以外（sequence / class 等）で同根因の描画崩れが残る可能性。本タスク必須受け入れは flowchart；他 kind は発見次第セレクタ拡張（`fix-mermaid-edge-styles` AD-003 / RK-004）
-9. 島ライト撤回後、標準 `dark` テーマでも一部図種・ラベルでコントラスト不足が残る可能性。受け入れは「識別できる」— ピクセル一致は非保証（`fix-mermaid-edge-styles` RK-002）
+8. flowchart 以外（sequence / class 等）で CSP 由来の描画崩れや ELK 非対応が残る可能性。必須受け入れは flowchart 等 ELK 対応 kind での `layout: elk` 成功および presentation 再注入後のエッジ可視；他 kind は発見次第拡張（`fix-mermaid-edge-styles` RK-004 / `mermaid-redux-elk-fidelity` RK-004）
+9. redux / redux-dark でも VS Code 面とのコントラスト不足が残る可能性。受け入れは「識別できる」— Chart／Snap ピクセル一致は非保証（`mermaid-redux-elk-fidelity` RK-003）
+10. `@mermaid-js/layout-elk` / elkjs はバンドル肥大し得る。遅延ロードしても初回 ELK 図や VSIX 実サイズが増える（`mermaid-redux-elk-fidelity` RK-001）。グローバル強制 ELK は行わないため、何も書かない図は dagre 系既定のまま（RK-006 — README / 仕様で `layout: elk` を明示）
 
 ### Non-Goals
 
 - Mermaid ビジュアルダイアグラムエディタ（backlog）
 - オフライン以外での外部レンダリング API 呼び出し
-- VS Code ネイティブ Markdown Preview / Mermaid Snap との配色・レイアウト **ピクセル完全一致**
-- Mermaid Snap / 標準 Preview / Mermaid Chart の**ソースコード・API・アセット取り込み**（観察のみ可）
-- Mermaid Chart 拡張依存・ELK レイアウト導入（`fix-mermaid-edge-styles` AD-013 — Out）
+- VS Code ネイティブ Markdown Preview / Mermaid Snap / Mermaid Chart との配色・レイアウト **ピクセル完全一致**
+- Mermaid Snap / 標準 Preview / Mermaid Chart の**ソースコード・API・アセット取り込み**および Chart 拡張依存・フォークパッケージ（観察のみ可 — オープンな `mermaid` + `@mermaid-js/layout-elk` に限定）
+- Chart 専用アイコンパック一式・Chart ライブエディタ既定 ELK 寄せのグローバル強制・専用ズーム／テーマピッカー UI
+- グローバル `mermaid.initialize` による全図 `layout: 'elk'` 強制（オプトインのみ — §5 正常系 12）
 - CSP `style-src` への `'unsafe-inline'` 追加および CSP の意図的緩和（§9）
 - 独自パレットの全面設計・`highContrast` 専用パレット（Out）
 - `#editor` 等の広い面の背景色変更
@@ -536,8 +544,9 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 ### Related Tests
 
 - [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-031–037。**TC-130–132（Preview Mermaid）はソース併記へ更新予定**（旧「Preview ソース非表示」撤回 — `mermaid-snap-style-with-source` / `preview-rich-embed`）。frontmatter 描画・テーマ切替再描画（TC-013 拡張）・Preview コントラスト: 後続 TC（`preview-mode-quality`）。Mermaid SVG `foreignObject` シェル保持: TC-152（`fix-mermaid-dark-visibility` — 回帰維持）。表示層が Document を変えない回帰: TC-082 等
-- [doc/testspec-mermaid-contrast-readable.md](testspec-mermaid-contrast-readable.md) — HIP 付き sanitize 回帰維持。**島ライト必須・全 kind `default` 前提の Expected は `fix-mermaid-edge-styles` で更新要**（標準テーママップ＋nonce CSS フォールバック・エッジ可視）
-- [doc/testspec-mermaid-snap-style-with-source.md](testspec-mermaid-snap-style-with-source.md) — ソース併記・Preview RO・HIP / strict 回帰維持。**島ライト／全 kind `default` 前提 TC は `fix-mermaid-edge-styles` で更新要**。**回帰必須:** CSP＋sanitize 後も flowchart エッジが黒塗りにならず stroke が可視（ソース静的検査または同等の契約テスト）
+- [doc/testspec-mermaid-contrast-readable.md](testspec-mermaid-contrast-readable.md) — HIP 付き sanitize 回帰維持。**Expected は `mermaid-redux-elk-fidelity` で更新要**（kind→`redux`/`redux-dark`、nonce presentation 再注入、静的 Host CSS 縮小）
+- [doc/testspec-mermaid-snap-style-with-source.md](testspec-mermaid-snap-style-with-source.md) — ソース併記・Preview RO・HIP / strict 回帰維持。**テーマ／CSS 前提 TC は `mermaid-redux-elk-fidelity` で更新要**。**回帰必須:** CSP＋sanitize＋nonce 再注入後も flowchart エッジが黒塗りにならず stroke が可視；`'unsafe-inline'` なし
+- [doc/testspec-mermaid-redux-elk-fidelity.md](testspec-mermaid-redux-elk-fidelity.md) — **後続で作成**（`spec-test-design`）。必須契約例: kind→redux マップ、nonce 再注入で presentation が CSP 下で効く、`layout: elk` 指定図で ELK 登録後描画成功、グローバル強制 ELK なし、HIP / strict / ソース併記 / Preview RO / `'unsafe-inline'` なし回帰
 ---
 
 ## §6 Marp プレビュー
@@ -787,9 +796,9 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 
 #### 正常系
 
-1. Webview に厳格 CSP を設定する（nonce 付き script/style）。Custom Editor の `style-src` は `${webview.cspSource} 'nonce-${nonce}'` を維持し、**`'unsafe-inline'` を追加しない**。Mermaid presentation の CSP フォールバックは Host 同一 nonce 付き CSS のみ（§5 正常系 11 / `fix-mermaid-edge-styles`）。`img-src ${webview.cspSource} data: https: file:` は `getHtml` のまま維持。CSP / `localResourceRoots` / `on*` 除去の緩和は行わない
+1. Webview に厳格 CSP を設定する（nonce 付き script/style）。Custom Editor の `style-src` は `${webview.cspSource} 'nonce-${nonce}'` を維持し、**`'unsafe-inline'` を追加しない**。Mermaid presentation は Host 同一 nonce 付きの render 結果 `<style>` 再注入を優先し、静的 Host CSS は欠落時の最小安全網に限定する（§5 正常系 11 / `mermaid-redux-elk-fidelity`）。`img-src ${webview.cspSource} data: https: file:` は `getHtml` のまま維持。CSP / `localResourceRoots` / `on*` 除去の緩和は行わない
 2. 表示前に HTML をサニタイズする（表・画像・基本書式・Mermaid SVG を許可）。**許可タグに `del` / `s` を含める**（§2 取り消し線の HTML 混在入力を落とさない）。下線・highlight（`mark`）は許可追加しない。`input` checkbox は既存許可のまま
-3. **Mermaid SVG sanitize**（Webview NodeView）: Mermaid が出力した SVG を DOMPurify でサニタイズする際、**`HTML_INTEGRATION_POINTS: { foreignobject: true }`（または同等）により `foreignObject` シェルだけでなくラベル用 HTML 子を保持する**（§5 正常系 10 / `mermaid-contrast-readable` P0）。`<script>` / イベントハンドラ属性等は除去し続ける。`securityLevel: 'strict'` は不変。allowlist 拡大は最小・レビュー必須（AD-002）
+3. **Mermaid SVG sanitize**（Webview NodeView）: Mermaid が出力した SVG を DOMPurify でサニタイズする際、**`HTML_INTEGRATION_POINTS: { foreignobject: true }`（または同等）により `foreignObject` シェルだけでなくラベル用 HTML 子を保持する**（§5 正常系 10 / `mermaid-contrast-readable` P0）。presentation `<style>` 再注入経路ではユーザー／ソース由来の任意 CSS を素通しせず、危険構文を落としたうえで Host 同一 nonce を付与する（§5 正常系 11）。`<script>` / イベントハンドラ属性等は除去し続ける。`securityLevel: 'strict'` は不変。allowlist / style 再注入の変更は XSS 面を広げない最小とし、実装後 security レビュー対象（AD-002 / `mermaid-redux-elk-fidelity` AD-008）
 4. 画像保存先はワークスペース内 `img/` に限定する
 5. **画像 URI rewrite（Host）:** `.md` のディレクトリ基準で実ファイル URI を組み立て、`isSafeImagePath(path)` — **`..` 禁止**、**`img/` プレフィックス必須** — を通過した場合のみ `webview.asWebviewUri` する。対象: TipTap `docJson` 内 `image.src`、Marp 出力 HTML 内 `<img src>`
 6. **`https:` / `data:`** は CSP 上 Webview が直接解決（既存どおり — rewrite 不要）
@@ -935,8 +944,9 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 |-------------|------|
 | [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) | **作成済** — TC-001–142。**preview-rich-embed**（§1 / §5 / §6 / §7 / §9）: TC-124–142 Green（**TC-130–132 は Preview ソース併記へ更新予定** — `mermaid-snap-style-with-source`）。**GFM 書式ツールバー**（§2 / §8 / §9 `del`/`s`）は **要追記**（`gfm-format-toolbar`）。TC-152（foreignObject）回帰維持 |
 | [doc/testspec-native-preview-side-and-default-raw.md](testspec-native-preview-side-and-default-raw.md) | **作成済** — 初期 Raw・Default Preview・dirty ゲート・Pattern A 非干渉・三点往復・表示ラベル。`default-preview-same-tab-group`: `showPreview` + `moveActiveEditor` 同一グループ（＋隣接 best-effort）・コマンド ID / ラベル / TC-004/005/017/018/021 |
-| [doc/testspec-mermaid-contrast-readable.md](testspec-mermaid-contrast-readable.md) | **作成済** — HIP 付き sanitize 回帰維持。島ライト／全 kind `default` 前提は **`fix-mermaid-edge-styles` で更新要**（標準テーママップ＋nonce CSS・エッジ可視） |
-| [doc/testspec-mermaid-snap-style-with-source.md](testspec-mermaid-snap-style-with-source.md) | **作成済** — ソース併記・Preview RO・HIP / strict。島ライト／全 kind `default` 前提は **`fix-mermaid-edge-styles` で更新要**。flowchart エッジ CSP 回帰必須 |
+| [doc/testspec-mermaid-contrast-readable.md](testspec-mermaid-contrast-readable.md) | **作成済** — HIP 付き sanitize 回帰維持。テーマ／CSS Expected は **`mermaid-redux-elk-fidelity` で更新要**（`redux`/`redux-dark`＋nonce presentation 再注入） |
+| [doc/testspec-mermaid-snap-style-with-source.md](testspec-mermaid-snap-style-with-source.md) | **作成済** — ソース併記・Preview RO・HIP / strict。テーマ／CSS 前提は **`mermaid-redux-elk-fidelity` で更新要**。flowchart エッジ CSP＋nonce 再注入回帰必須；`'unsafe-inline'` なし |
+| [doc/testspec-mermaid-redux-elk-fidelity.md](testspec-mermaid-redux-elk-fidelity.md) | **未作成** — 後続 `spec-test-design`。kind→redux マップ、nonce 再注入、ELK オプトイン／遅延ロード、グローバル強制 ELK なし、strict / HIP / ソース併記 / Preview RO 回帰 |
 | MVP 外項目 | [doc/backlog-vsc-md-wysiwyg.md](backlog-vsc-md-wysiwyg.md) |
 
 ---
@@ -963,10 +973,11 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | Preview Mermaid ソース併記 | Preview / Markdown とも図（`.mermaid-preview`）の下に `.mermaid-source` 表示。旧「Preview ソース非表示」撤回。Preview は厳密 RO | TC-130–132 更新予定（`mermaid-snap-style-with-source`） |
 | Preview 内 Marp 描画 | `isMarpDocument` 共用、`#preview-marp-root`、`previewMarpHtml`、§6 パネル共存 | 後続 TC（`preview-rich-embed`） |
 | Preview 可読性 CSS | `body[data-mode='preview']` スコープ、`line-height`、opacity/コントラスト、`--vscode-*` トークン | 後続 TC（`preview-mode-quality`） |
-| Mermaid frontmatter / VS Code テーマ | フェンス全文 render、kind マップ `light`→`default` / `dark`\|`highContrast`→`dark`、try-catch 隔離、`themeVariables` への `var(--vscode-...)` 禁止、`themeUpdated` 再描画。全 kind 強制 `default` は撤回（`fix-mermaid-edge-styles`） | `mermaid-theme-crash-fix` / `fix-mermaid-edge-styles` |
-| Mermaid コントラスト可読 | 標準テーママップ＋nonce CSS フォールバック、HIP 付き sanitize（ラベル HTML 保持）、`dark`/`highContrast` でノード・ラベル・エッジ識別。島ライト撤回。広い面背景不変。strict + DOMPurify 維持 | [testspec-mermaid-contrast-readable.md](testspec-mermaid-contrast-readable.md)（更新要） |
-| Mermaid ソース併記 | Preview / Markdown とも図下に `.mermaid-source`。Preview 厳密 RO。HIP / strict 維持。島ライト＋全 kind `default` は撤回（`fix-mermaid-edge-styles`） | [testspec-mermaid-snap-style-with-source.md](testspec-mermaid-snap-style-with-source.md)（更新要） |
-| Mermaid エッジ CSP フォールバック | Host 同一 nonce 付き CSS で `fill: none` / stroke 系を補完。`style-src` に `'unsafe-inline'` なし。flowchart エッジ黒ブロブ／欠線解消。任意ユーザー CSS 注入なし | 後続 TC（`fix-mermaid-edge-styles`） |
+| Mermaid frontmatter / VS Code テーマ | フェンス全文 render、kind マップ `light`→`redux` / `dark`\|`highContrast`→`redux-dark`、try-catch 隔離、`themeVariables` への `var(--vscode-...)` 禁止、`themeUpdated` 再描画。classic `default`/`dark` および全 kind 強制 `default` は撤回（`mermaid-redux-elk-fidelity`） | `mermaid-theme-crash-fix` / `fix-mermaid-edge-styles` / `mermaid-redux-elk-fidelity` |
+| Mermaid コントラスト可読 | redux 系テーママップ＋ Host 同一 nonce による presentation `<style>` 再注入、HIP 付き sanitize（ラベル HTML 保持）、`dark`/`highContrast` でノード・ラベル・エッジ識別。島ライト撤回。静的 Host CSS は安全網に縮小。広い面背景不変。strict + DOMPurify 維持 | [testspec-mermaid-contrast-readable.md](testspec-mermaid-contrast-readable.md)（更新要） |
+| Mermaid ソース併記 | Preview / Markdown とも図下に `.mermaid-source`。Preview 厳密 RO。HIP / strict 維持。島ライト＋全 kind `default` は撤回。テーマは redux マップ（`mermaid-redux-elk-fidelity`） | [testspec-mermaid-snap-style-with-source.md](testspec-mermaid-snap-style-with-source.md)（更新要） |
+| Mermaid presentation CSP（nonce 再注入） | render 結果 `<style>` に Host 同一 nonce を付与して再注入。任意ユーザー CSS 素通しなし。`style-src` に `'unsafe-inline'` なし。静的 Host CSS エッジフォールバックは縮小／撤廃。flowchart エッジ黒ブロブ／欠線解消 | 後続 TC（`mermaid-redux-elk-fidelity`）／既存 edge-styles 回帰更新 |
+| Mermaid ELK オプトイン | `@mermaid-js/layout-elk` 登録＋遅延ロード。frontmatter / `%%{init}%%` の `layout: elk` 時のみ ELK。グローバル強制なし。登録失敗は図単位エラー。Chart 依存 Out | 後続 TC（`mermaid-redux-elk-fidelity`） |
 
 ---
 
@@ -996,3 +1007,4 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | 2026-09-06 | §1, §8, §10, 共通 Non-Goals, RK-018–020, Spec Gaps, Related Tests, README, 改訂履歴 | Default Preview を同一タブグループへ（`default-preview-same-tab-group`）: 一次 API `markdown.showPreview`、Host の open 前記録 + open 後 `tabGroups.move` 補償（preferred index `activeIndex+1` best-effort）。`showPreviewToSide` フォールバック禁止。公開コマンド `vsc-md-editor.showNativeMarkdownPreview`（旧 `…ToSide` はエイリアス）。ラベル / `data-action=native-preview` / `openNativePreview` / dirty 警告から Side 表現を除去。非モード・dirty Save/Cancel・Pattern A / Marp 非干渉は維持。Requirements Brief AD-001–AD-010 |
 | 2026-09-06 | §1, §10, RK-018–019, Spec Gaps, Related Tests, 改訂履歴 | Doc sync（`default-preview-same-tab-group`）: 同一グループ補償の具体メカニズムを安定 `moveActiveEditor`（`by: 'group'` MUST / `by: 'tab'` preferred best-effort）に置換。旧 `tabGroups.move` / `move(..., { index })`・Preview タブ first-match 特定の記述を除去。振る舞い契約（`showPreview`・ToSide フォールバック禁止・同 group MUST・隣接 best-effort）は不変。Related Tests「要更新」残渣を解消 |
 | 2026-09-06 | 概要, AD-007, §1, §5, §9, Spec Gaps, Related Tests, 改訂履歴 | Mermaid エッジ CSP フォールバック＋標準テーママップ復帰（`fix-mermaid-edge-styles`）: 島ライト強制・全 kind `theme: 'default'` を撤回。kind マップ `light`→`default` / `dark`\|`highContrast`→`dark`。`themeVariables` への `var(--vscode-...)` 再導入禁止。Host 同一 nonce 付き presentation CSS（`fill: none` / stroke）で CSP 下のエッジ黒ブロブを解消。`style-src` に `'unsafe-inline'` なし。ソース併記・Preview RO・`securityLevel: 'strict'`・HIP / DOMPurify 不変。Chart / ELK Out。Requirements Brief AD-001–AD-013 |
+| 2026-09-06 | 概要, AD-007, §5, §9, Spec Gaps, Related Tests, 改訂履歴 | Mermaid redux テーマ＋ ELK オプトイン＋ presentation nonce 再注入（`mermaid-redux-elk-fidelity`）: kind マップ `light`→`redux` / `dark`\|`highContrast`→`redux-dark`。render 結果 `<style>` の Host 同一 nonce 再注入を優先し、静的 Host CSS エッジフォールバックを縮小／撤廃。`@mermaid-js/layout-elk` 登録＋遅延ロード、frontmatter / `%%{init}%%` の `layout: elk` 時のみ ELK（グローバル強制なし）。旧「ELK Out」撤回。Chart 依存・ピクセル一致・`'unsafe-inline'`・HIP / strict / ソース併記 / Preview RO は不変。Requirements Brief AD-001–AD-015 |

@@ -7,10 +7,16 @@
   var __getProtoOf = Object.getPrototypeOf;
   var __hasOwnProp = Object.prototype.hasOwnProperty;
   var __defNormalProp = (obj, key, value2) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value: value2 }) : obj[key] = value2;
+  var __require = /* @__PURE__ */ ((x6) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x6, {
+    get: (a2, b3) => (typeof require !== "undefined" ? require : a2)[b3]
+  }) : x6)(function(x6) {
+    if (typeof require !== "undefined") return require.apply(this, arguments);
+    throw Error('Dynamic require of "' + x6 + '" is not supported');
+  });
   var __esm = (fn3, res) => function __init() {
     return fn3 && (res = (0, fn3[__getOwnPropNames(fn3)[0]])(fn3 = 0)), res;
   };
-  var __commonJS = (cb, mod) => function __require() {
+  var __commonJS = (cb, mod) => function __require2() {
     return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
   };
   var __export = (target, all) => {
@@ -115544,7 +115550,7 @@ For Further details.`;
       __esm2 = (fn3, res) => function __init() {
         return fn3 && (res = (0, fn3[__getOwnPropNames2(fn3)[0]])(fn3 = 0)), res;
       };
-      __commonJS2 = (cb, mod) => function __require() {
+      __commonJS2 = (cb, mod) => function __require2() {
         return mod || (0, cb[__getOwnPropNames2(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
       };
       __export3 = (target, all) => {
@@ -223815,14 +223821,14 @@ img.ProseMirror-separator {
     switch (kind) {
       case "light":
         return {
-          theme: "default",
+          theme: "redux",
           themeVariables: {},
           securityLevel: "strict"
         };
       case "dark":
       case "highContrast":
         return {
-          theme: "dark",
+          theme: "redux-dark",
           themeVariables: {},
           securityLevel: "strict"
         };
@@ -223830,7 +223836,7 @@ img.ProseMirror-separator {
         const _exhaustive = kind;
         void _exhaustive;
         return {
-          theme: "default",
+          theme: "redux",
           themeVariables: {},
           securityLevel: "strict"
         };
@@ -223872,6 +223878,77 @@ img.ProseMirror-separator {
   var mermaidTimers = /* @__PURE__ */ new Map();
   var mermaidRerenderCallbacks = /* @__PURE__ */ new Set();
   var mermaidThemeRerenderTimer;
+  var elkLayoutRegisterPromise;
+  function getHostCspNonce() {
+    return document.body?.getAttribute("data-csp-nonce") ?? "";
+  }
+  function sourceRequestsElkLayout(source3) {
+    return /(?:^|[\s,{])layout\s*:\s*['"]?elk\b/i.test(source3) || /flowchart-elk/i.test(source3);
+  }
+  async function ensureElkLayoutRegistered(source3) {
+    if (!sourceRequestsElkLayout(source3)) {
+      return;
+    }
+    if (!elkLayoutRegisterPromise) {
+      elkLayoutRegisterPromise = (async () => {
+        try {
+          const chunkUri = document.body?.getAttribute("data-elk-chunk-uri");
+          const elkModule = chunkUri ? await import(
+            /* webpackIgnore: true */
+            chunkUri
+          ) : await import("./mermaid-layout-elk.js");
+          const elkLayouts = elkModule.default ?? elkModule;
+          mermaid_default.registerLayoutLoaders(elkLayouts);
+        } catch (err) {
+          elkLayoutRegisterPromise = void 0;
+          throw err;
+        }
+      })();
+    }
+    await elkLayoutRegisterPromise;
+  }
+  function sanitizeMermaidPresentationCss(css2) {
+    return css2.replace(/@import\b[^;]*;?/gi, "").replace(/expression\s*\(/gi, "(").replace(/javascript\s*:/gi, "").replace(/-moz-binding\s*:/gi, "moz-binding-blocked:").replace(/behavior\s*:/gi, "behavior-blocked:");
+  }
+  function applyMermaidPresentationStyle(viewId, svg2) {
+    const styleChunks = [];
+    const svgWithoutStyles = svg2.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_match, css2) => {
+      const cleaned = sanitizeMermaidPresentationCss(css2);
+      if (cleaned.trim()) {
+        styleChunks.push(cleaned);
+      }
+      return "";
+    });
+    const styleId = `mermaid-presentation-${viewId}`;
+    let styleEl = document.getElementById(styleId);
+    if (!styleEl) {
+      styleEl = document.createElement("style");
+      styleEl.id = styleId;
+      const nonce = getHostCspNonce();
+      if (nonce) {
+        styleEl.setAttribute("nonce", nonce);
+      }
+      document.head.appendChild(styleEl);
+    }
+    const scopedChunks = styleChunks.map(
+      (css2) => css2.replace(/(^|})\s*([^{}@/][^{]*)\{/g, (_m, brace, selectors) => {
+        const scoped = selectors.split(",").map((sel) => {
+          const trimmed = sel.trim();
+          if (!trimmed) {
+            return trimmed;
+          }
+          if (trimmed.startsWith(".mermaid-preview")) {
+            return trimmed;
+          }
+          return `.mermaid-preview ${trimmed}`;
+        }).join(", ");
+        return `${brace} ${scoped}{`;
+      })
+    );
+    const safetyNet = ".mermaid-preview .edgePath .path, .mermaid-preview .edgePaths .path, .mermaid-preview .flowchart-link, .mermaid-preview path.flowchart-link { fill: none; }";
+    styleEl.textContent = [...scopedChunks, safetyNet].join("\n");
+    return svgWithoutStyles;
+  }
   function initializeMermaidTheme(kind) {
     try {
       const config3 = buildMermaidThemeConfig(kind);
@@ -224003,7 +224080,12 @@ img.ProseMirror-separator {
             setTimeout(async () => {
               try {
                 const renderSource = buildMermaidRenderSource(source3);
-                const { svg: svg2 } = await mermaid_default.render(`${viewId}-svg`, renderSource || " ");
+                await ensureElkLayoutRegistered(renderSource);
+                const { svg: renderedSvg } = await mermaid_default.render(
+                  `${viewId}-svg`,
+                  renderSource || " "
+                );
+                const svg2 = applyMermaidPresentationStyle(viewId, renderedSvg);
                 preview.innerHTML = sanitizeMermaidSvg(svg2);
               } catch (err) {
                 preview.innerHTML = `<div class="mermaid-error">${escapeHtml(String(err))}</div>`;
@@ -224037,6 +224119,7 @@ img.ProseMirror-separator {
               clearTimeout(existing);
             }
             mermaidTimers.delete(viewId);
+            document.getElementById(`mermaid-presentation-${viewId}`)?.remove();
           }
         };
       };

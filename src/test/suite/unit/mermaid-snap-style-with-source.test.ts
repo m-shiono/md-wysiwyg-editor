@@ -1,6 +1,6 @@
 /**
- * mermaid-snap-style-with-source — Preview/Markdown source co-display + standard kind theme map.
- * Island-light + all-kinds-default withdrawn (fix-mermaid-edge-styles). Theme/island Red until build fix.
+ * mermaid-snap-style-with-source — Preview/Markdown source co-display + redux kind theme map.
+ * Island-light + classic default/dark withdrawn (mermaid-redux-elk-fidelity / fix-mermaid-edge-styles).
  */
 import * as assert from 'assert';
 import * as fs from 'fs';
@@ -140,7 +140,7 @@ suite('mermaid-snap-style-with-source', () => {
     );
   });
 
-  test('TC-005: VS Code kinds map to standard Mermaid themes with strict', () => {
+  test('TC-005: VS Code kinds map to Mermaid redux themes with strict', () => {
     const buildMermaidThemeConfig = getUtilExport<(kind: string) => MermaidThemeConfig>(
       'mermaid-theme',
       'buildMermaidThemeConfig',
@@ -148,16 +148,16 @@ suite('mermaid-snap-style-with-source', () => {
     assert.ok(buildMermaidThemeConfig, 'buildMermaidThemeConfig export required');
 
     const expected: Record<string, string> = {
-      light: 'default',
-      dark: 'dark',
-      highContrast: 'dark',
+      light: 'redux',
+      dark: 'redux-dark',
+      highContrast: 'redux-dark',
     };
     for (const kind of ['light', 'dark', 'highContrast'] as const) {
       const config = buildMermaidThemeConfig!(kind);
       assert.strictEqual(
         config.theme,
         expected[kind],
-        `kind ${kind} must map to theme '${expected[kind]}' (standard kind map)`,
+        `kind ${kind} must map to theme '${expected[kind]}' (redux kind map)`,
       );
       assert.strictEqual(config.securityLevel, 'strict', 'securityLevel strict must remain');
       for (const value of Object.values(config.themeVariables ?? {})) {
@@ -252,7 +252,7 @@ suite('mermaid-snap-style-with-source', () => {
     );
   });
 
-  test('TC-012: themeUpdated path follows standard kind map and strict', () => {
+  test('TC-012: themeUpdated path follows redux kind map and strict', () => {
     const themeSrc = readRepoFile('src/utils/mermaid-theme.ts');
     assert.ok(
       /handleThemeUpdated/.test(themeSrc),
@@ -268,9 +268,9 @@ suite('mermaid-snap-style-with-source', () => {
     );
     assert.ok(buildMermaidThemeConfig);
     const expected: Record<string, string> = {
-      light: 'default',
-      dark: 'dark',
-      highContrast: 'dark',
+      light: 'redux',
+      dark: 'redux-dark',
+      highContrast: 'redux-dark',
     };
     for (const kind of ['light', 'dark', 'highContrast'] as const) {
       const config = buildMermaidThemeConfig!(kind);

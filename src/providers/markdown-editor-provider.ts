@@ -541,6 +541,9 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'media', 'editor.js'),
     );
+    const elkChunkUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'media', 'mermaid-layout-elk.js'),
+    );
     const styleUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'media', 'editor.css'),
     );
@@ -549,7 +552,8 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     const csp = [
       "default-src 'none'",
       `style-src ${webview.cspSource} 'nonce-${nonce}'`,
-      `script-src 'nonce-${nonce}'`,
+      // nonce for entry; cspSource for ESM dynamic-import chunk (ELK lazy load)
+      `script-src 'nonce-${nonce}' ${webview.cspSource}`,
       `img-src ${webview.cspSource} data: https: file:`,
       `font-src ${webview.cspSource}`,
     ].join('; ');
@@ -563,7 +567,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
   <link rel="stylesheet" href="${styleUri}" nonce="${nonce}" />
   <title>MD WYSIWYG Editor</title>
 </head>
-<body data-readonly="${readonly}" data-mode="${DEFAULT_EDITOR_MODE}">
+<body data-readonly="${readonly}" data-mode="${DEFAULT_EDITOR_MODE}" data-csp-nonce="${nonce}" data-elk-chunk-uri="${elkChunkUri}">
   <div id="mode-toolbar" role="toolbar" aria-label="Editor mode">
     <button type="button" data-action="native-preview" title="Open Default Markdown Preview" aria-label="Open Default Markdown Preview">Default Preview</button>
     <button type="button" data-mode="preview" title="Editor Preview" aria-label="Editor Preview">Editor Preview</button>
