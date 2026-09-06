@@ -223822,14 +223822,14 @@ img.ProseMirror-separator {
       case "light":
         return {
           theme: "redux",
-          themeVariables: { fontSize: "13px" },
+          themeVariables: { fontSize: "8px" },
           securityLevel: "strict"
         };
       case "dark":
       case "highContrast":
         return {
           theme: "redux-dark",
-          themeVariables: { fontSize: "13px" },
+          themeVariables: { fontSize: "8px" },
           securityLevel: "strict"
         };
       default: {
@@ -223837,7 +223837,7 @@ img.ProseMirror-separator {
         void _exhaustive;
         return {
           theme: "redux",
-          themeVariables: { fontSize: "13px" },
+          themeVariables: { fontSize: "8px" },
           securityLevel: "strict"
         };
       }
@@ -223875,6 +223875,10 @@ img.ProseMirror-separator {
   var MERMAID_THEME_RERENDER_DEBOUNCE_MS = 300;
   var RAW_SYNC_DEBOUNCE_MS = 200;
   var RAW_UPDATE_DEBOUNCE_MS = 250;
+  var MERMAID_VIEWPORT_ZOOM_STEP = 1.25;
+  var MERMAID_VIEWPORT_MIN_SCALE = 0.2;
+  var MERMAID_VIEWPORT_MAX_SCALE = 8;
+  var MERMAID_TITLE_VIEWBOX_PAD = 12;
   var mermaidTimers = /* @__PURE__ */ new Map();
   var mermaidRerenderCallbacks = /* @__PURE__ */ new Set();
   var mermaidThemeRerenderTimer;
@@ -224060,9 +224064,17 @@ img.ProseMirror-separator {
         const dom = document.createElement("div");
         dom.classList.add("mermaid-block");
         dom.setAttribute("data-mermaid-node", "true");
+        const { toolbar, zoomInBtn, zoomOutBtn, fitBtn } = createMermaidViewportToolbar();
+        dom.appendChild(toolbar);
+        const viewport2 = document.createElement("div");
+        viewport2.classList.add("mermaid-viewport");
+        const canvas = document.createElement("div");
+        canvas.classList.add("mermaid-viewport-canvas");
         const preview = document.createElement("div");
         preview.classList.add("mermaid-preview");
-        dom.appendChild(preview);
+        canvas.appendChild(preview);
+        viewport2.appendChild(canvas);
+        dom.appendChild(viewport2);
         const pre = document.createElement("pre");
         pre.classList.add("mermaid-source");
         const code = document.createElement("code");
@@ -224070,6 +224082,48 @@ img.ProseMirror-separator {
         pre.appendChild(code);
         dom.appendChild(pre);
         const viewId = `mermaid-nv-${Math.random().toString(36).slice(2, 10)}`;
+        let viewportScale = 1;
+        const detachPan = attachMermaidViewportPan(viewport2);
+        const setViewportUiEnabled = (enabled) => {
+          toolbar.hidden = !enabled;
+          toolbar.setAttribute("aria-hidden", enabled ? "false" : "true");
+          zoomInBtn.disabled = !enabled;
+          zoomOutBtn.disabled = !enabled;
+          fitBtn.disabled = !enabled;
+          if (!enabled) {
+            viewport2.setAttribute("aria-hidden", "true");
+          } else {
+            viewport2.removeAttribute("aria-hidden");
+          }
+        };
+        const applyScale = (next3) => {
+          viewportScale = clampMermaidViewportScale(next3);
+          applyViewportZoom(canvas, viewportScale);
+        };
+        const zoomIn = () => {
+          applyScale(viewportScale * MERMAID_VIEWPORT_ZOOM_STEP);
+        };
+        const zoomOut = () => {
+          applyScale(viewportScale / MERMAID_VIEWPORT_ZOOM_STEP);
+        };
+        const refit = () => {
+          viewportScale = fitToViewport(viewport2, canvas, preview);
+        };
+        zoomInBtn.addEventListener("click", (event3) => {
+          event3.preventDefault();
+          event3.stopPropagation();
+          zoomIn();
+        });
+        zoomOutBtn.addEventListener("click", (event3) => {
+          event3.preventDefault();
+          event3.stopPropagation();
+          zoomOut();
+        });
+        fitBtn.addEventListener("click", (event3) => {
+          event3.preventDefault();
+          event3.stopPropagation();
+          refit();
+        });
         const renderPreview = (source3) => {
           const existing = mermaidTimers.get(viewId);
           if (existing) {
@@ -224087,8 +224141,19 @@ img.ProseMirror-separator {
                 );
                 const svg2 = applyMermaidPresentationStyle(viewId, renderedSvg);
                 preview.innerHTML = sanitizeMermaidSvg(svg2);
+                const svgEl = preview.querySelector("svg");
+                if (svgEl) {
+                  ensureTitleVisible(svgEl);
+                }
+                setViewportUiEnabled(true);
+                requestAnimationFrame(() => {
+                  refit();
+                });
               } catch (err) {
                 preview.innerHTML = `<div class="mermaid-error">${escapeHtml(String(err))}</div>`;
+                setViewportUiEnabled(false);
+                applyViewportZoom(canvas, 1);
+                viewportScale = 1;
                 vscode.postMessage({ type: "mermaidError", error: String(err) });
               }
             }, MERMAID_DEBOUNCE_MS)
@@ -224114,6 +224179,7 @@ img.ProseMirror-separator {
           },
           destroy: () => {
             mermaidRerenderCallbacks.delete(rerenderFromDom);
+            detachPan();
             const existing = mermaidTimers.get(viewId);
             if (existing) {
               clearTimeout(existing);
@@ -224149,6 +224215,146 @@ img.ProseMirror-separator {
       // foreignObject 内の XHTML ラベルを空シェルにしない（mermaid-contrast-readable P0）
       HTML_INTEGRATION_POINTS: { foreignobject: true }
     });
+  }
+  function ensureTitleVisible(svgRoot) {
+    try {
+      svgRoot.style.overflow = "visible";
+      const bbox = svgRoot.getBBox();
+      if (!Number.isFinite(bbox.width) || !Number.isFinite(bbox.height) || bbox.width <= 0) {
+        return;
+      }
+      let minX = bbox.x;
+      let minY = bbox.y;
+      let maxX = bbox.x + bbox.width;
+      let maxY = bbox.y + bbox.height;
+      svgRoot.querySelectorAll("text, .titleText, title").forEach((node2) => {
+        const el = node2;
+        if (typeof el.getBBox !== "function") {
+          return;
+        }
+        try {
+          const tb = el.getBBox();
+          minX = Math.min(minX, tb.x);
+          minY = Math.min(minY, tb.y);
+          maxX = Math.max(maxX, tb.x + tb.width);
+          maxY = Math.max(maxY, tb.y + tb.height);
+        } catch {
+        }
+      });
+      const pad3 = MERMAID_TITLE_VIEWBOX_PAD;
+      const vbX = minX - pad3;
+      const vbY = minY - pad3;
+      const vbW = Math.max(1, maxX - minX + pad3 * 2);
+      const vbH = Math.max(1, maxY - minY + pad3 * 2);
+      svgRoot.setAttribute("viewBox", `${vbX} ${vbY} ${vbW} ${vbH}`);
+      if (!svgRoot.getAttribute("width") || svgRoot.getAttribute("width") === "100%") {
+        svgRoot.setAttribute("width", String(vbW));
+      }
+      if (!svgRoot.getAttribute("height") || svgRoot.getAttribute("height") === "100%") {
+        svgRoot.setAttribute("height", String(vbH));
+      }
+    } catch {
+      svgRoot.style.overflow = "visible";
+    }
+  }
+  function clampMermaidViewportScale(scale3) {
+    return Math.min(
+      MERMAID_VIEWPORT_MAX_SCALE,
+      Math.max(MERMAID_VIEWPORT_MIN_SCALE, scale3)
+    );
+  }
+  function applyViewportZoom(canvas, scale3) {
+    canvas.style.transform = `scale(${scale3})`;
+  }
+  function fitToViewport(viewport2, canvas, preview) {
+    const svg2 = preview.querySelector("svg");
+    if (!svg2) {
+      applyViewportZoom(canvas, 1);
+      return 1;
+    }
+    applyViewportZoom(canvas, 1);
+    const frameW = Math.max(1, viewport2.clientWidth - 8);
+    const frameH = Math.max(1, viewport2.clientHeight - 8);
+    const naturalW = svg2.width?.baseVal?.value || svg2.getBoundingClientRect().width || 1;
+    const naturalH = svg2.height?.baseVal?.value || svg2.getBoundingClientRect().height || 1;
+    const scale3 = clampMermaidViewportScale(
+      Math.min(1, frameW / Math.max(1, naturalW), frameH / Math.max(1, naturalH))
+    );
+    applyViewportZoom(canvas, scale3);
+    viewport2.scrollLeft = 0;
+    viewport2.scrollTop = 0;
+    return scale3;
+  }
+  function createMermaidViewportToolbar() {
+    const toolbar = document.createElement("div");
+    toolbar.classList.add("mermaid-viewport-toolbar");
+    toolbar.innerHTML = [
+      '<button type="button" aria-label="Zoom out">\u2212</button>',
+      '<button type="button" aria-label="Zoom in">+</button>',
+      '<button type="button" aria-label="Fit">Fit</button>'
+    ].join("");
+    const buttons = toolbar.querySelectorAll("button");
+    const zoomOutBtn = buttons[0];
+    const zoomInBtn = buttons[1];
+    const fitBtn = buttons[2];
+    return { toolbar, zoomInBtn, zoomOutBtn, fitBtn };
+  }
+  function attachMermaidViewportPan(viewport2) {
+    let isPanning = false;
+    let startX2 = 0;
+    let startY2 = 0;
+    let originScrollLeft = 0;
+    let originScrollTop = 0;
+    let activePointerId = null;
+    const onPointerDown = (event3) => {
+      if (event3.button !== 0) {
+        return;
+      }
+      const target = event3.target;
+      if (target?.closest("button")) {
+        return;
+      }
+      isPanning = true;
+      activePointerId = event3.pointerId;
+      startX2 = event3.clientX;
+      startY2 = event3.clientY;
+      originScrollLeft = viewport2.scrollLeft;
+      originScrollTop = viewport2.scrollTop;
+      viewport2.classList.add("is-panning");
+      viewport2.setPointerCapture(event3.pointerId);
+      event3.preventDefault();
+    };
+    const onPointerMove = (event3) => {
+      if (!isPanning || activePointerId !== event3.pointerId) {
+        return;
+      }
+      const dx = event3.clientX - startX2;
+      const dy = event3.clientY - startY2;
+      viewport2.scrollLeft = originScrollLeft - dx;
+      viewport2.scrollTop = originScrollTop - dy;
+    };
+    const endPan = (event3) => {
+      if (!isPanning || activePointerId !== event3.pointerId) {
+        return;
+      }
+      isPanning = false;
+      activePointerId = null;
+      viewport2.classList.remove("is-panning");
+      try {
+        viewport2.releasePointerCapture(event3.pointerId);
+      } catch {
+      }
+    };
+    viewport2.addEventListener("pointerdown", onPointerDown);
+    viewport2.addEventListener("pointermove", onPointerMove);
+    viewport2.addEventListener("pointerup", endPan);
+    viewport2.addEventListener("pointercancel", endPan);
+    return () => {
+      viewport2.removeEventListener("pointerdown", onPointerDown);
+      viewport2.removeEventListener("pointermove", onPointerMove);
+      viewport2.removeEventListener("pointerup", endPan);
+      viewport2.removeEventListener("pointercancel", endPan);
+    };
   }
   function getEditorExtensions() {
     return [

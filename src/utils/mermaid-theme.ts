@@ -12,14 +12,14 @@ export function buildMermaidThemeConfig(kind: ThemeKind): MermaidThemeConfig {
     case 'light':
       return {
         theme: 'redux',
-        themeVariables: { fontSize: '13px' },
+        themeVariables: { fontSize: '8px' },
         securityLevel: 'strict',
       };
     case 'dark':
     case 'highContrast':
       return {
         theme: 'redux-dark',
-        themeVariables: { fontSize: '13px' },
+        themeVariables: { fontSize: '8px' },
         securityLevel: 'strict',
       };
     default: {
@@ -27,7 +27,7 @@ export function buildMermaidThemeConfig(kind: ThemeKind): MermaidThemeConfig {
       void _exhaustive;
       return {
         theme: 'redux',
-        themeVariables: { fontSize: '13px' },
+        themeVariables: { fontSize: '8px' },
         securityLevel: 'strict',
       };
     }

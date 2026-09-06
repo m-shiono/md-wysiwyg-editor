@@ -334,15 +334,74 @@ body[data-readonly='true'] #link-input-bar {
   padding: 8px;
 }
 
+.mermaid-viewport-toolbar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.mermaid-viewport-toolbar button {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
+  border-radius: 2px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.mermaid-viewport-toolbar button:hover:not(:disabled) {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.mermaid-viewport-toolbar button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.mermaid-viewport-toolbar[hidden],
+.mermaid-viewport-toolbar[aria-hidden='true'] {
+  display: none;
+}
+
+/* Frame for fit / zoom / pan — overflow scrollbars when zoomed beyond frame */
+.mermaid-viewport {
+  overflow: auto;
+  max-height: min(70vh, 640px);
+  min-height: 80px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 2px;
+  background: transparent;
+  cursor: grab;
+  /* Title / label edges must not clip inside the scroll frame */
+  padding: 4px;
+}
+
+.mermaid-viewport.is-panning {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.mermaid-viewport-canvas {
+  display: inline-block;
+  transform-origin: 0 0;
+  /* Density stays fontSize; viewport zoom uses transform only */
+}
+
 .mermaid-preview {
   min-height: 60px;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: flex-start;
+  justify-content: flex-start;
 }
 
-.mermaid-preview svg {
-  max-width: 100%;
+/* Natural SVG size inside viewport — do not force max-width (fit uses transform) */
+.mermaid-viewport .mermaid-preview svg {
+  max-width: none;
+  height: auto;
+  overflow: visible;
+  /* mermaid title padding — keep title text fully visible (AD-003) */
+  padding-top: 0.5em;
 }
 
 /*

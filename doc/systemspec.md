@@ -6,7 +6,7 @@ VS Code 拡張 **vsc-md-editor** の振る舞い仕様（WHAT）。実装詳細�
 
 ## 概要
 
-チーム向け技術ドキュメントを Git 管理しながら、Word/Excel に近い WYSIWYG 体験で Markdown（`.md`）を編集する VS Code 拡張機能。MVP では同一 Custom Editor 上の **Preview / Markdown / Raw 三点モード**、**GFM 書式ツールバー**（§2 — 取り消し線・H1–H6・インラインコード・引用・タスクリスト・水平線等）、**GFM / HTML 二形式表編集**（§3・アーキテクチャ AD-005）、ファイル単位 Readonly 切替、Mermaid リアルタイム描画（VS Code kind → Mermaid `redux` / `redux-dark`、表示密度 `themeVariables.fontSize: '13px'`、CSP 下 Host 同一 nonce による presentation `<style>` 再注入、frontmatter オプトイン ELK、Preview / Markdown で図下ソース併記 — §5）、**Marp プレビュー**（§6 — サイド/パネル。**Preview モードでも Marp 検出時は同一 Webview 内にスライド描画可** — §1 / AD-008）、**Host 側 `img/` 画像 URI 解決**（§7 / §9）、クリップボード画像のローカル保存を提供する。リッチ表現（拡張記法・HTML 混在）を Markdown 厳密互換より優先する（UD-001）。今回追加の書式ノードは GFM として往復できること（§8）。
+チーム向け技術ドキュメントを Git 管理しながら、Word/Excel に近い WYSIWYG 体験で Markdown（`.md`）を編集する VS Code 拡張機能。MVP では同一 Custom Editor 上の **Preview / Markdown / Raw 三点モード**、**GFM 書式ツールバー**（§2 — 取り消し線・H1–H6・インラインコード・引用・タスクリスト・水平線等）、**GFM / HTML 二形式表編集**（§3・アーキテクチャ AD-005）、ファイル単位 Readonly 切替、Mermaid リアルタイム描画（VS Code kind → Mermaid `redux` / `redux-dark`、表示密度 `themeVariables.fontSize: '8px'`、タイトル全文可視、Editor Preview / Rich Editor のみビューポート fit／ズーム／パン／スクロール、CSP 下 Host 同一 nonce による presentation `<style>` 再注入、frontmatter オプトイン ELK、Preview / Markdown で図下ソース併記 — §5）、**Marp プレビュー**（§6 — サイド/パネル。**Preview モードでも Marp 検出時は同一 Webview 内にスライド描画可** — §1 / AD-008）、**Host 側 `img/` 画像 URI 解決**（§7 / §9）、クリップボード画像のローカル保存を提供する。リッチ表現（拡張記法・HTML 混在）を Markdown 厳密互換より優先する（UD-001）。今回追加の書式ノードは GFM として往復できること（§8）。
 
 **feature-slug:** `vsc-md-wysiwyg`
 
@@ -22,7 +22,7 @@ VS Code 拡張 **vsc-md-editor** の振る舞い仕様（WHAT）。実装詳細�
 | AD-004 | 編集内容 ↔ ディスク `.md` は remark/unified パイプラインで変換。HTML 混在・拡張ブロックを許容。出力は決定的（AD-013） |
 | AD-005 | 表は per-table `tableFormat`（`gfm` \| `html`）で永続化する。新規挿入のデフォルトは GFM パイプ表。形式切替は Table メニューの明示操作のみ（§3） |
 | AD-006 | ファイル単位 Readonly は **全編集面**（Markdown / Raw）をロック。Preview モードとは別概念。状態はワークスペースに永続化 |
-| AD-007 | Mermaid はコードブロック + リアルタイム描画。VS Code kind → Mermaid `redux` / `redux-dark` マップ、グローバル表示密度は `themeVariables.fontSize: '13px'`（Mermaid 既定 ~16px よりやや小さく・固定 px。`var(--vscode-...)` 禁止・CSS `scale` は主手段にしない — §5 / `mermaid-display-density`）、CSP 下 Host 同一 nonce による presentation `<style>` 再注入、`@mermaid-js/layout-elk` 登録＋ frontmatter / `%%{init}%%` オプトイン ELK（遅延ロード・グローバル強制なし — §5）。classic `default`/`dark` マップおよび静的 Host CSS エッジフォールバック優先は撤回（`mermaid-redux-elk-fidelity`）。**Preview / Markdown とも図の下にソース併記**。編集はテキストのみ（Preview は厳密 RO）。`securityLevel: 'strict'`・HIP・`'unsafe-inline'` なしは不変 |
+| AD-007 | Mermaid はコードブロック + リアルタイム描画。VS Code kind → Mermaid `redux` / `redux-dark` マップ、グローバル表示密度は `themeVariables.fontSize: '8px'`（固定 px。`var(--vscode-...)` 禁止。密度の主手段は `fontSize` — CSS `scale`/`zoom` を密度代替にしない）。**密度（fontSize）と閲覧用ビューポート変換（fit／ズーム／パン）は別契約**（§5 / `mermaid-readable-viewport`）。図タイトル全文がクリップされないこと。ビューポート UX（初期 fit・ズームイン／アウト・パン／ドラッグ・縦横スクロール・再 render 時 re-fit・a11y `aria-label`）は **Editor Preview / Rich Editor の Mermaid NodeView のみ**（Default Preview 埋め込みなし）。CSP 下 Host 同一 nonce による presentation `<style>` 再注入、`@mermaid-js/layout-elk` 登録＋ frontmatter / `%%{init}%%` オプトイン ELK（遅延ロード・グローバル強制なし — §5）。classic `default`/`dark` マップおよび静的 Host CSS エッジフォールバック優先は撤回（`mermaid-redux-elk-fidelity`）。**Preview / Markdown とも図の下にソース併記**。編集はテキストのみ（Preview は厳密 RO・ズーム／パンは閲覧操作のみ）。`securityLevel: 'strict'`・HIP・`'unsafe-inline'` なしは不変 |
 | AD-008 | **Marp Preview** はサイド/パネル（§6）を維持。**Preview モード**（§1）でも `isMarpDocument(markdownText)` 検出時は同一 Webview 内 `#preview-marp-root` に Host 生成 HTML を RO 表示可。別 UI インスタンス・別責務は維持。編集は Markdown / Raw 側 |
 | AD-009 | 画像 paste → 同階層 `img/image-NNNN.ext` に保存し相対パスを挿入。表示時は Host が `img/` 配下のみ `asWebviewUri` で rewrite（§7 / §9）。serialize / ディスクは常に相対パス |
 | AD-010 | Webview CSP + HTML サニタイズ。許可タグ・属性を限定 |
@@ -466,24 +466,25 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 
 ### 概要
 
-` ```mermaid ` フェンスブロックをリアルタイムに図として描画する。編集はテキストのみ（UD-004, AD-007）。**Editor Preview（`preview`）および Edit Rich Editor（`markdown`）の両方**で、ブロック内順は **図（`.mermaid-preview`）→ ソース（`.mermaid-source`）**（図の下にソース併記）。旧「Preview ソース非表示」（`preview-rich-embed`）は **撤回**する（`mermaid-snap-style-with-source`）。Preview でもソースは表示するが **厳密 RO** を維持し、ソース領域の編集イベントを Document へ送らない（§1）。フェンス内 YAML frontmatter / `%%{init:...}%%` は Mermaid ネイティブに委譲する（`preview-mode-quality` AD-003）— per-diagram の `theme` / `layout` はグローバル initialize より優先。グローバル見た目は **VS Code kind → Mermaid redux 系マップ**（`light`→`redux`、`dark`/`highContrast`→`redux-dark`）とし、classic `default`/`dark` マップおよび島ライト強制・全 kind `theme: 'default'` は **撤回**する（`mermaid-redux-elk-fidelity` / `fix-mermaid-edge-styles`）。**表示密度**はグローバル `themeVariables.fontSize: '13px'`（Mermaid オープン既定 ~16px よりやや小さく・固定 px）で図テキスト／ノードをコンパクトにする（`mermaid-display-density`）。`themeVariables` に `var(--vscode-...)` は置かない。CSS `transform: scale(...)` 等による見た目縮小は **主手段にしない**。per-diagram frontmatter / `%%{init}%%` による上書きは従来どおり可。CSP が SVG 内インライン `<style>` を無効化する前提で、Mermaid `render` 結果の presentation `<style>` を抽出し **Host 発行と同一 nonce** を付与して Webview に再注入する（セレクタは `.mermaid-preview` / 当該図スコープ）。静的 Host CSS エッジフォールバックは再注入が効く前提で **縮小または撤廃**する。`style-src` に `'unsafe-inline'` は追加しない（§9）。`@mermaid-js/layout-elk` を登録し、図が `layout: elk`（等）を要求したときのみ ELK を用いる（グローバル強制なし・遅延ロード）。HIP sanitize・`securityLevel: 'strict'`・DOMPurify・**`HTML_INTEGRATION_POINTS: { foreignobject: true }`** は不変（§9）。Mermaid Chart 拡張依存・ピクセル完全一致は Out。
+` ```mermaid ` フェンスブロックをリアルタイムに図として描画する。編集はテキストのみ（UD-004, AD-007）。**Editor Preview（`preview`）および Edit Rich Editor（`markdown`）の両方**で、ブロック内順は **図（`.mermaid-preview`）→ ソース（`.mermaid-source`）**（図の下にソース併記）。旧「Preview ソース非表示」（`preview-rich-embed`）は **撤回**する（`mermaid-snap-style-with-source`）。Preview でもソースは表示するが **厳密 RO** を維持し、ソース領域の編集イベントを Document へ送らない（§1）。フェンス内 YAML frontmatter / `%%{init:...}%%` は Mermaid ネイティブに委譲する（`preview-mode-quality` AD-003）— per-diagram の `theme` / `layout` はグローバル initialize より優先。グローバル見た目は **VS Code kind → Mermaid redux 系マップ**（`light`→`redux`、`dark`/`highContrast`→`redux-dark`）とし、classic `default`/`dark` マップおよび島ライト強制・全 kind `theme: 'default'` は **撤回**する（`mermaid-redux-elk-fidelity` / `fix-mermaid-edge-styles`）。**表示密度**はグローバル `themeVariables.fontSize: '8px'`（固定 px）で図テキスト／ノードをコンパクトにする（旧 `'13px'` を置換 — `mermaid-readable-viewport` / 継承 `mermaid-display-density`）。`themeVariables` に `var(--vscode-...)` は置かない。**密度の主手段は `themeVariables.fontSize`** であり、CSS `transform: scale(...)` / `zoom` を密度の代替にしない。一方、**閲覧用ビューポート変換**（初期 fit・ズームイン／アウト・パン／スクロール）は密度契約とは別であり、Editor Preview / Rich Editor の Mermaid NodeView で提供する（Default Preview への UI 埋め込み・別 Webview 化はしない）。図タイトル全文がクリップされないこと（表示層の viewBox / overflow / 余白調整。Document / serialize 非干渉）。per-diagram frontmatter / `%%{init}%%` による上書きは従来どおり可。CSP が SVG 内インライン `<style>` を無効化する前提で、Mermaid `render` 結果の presentation `<style>` を抽出し **Host 発行と同一 nonce** を付与して Webview に再注入する（セレクタは `.mermaid-preview` / 当該図スコープ）。静的 Host CSS エッジフォールバックは再注入が効く前提で **縮小または撤廃**する。`style-src` に `'unsafe-inline'` は追加しない（§9）。`@mermaid-js/layout-elk` を登録し、図が `layout: elk`（等）を要求したときのみ ELK を用いる（グローバル強制なし・遅延ロード）。HIP sanitize・`securityLevel: 'strict'`・DOMPurify・**`HTML_INTEGRATION_POINTS: { foreignobject: true }`** は不変（§9）。Mermaid Chart 拡張依存・ピクセル完全一致は Out。
 
 ### Inputs & Types
 
 | 入力 | 型 | 必須 | 最小 | 最大 | 備考 |
 |------|-----|------|------|------|------|
 | `mermaidSource` | `string` | はい | 0 文字 | — | フェンス内**全文**（YAML frontmatter / `%%{init:...}%%` 含む。Webview は strip しない — AD-003）。`config.layout: elk` 等はネイティブ委譲 |
-| `debounceMs` | 数値 | いいえ | — | — | 目安 300 ms。テーマ切替再描画にも適用 |
-| `editorMode` | `"preview" \| "markdown" \| "raw"` | はい | — | — | Preview / Markdown ともソース表示。Preview は RO（§1） |
+| `debounceMs` | 数値 | いいえ | — | — | 目安 300 ms。テーマ切替再描画・ビューポート re-fit トリガにも適用 |
+| `editorMode` | `"preview" \| "markdown" \| "raw"` | はい | — | — | Preview / Markdown ともソース表示。Preview は RO（§1）。ビューポート UX は `preview` / `markdown` の Mermaid NodeView のみ |
 | `themeUpdated` | postMessage | 任意 | — | — | §1 `{ kind: 'light' \| 'dark' \| 'highContrast' }` |
-| `themeVariables.fontSize` | `string`（固定 px） | はい（グローバル既定） | — | — | プロジェクト既定 **`'13px'`**（Mermaid オープン既定 ~16px より小さい表示密度）。`var(--vscode-...)` 禁止。per-diagram frontmatter / `%%{init}%%` で上書き可 |
+| `themeVariables.fontSize` | `string`（固定 px） | はい（グローバル既定） | — | — | プロジェクト既定 **`'8px'`**（表示密度。旧 `'13px'` を置換）。`var(--vscode-...)` 禁止。per-diagram frontmatter / `%%{init}%%` で上書き可 |
+| ビューポート操作 | UI（ローカル DOM） | 描画成功時 | — | — | Zoom in / Zoom out / Fit（キーボード到達可・`aria-label`）。パン／ドラッグ・縦横スクロール。セッション永続なし（MVP） |
 
 ### Outputs & Failure Returns
 
 | 条件 | 戻り値 / ステータス | 備考 |
 |------|-------------------|------|
-| 成功 | ブロック内に SVG/図表示＋ソース表示 | ソースは Document に保持。Preview / Markdown とも `.mermaid-source` を DOM 上表示（図の下）。presentation CSS は Host 同一 nonce 再注入後に効く。グローバル密度は `fontSize: '13px'`（図単位上書きがなければ） |
-| 構文エラー | ブロック内にエラーメッセージ | ソースは Document に保持。**Preview でもソースは表示したまま**、preview 領域に `.mermaid-error`。Output に記録（AD-015） |
+| 成功 | ブロック内に SVG/図表示＋ソース表示＋ビューポート（Preview / Markdown） | ソースは Document に保持。Preview / Markdown とも `.mermaid-source` を DOM 上表示（図の下）。presentation CSS は Host 同一 nonce 再注入後に効く。グローバル密度は `fontSize: '8px'`（図単位上書きがなければ）。タイトル全文可視。初期は枠内 fit |
+| 構文エラー | ブロック内にエラーメッセージ | ソースは Document に保持。**Preview でもソースは表示したまま**、preview 領域に `.mermaid-error`。ビューポート UI は隠すか無効化。Output に記録（AD-015） |
 | ELK 登録・ロード失敗 | 当該図のみエラー表示 | Webview 全体は止めない（既存 try-catch 隔離）。Output に記録可 |
 | レンダリングタイムアウト | エラー表示 | RK-004 |
 
@@ -504,11 +505,15 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 6. **フェンス全文レンダリング**（`preview-mode-quality` AD-003 / `mermaid-redux-elk-fidelity` AD-013）: `mermaid.render(id, source)` にはフェンス内 **全文**を渡す。YAML frontmatter および `%%{init:...}%%` による per-diagram 設定（`theme`・`layout` 含む）は Mermaid ネイティブに委譲し、Webview 側で frontmatter を strip しない。per-diagram 設定はグローバル `mermaid.initialize` より優先（Mermaid v11 仕様）
 7. **グローバルテーマ（redux kind マップ）**（`mermaid-redux-elk-fidelity` / `mermaid-theme-crash-fix` 継承）: `buildMermaidThemeConfig`（または同等）は VS Code kind を次のとおりマップする — `light` → Mermaid `theme: 'redux'`、`dark` / `highContrast` → Mermaid `theme: 'redux-dark'`（同等の redux 系が必要なら同系に限る）。いずれも `securityLevel: 'strict'`。classic `default`/`dark` マップおよび全 kind 強制 `theme: 'default'` は廃止。`themeVariables` への `var(--vscode-...)` 指定は再導入しない（`mermaid-theme-crash-fix`）。`highContrast` 専用パレット・Chart テーマピッカーは本タスク Out。
 
-7a. **表示密度（グローバル `fontSize`）**（`mermaid-display-density`）: グローバル `mermaid.initialize` / `buildMermaidThemeConfig`（または同等）の `themeVariables` に **`fontSize: '13px'`** を含める（Mermaid オープン既定 ~16px よりやや小さく、図テキストおよびノード寸法に効く固定 px）。目的はユーザー要望どおり図・文字を「もう少し小さく」すること。**主手段は `themeVariables.fontSize`（および Mermaid がそれに追随するノード寸法）**であり、`.mermaid-preview` 等への CSS `transform: scale(...)` / `zoom` による見た目縮小は **主手段にしない**（補助のみ可・本契約の代替にはしない）。`themeVariables` に `var(--vscode-...)` は置かない（上記 7 と同一禁止）。per-diagram YAML frontmatter / `%%{init}%%` による `themeVariables` / `fontSize` 上書きは Mermaid ネイティブ優先のまま許容（上記 6）。redux kind マップ・nonce 再注入・ELK オプトイン・strict / HIP は不変。
+7a. **表示密度（グローバル `fontSize`）**（`mermaid-readable-viewport` / 継承 `mermaid-display-density`）: グローバル `mermaid.initialize` / `buildMermaidThemeConfig`（または同等）の `themeVariables` に **`fontSize: '8px'`** を含める（旧 `'13px'` を置換。図テキストおよびノード寸法に効く固定 px）。**密度の主手段は `themeVariables.fontSize`（および Mermaid がそれに追随するノード寸法）**であり、`.mermaid-preview` 等への CSS `transform: scale(...)` / `zoom` による見た目縮小を **密度の代替にしてはならない**。閲覧用のビューポート変換（下記 7b / 7c）は本項とは別契約であり、ズーム後に 8px 描画の文字・ノードを拡大して読めることを目的とする。`themeVariables` に `var(--vscode-...)` は置かない（上記 7 と同一禁止）。per-diagram YAML frontmatter / `%%{init}%%` による `themeVariables` / `fontSize` 上書きは Mermaid ネイティブ優先のまま許容（上記 6）。redux kind マップ・nonce 再注入・ELK オプトイン・strict / HIP は不変。
+
+7b. **タイトル全文可視**（`mermaid-readable-viewport` AD-003）: 表示層で viewBox / overflow / 余白（padding）等を調整し、図タイトル（Mermaid が描画するタイトル文字列）が枠外クリップや欠落なく **全文可視**であること。Document / serialize / `docJson` / `markdownText` は変更しない。
+
+7c. **ビューポート UX（fit／ズーム／パン／スクロール）**（`mermaid-readable-viewport` AD-002 / AD-004–AD-007 / AD-010 / AD-011）: 適用範囲は **Editor Preview（`preview`）および Edit Rich Editor（`markdown`）内の Mermaid NodeView のみ**。Default Preview（`native-preview`）への UI 埋め込み・別 Webview 化はしない。描画成功後、当該図のビューポートは **全体が枠内に収まる**（contain / fit-to-viewport）。大きな図でも初期は全体把握を優先し、細部はズームで読む（Priority: 可読性 > フィットのみで完結）。虫眼鏡または同等 UI で **ズームイン／アウト**を提供する。ユーザー操作による拡大縮小は **CSS transform（または同等のビューポート変換）**でよい（密度契約 7a とは別）。枠内 **ドラッグ（またはクリック操作）によるパン**と、必要時の **縦横スクロールバー**を提供する。図ソース変更・再 render（debounce 後）およびテーマ切替一括再描画では当該ブロックのビューポートを **再 fit** する。ビューポート状態のセッション永続・設定保存は不要（MVP）。実装方針の既定は **ネイティブ CSS（overflow + transform）＋軽量自前ハンドラ**（重い pan-zoom ライブラリは初期採用しない）。ズーム操作は **キーボード到達可能なコントロール**とし、`aria-label`（例: Zoom in / Zoom out / Fit）を付ける。コントラストは `--vscode-*` に合わせる。ピンチ必須・高度なスクリーンリーダー図読解は Out。ズーム／パンは **閲覧操作のみ**であり Document 編集イベントを送らない（Preview 厳密 RO 維持）。ズーム UI は Webview 内ローカル DOM／既存 NodeView スコープに閉じ、信頼できない CSS／HTML の新規素通し経路を作らない（AD-008 セキュリティ不変）。
 
 8. **初期化・テーマ切替・ELK 登録の隔離**（`mermaid-theme-crash-fix` / `mermaid-redux-elk-fidelity` AD-012）: `mermaid.initialize`、テーマ更新、および ELK ローダ登録処理は `try-catch` で隔離し、Mermaid / layout-elk 内部エラーが Webview 全体のメッセージングや描画を停止させないようにする。
 
-9. **テーマ切替再描画**（`preview-mode-quality` AD-005 / `mermaid-redux-elk-fidelity`）: §1 `themeUpdated` 受信時、Webview は redux kind マップに従い `mermaid.initialize(...)` を更新し、表示中の全 Mermaid NodeView を debounce 後に再 render する。本処理も上記「隔離」に従う。
+9. **テーマ切替再描画**（`preview-mode-quality` AD-005 / `mermaid-redux-elk-fidelity`）: §1 `themeUpdated` 受信時、Webview は redux kind マップに従い `mermaid.initialize(...)` を更新し、表示中の全 Mermaid NodeView を debounce 後に再 render する。再 render 後は当該ブロックのビューポートを **再 fit** する（上記 7c）。本処理も上記「隔離」に従う。
 
 10. **Mermaid SVG sanitize**（`fix-mermaid-dark-visibility` / `mermaid-contrast-readable` P0）: NodeView の `.mermaid-preview` へ注入する前に DOMPurify でサニタイズする。**`foreignObject` シェルだけでなく、その内部のラベル用 HTML（例: `div` / `span` / テキスト）を保持する**。そのため DOMPurify に **`HTML_INTEGRATION_POINTS: { foreignobject: true }`**（または同等）を必須とする。`ADD_TAGS: ['foreignObject']` のみでは子 HTML が除去され空シェルになり得るため不十分。可読性に必要な style / presentation は XSS 面を広げない範囲で最小限許可してよい（AD-002）。`<script>` / `on*` 等の危険要素は除去し続ける（§9）。`securityLevel: 'strict'` は不変。
 
@@ -516,43 +521,54 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 
 12. **ELK レイアウト（登録・オプトイン・遅延ロード）**（`mermaid-redux-elk-fidelity` AD-005–AD-007）: オープンな `@mermaid-js/layout-elk` を依存追加し、Webview 起動時または初回 ELK 要求時に `mermaid.registerLayoutLoaders(...)` する。パッケージ（および ELK 本体）は **動的 import / コード分割**し、初期 Webview バンドルを不用意に肥大化させない。グローバル `mermaid.initialize` で全図に `layout: 'elk'` を **強制しない**。既定レイアウトは Mermaid オープン既定（dagre 系）のままとし、図が frontmatter / `%%{init}%%` 等で `layout: elk`（および互換の flowchart ELK 指定）を要求したときのみ ELK を用いる。登録・ロード失敗時は当該図単位のエラー表示＋既存 try-catch 隔離（Webview 全体は止めない）。未対応 diagram kind は既存レイアウトのまま（ELK 全 kind 同等品質は非保証）。
 
-13. **表示層限定・受け入れ**（`mermaid-redux-elk-fidelity` AD-009 / AD-011 / `mermaid-display-density`）: 変更は Mermaid 表示層（Webview / `media` バンドル / NodeView / テーマ・レイアウトヘルパー / Host `getHtml` nonce 経路）に限定し、`docJson` / `markdownText` / serialize / dirty / Host 画像 rewrite / Marp / 三点モード同期に触れない。**受け入れ条件:** (a) kind→`redux`/`redux-dark` マップ、(b) nonce 再注入（または同等）で presentation が CSP 下で効き、flowchart エッジが黒塗りブロブにならず stroke が可視、(c) `layout: elk` 指定図で ELK ローダ登録後に描画成功、(d) グローバル強制 ELK なし、(e) HIP / `securityLevel: 'strict'` / ソース併記 / Preview RO / `'unsafe-inline'` なし回帰、(f) グローバル `themeVariables.fontSize` が **`'13px'`**（`var(--vscode-...)` なし・CSS scale を主手段にしない）。構文エラーは既存 `.mermaid-error` 契約を維持。Chart 拡張依存・Chart 専用アイコンパック一式・ピクセル完全一致は Out。
+13. **表示層限定・受け入れ**（`mermaid-redux-elk-fidelity` AD-009 / AD-011 / `mermaid-readable-viewport`）: 変更は Mermaid 表示層（Webview / `media` バンドル / NodeView / テーマ・レイアウトヘルパー / Host `getHtml` nonce 経路 / ビューポート UI）に限定し、`docJson` / `markdownText` / serialize / dirty / Host 画像 rewrite / Marp / 三点モード同期に触れない。**受け入れ条件:** (a) kind→`redux`/`redux-dark` マップ、(b) nonce 再注入（または同等）で presentation が CSP 下で効き、flowchart エッジが黒塗りブロブにならず stroke が可視、(c) `layout: elk` 指定図で ELK ローダ登録後に描画成功、(d) グローバル強制 ELK なし、(e) HIP / `securityLevel: 'strict'` / ソース併記 / Preview RO / `'unsafe-inline'` なし回帰、(f) グローバル `themeVariables.fontSize` が **`'8px'`**（`var(--vscode-...)` なし・CSS scale を密度の主手段にしない）、(g) タイトル全文可視、(h) 初期 fit、(i) ズームイン後に 8px 図が読める、(j) パン／スクロールで枠外細部に到達、(k) 再 render 時 re-fit、(l) ズーム UI のキーボード到達と `aria-label`、(m) Default Preview 非対象。構文エラーは既存 `.mermaid-error` 契約を維持。Chart 拡張依存・Chart 専用アイコンパック一式・ピクセル完全一致は Out。
 
 #### 例外系
 
 1. 悪意ある入力はサニタイズし、スクリプト実行を行わない（RK-003）
-2. Mermaid / `@mermaid-js/layout-elk` パッケージ更新による見た目変化・SVG クラス名・API 変更は許容（RK-007 — lockfile 固定推奨）。sanitize allowlist が再び不足し得る（`mermaid-contrast-readable` RK-005 / `fix-mermaid-edge-styles` RK-003 / `mermaid-redux-elk-fidelity` RK-005）
-3. frontmatter 内 `config.theme` / `config.layout` / `themeVariables`（`fontSize` 含む）がグローバル kind マップ・既定レイアウト・既定密度と異なる場合、当該図のみ意図的に別配色・別レイアウト・別密度となる（Mermaid 仕様 — `preview-mode-quality` RK-004 / `mermaid-redux-elk-fidelity` AD-013 / `mermaid-display-density`）。ダーク面＋明示 `theme: default` 等のコントラスト差はユーザー意図として許容
-4. 文書内 Mermaid ブロックが多数ある場合、テーマ切替の一括再描画で短時間 CPU 負荷が上がり得る（debounce + 表示中 NodeView のみ — RK-004 系 / `preview-mode-quality` RK-002）
-5. Mermaid テーマ／レイアウト／表示密度のマッピングは VS Code ネイティブ Markdown Preview・Mermaid Snap・Mermaid Chart とのピクセル一致を保証しない（`preview-mode-quality` RK-001 / `mermaid-snap-style-with-source` RK-002 / `mermaid-redux-elk-fidelity` / `mermaid-display-density`）
+2. Mermaid / `@mermaid-js/layout-elk` パッケージ更新による見た目変化・SVG クラス名・API 変更は許容（RK-007 — lockfile 固定推奨）。sanitize allowlist が再び不足し得る（`mermaid-contrast-readable` RK-005 / `fix-mermaid-edge-styles` RK-003 / `mermaid-redux-elk-fidelity` RK-005）。タイトル・ラベル欠落が再発し得る（`mermaid-readable-viewport` RK-006 — HIP / nonce 回帰維持）
+3. frontmatter 内 `config.theme` / `config.layout` / `themeVariables`（`fontSize` 含む）がグローバル kind マップ・既定レイアウト・既定密度と異なる場合、当該図のみ意図的に別配色・別レイアウト・別密度となる（Mermaid 仕様 — `preview-mode-quality` RK-004 / `mermaid-redux-elk-fidelity` AD-013 / `mermaid-readable-viewport`）。ダーク面＋明示 `theme: default` 等のコントラスト差はユーザー意図として許容
+4. 文書内 Mermaid ブロックが多数ある場合、テーマ切替の一括再描画で短時間 CPU 負荷が上がり得る（debounce + 表示中 NodeView のみ — RK-004 系 / `preview-mode-quality` RK-002）。巨大 SVG＋高ズームで Webview CPU／メモリ負荷が上がり得る（`mermaid-readable-viewport` RK-003 — 図単位状態に閉じる）
+5. Mermaid テーマ／レイアウト／表示密度／ビューポートのマッピングは VS Code ネイティブ Markdown Preview・Mermaid Snap・Mermaid Chart とのピクセル一致を保証しない（`preview-mode-quality` RK-001 / `mermaid-snap-style-with-source` RK-002 / `mermaid-redux-elk-fidelity` / `mermaid-readable-viewport`）
 6. sanitize でラベル HTML / presentation が欠落していれば黒塗り・不可読は残り得る（`mermaid-contrast-readable` RK-001 — P0 HIP 必須）。再注入と DOMPurify の相互作用で一部 presentation が落ちる／二重定義で競合し得る — 実装時に sanitize 前後を確認し、静的 Host CSS 安全網の要否を決める（`mermaid-redux-elk-fidelity` RK-002）。不足時は最小の属性／タグ許可を security レビュー付きで検討
 7. Preview でソース表示により長いフェンスが画面を占有し得る（表示層のみ・許容 — `mermaid-snap-style-with-source` RK-004）
 8. flowchart 以外（sequence / class 等）で CSP 由来の描画崩れや ELK 非対応が残る可能性。必須受け入れは flowchart 等 ELK 対応 kind での `layout: elk` 成功および presentation 再注入後のエッジ可視；他 kind は発見次第拡張（`fix-mermaid-edge-styles` RK-004 / `mermaid-redux-elk-fidelity` RK-004）
 9. redux / redux-dark でも VS Code 面とのコントラスト不足が残る可能性。受け入れは「識別できる」— Chart／Snap ピクセル一致は非保証（`mermaid-redux-elk-fidelity` RK-003）
 10. `@mermaid-js/layout-elk` / elkjs はバンドル肥大し得る。遅延ロードしても初回 ELK 図や VSIX 実サイズが増える（`mermaid-redux-elk-fidelity` RK-001）。グローバル強制 ELK は行わないため、何も書かない図は dagre 系既定のまま（RK-006 — README / 仕様で `layout: elk` を明示）
+11. 未ズーム時の 8px は極端に小さく見え得る。初期 fit＋ズーム必須 UX を仕様・README で明示しないと「読めない」誤認が起き得る（`mermaid-readable-viewport` RK-001）
+12. fit とズーム transform の組み合わせでタイトル余白／viewBox 修正が再発し得る。受け入れでタイトル＋ズーム両方を見る（`mermaid-readable-viewport` RK-002）
+13. Preview RO 面でドラッグパンがテキスト選択／スクロールと競合し得る。パン開始条件（例: 中ボタン／修飾キー／専用ハンドル）は実装時に確定する（`mermaid-readable-viewport` RK-004 — ⚠️ Spec Gaps）
 
 ### Non-Goals
 
-- Mermaid ビジュアルダイアグラムエディタ（backlog）
+- Mermaid ビジュアルダイアグラムエディタ（backlog）および図ソースの WYSIWYG 図形編集
 - オフライン以外での外部レンダリング API 呼び出し
 - VS Code ネイティブ Markdown Preview / Mermaid Snap / Mermaid Chart との配色・レイアウト **ピクセル完全一致**
 - Mermaid Snap / 標準 Preview / Mermaid Chart の**ソースコード・API・アセット取り込み**および Chart 拡張依存・フォークパッケージ（観察のみ可 — オープンな `mermaid` + `@mermaid-js/layout-elk` に限定）
-- Chart 専用アイコンパック一式・Chart ライブエディタ既定 ELK 寄せのグローバル強制・専用ズーム／テーマピッカー UI
+- Chart 専用アイコンパック一式・Chart ライブエディタ既定 ELK 寄せのグローバル強制・専用テーマピッカー UI
+- **Default Preview（`native-preview`）への Mermaid ビューポート UI 埋め込み・別 Webview 化**
 - グローバル `mermaid.initialize` による全図 `layout: 'elk'` 強制（オプトインのみ — §5 正常系 12）
-- CSS `transform: scale(...)` / `zoom` 等を **表示密度の主手段**とすること（主手段は `themeVariables.fontSize: '13px'` — §5 正常系 7a / `mermaid-display-density`）
+- CSS `transform: scale(...)` / `zoom` 等を **表示密度の主手段**とすること（主手段は `themeVariables.fontSize: '8px'` — §5 正常系 7a）。※閲覧用ビューポート変換（7c）は本 Non-Goal の対象外
 - CSP `style-src` への `'unsafe-inline'` 追加および CSP の意図的緩和（§9）
 - 独自パレットの全面設計・`highContrast` 専用パレット（Out）
 - `#editor` 等の広い面の背景色変更
 - 三点モード / Marp / 画像 URI / serialize / dirty 契約の変更
-- ユーザー向け密度スライダー／設定 UI（本タスク Out — 固定 `'13px'` のみ）
+- ユーザー向け密度スライダー／設定 UI（本タスク Out — 固定 `'8px'` のみ）
+- ビューポート状態のセッション永続・設定保存（MVP Out）
+- ピンチ必須・高度なスクリーンリーダー図読解
 
 ### Related Tests
 
 - [doc/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) — TC-031–037。**TC-130–132（Preview Mermaid）はソース併記へ更新予定**（旧「Preview ソース非表示」撤回 — `mermaid-snap-style-with-source` / `preview-rich-embed`）。frontmatter 描画・テーマ切替再描画（TC-013 拡張）・Preview コントラスト: 後続 TC（`preview-mode-quality`）。Mermaid SVG `foreignObject` シェル保持: TC-152（`fix-mermaid-dark-visibility` — 回帰維持）。表示層が Document を変えない回帰: TC-082 等
 - [doc/testspec-mermaid-contrast-readable.md](testspec-mermaid-contrast-readable.md) — HIP 付き sanitize 回帰維持。**Expected は `mermaid-redux-elk-fidelity` で更新要**（kind→`redux`/`redux-dark`、nonce presentation 再注入、静的 Host CSS 縮小）
 - [doc/testspec-mermaid-snap-style-with-source.md](testspec-mermaid-snap-style-with-source.md) — ソース併記・Preview RO・HIP / strict 回帰維持。**テーマ／CSS 前提 TC は `mermaid-redux-elk-fidelity` で更新要**。**回帰必須:** CSP＋sanitize＋nonce 再注入後も flowchart エッジが黒塗りにならず stroke が可視；`'unsafe-inline'` なし
-- [doc/testspec-mermaid-redux-elk-fidelity.md](testspec-mermaid-redux-elk-fidelity.md) — kind→redux マップ、nonce 再注入、`layout: elk`、グローバル強制 ELK なし、HIP / strict / ソース併記 / Preview RO / `'unsafe-inline'` なし回帰。**表示密度:** 後続で Expected にグローバル `themeVariables.fontSize: '13px'`（`var(--vscode-...)` なし・CSS scale 非主手段）を追加更新（`mermaid-display-density` / `spec-test-design`）
-- **後続 testspec（`mermaid-display-density`）:** 既存 suite（上記 redux-elk / contrast / snap-style）への追記、または専用 TC。必須契約例: `buildMermaidThemeConfig`（同等）が `fontSize: '13px'` を返す、`themeVariables` に `var(--vscode-...)` なし、CSS scale を密度の主手段にしない、redux / nonce / ELK / strict / HIP 回帰
+- [doc/testspec-mermaid-redux-elk-fidelity.md](testspec-mermaid-redux-elk-fidelity.md) — kind→redux マップ、nonce 再注入、`layout: elk`、グローバル強制 ELK なし、HIP / strict / ソース併記 / Preview RO / `'unsafe-inline'` なし回帰。**表示密度 Expected:** グローバル `themeVariables.fontSize: '8px'`（旧 `'13px'` 置換 — `mermaid-readable-viewport`）に更新要
+- **後続 testspec（`mermaid-readable-viewport`）:** `doc/testspec-mermaid-readable-viewport.md`（未作成・`spec-test-design`）。必須契約例: `fontSize: '8px'`、タイトル全文可視、初期 fit、ズームイン／アウト、パン／スクロール、再 render 時 re-fit、`aria-label`、Default Preview 非対象、密度に CSS scale を使わない、redux / nonce / ELK / strict / HIP / ソース併記回帰
+
+### Spec Gaps
+
+- ⚠️ パン開始条件（中ボタン／修飾キー／専用ハンドル等）の具体ジェスチャは実装時確定（RK-004）。契約上は「枠内パン／ドラッグが可能」まで
+- それ以外（`fontSize: '8px'`・タイトル可視・fit／ズーム／パン／スクロール・re-fit・a11y・Default Preview 非対象・密度≠ビューポート変換）は Requirements Brief `mermaid-readable-viewport` AD-001–AD-013 で確定
 
 ---
 
@@ -980,12 +996,13 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | Preview Mermaid ソース併記 | Preview / Markdown とも図（`.mermaid-preview`）の下に `.mermaid-source` 表示。旧「Preview ソース非表示」撤回。Preview は厳密 RO | TC-130–132 更新予定（`mermaid-snap-style-with-source`） |
 | Preview 内 Marp 描画 | `isMarpDocument` 共用、`#preview-marp-root`、`previewMarpHtml`、§6 パネル共存 | 後続 TC（`preview-rich-embed`） |
 | Preview 可読性 CSS | `body[data-mode='preview']` スコープ、`line-height`、opacity/コントラスト、`--vscode-*` トークン | 後続 TC（`preview-mode-quality`） |
-| Mermaid frontmatter / VS Code テーマ | フェンス全文 render、kind マップ `light`→`redux` / `dark`\|`highContrast`→`redux-dark`、try-catch 隔離、`themeVariables` への `var(--vscode-...)` 禁止、グローバル `fontSize: '13px'`（`mermaid-display-density`）、`themeUpdated` 再描画。classic `default`/`dark` および全 kind 強制 `default` は撤回（`mermaid-redux-elk-fidelity`） | `mermaid-theme-crash-fix` / `fix-mermaid-edge-styles` / `mermaid-redux-elk-fidelity` / `mermaid-display-density` |
+| Mermaid frontmatter / VS Code テーマ | フェンス全文 render、kind マップ `light`→`redux` / `dark`\|`highContrast`→`redux-dark`、try-catch 隔離、`themeVariables` への `var(--vscode-...)` 禁止、グローバル `fontSize: '8px'`（`mermaid-readable-viewport`）、`themeUpdated` 再描画。classic `default`/`dark` および全 kind 強制 `default` は撤回（`mermaid-redux-elk-fidelity`） | `mermaid-theme-crash-fix` / `fix-mermaid-edge-styles` / `mermaid-redux-elk-fidelity` / `mermaid-readable-viewport` |
 | Mermaid コントラスト可読 | redux 系テーママップ＋ Host 同一 nonce による presentation `<style>` 再注入、HIP 付き sanitize（ラベル HTML 保持）、`dark`/`highContrast` でノード・ラベル・エッジ識別。島ライト撤回。静的 Host CSS は安全網に縮小。広い面背景不変。strict + DOMPurify 維持 | [testspec-mermaid-contrast-readable.md](testspec-mermaid-contrast-readable.md)（更新要） |
 | Mermaid ソース併記 | Preview / Markdown とも図下に `.mermaid-source`。Preview 厳密 RO。HIP / strict 維持。島ライト＋全 kind `default` は撤回。テーマは redux マップ（`mermaid-redux-elk-fidelity`） | [testspec-mermaid-snap-style-with-source.md](testspec-mermaid-snap-style-with-source.md)（更新要） |
 | Mermaid presentation CSP（nonce 再注入） | render 結果 `<style>` に Host 同一 nonce を付与して再注入。任意ユーザー CSS 素通しなし。`style-src` に `'unsafe-inline'` なし。静的 Host CSS エッジフォールバックは縮小／撤廃。flowchart エッジ黒ブロブ／欠線解消 | 後続 TC（`mermaid-redux-elk-fidelity`）／既存 edge-styles 回帰更新 |
 | Mermaid ELK オプトイン | `@mermaid-js/layout-elk` 登録＋遅延ロード。frontmatter / `%%{init}%%` の `layout: elk` 時のみ ELK。グローバル強制なし。登録失敗は図単位エラー。Chart 依存 Out | 後続 TC（`mermaid-redux-elk-fidelity`） |
-| Mermaid 表示密度 | グローバル `themeVariables.fontSize: '13px'`（既定 ~16px より小さく）。`var(--vscode-...)` 禁止。CSS scale は主手段にしない。per-diagram frontmatter 上書き可。redux / nonce / ELK / strict / HIP 不変 | 後続 TC（`mermaid-display-density`）／[testspec-mermaid-redux-elk-fidelity.md](testspec-mermaid-redux-elk-fidelity.md) 追記 |
+| Mermaid 表示密度 | グローバル `themeVariables.fontSize: '8px'`（旧 `'13px'` 置換）。`var(--vscode-...)` 禁止。CSS scale は密度の主手段にしない。per-diagram frontmatter 上書き可。redux / nonce / ELK / strict / HIP 不変 | 後続 TC（`mermaid-readable-viewport`）／[testspec-mermaid-redux-elk-fidelity.md](testspec-mermaid-redux-elk-fidelity.md) 追記 |
+| Mermaid 可読ビューポート | タイトル全文可視。Editor Preview / Rich Editor のみ: 初期 fit・ズームイン／アウト・パン／スクロール・再 render 時 re-fit・a11y `aria-label`。密度（fontSize）とビューポート変換は別契約。Default Preview 埋め込みなし。セッション永続なし | 後続 TC（`doc/testspec-mermaid-readable-viewport.md`） |
 
 ---
 
@@ -1017,3 +1034,4 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | 2026-09-06 | 概要, AD-007, §1, §5, §9, Spec Gaps, Related Tests, 改訂履歴 | Mermaid エッジ CSP フォールバック＋標準テーママップ復帰（`fix-mermaid-edge-styles`）: 島ライト強制・全 kind `theme: 'default'` を撤回。kind マップ `light`→`default` / `dark`\|`highContrast`→`dark`。`themeVariables` への `var(--vscode-...)` 再導入禁止。Host 同一 nonce 付き presentation CSS（`fill: none` / stroke）で CSP 下のエッジ黒ブロブを解消。`style-src` に `'unsafe-inline'` なし。ソース併記・Preview RO・`securityLevel: 'strict'`・HIP / DOMPurify 不変。Chart / ELK Out。Requirements Brief AD-001–AD-013 |
 | 2026-09-06 | 概要, AD-007, §5, §9, Spec Gaps, Related Tests, 改訂履歴 | Mermaid redux テーマ＋ ELK オプトイン＋ presentation nonce 再注入（`mermaid-redux-elk-fidelity`）: kind マップ `light`→`redux` / `dark`\|`highContrast`→`redux-dark`。render 結果 `<style>` の Host 同一 nonce 再注入を優先し、静的 Host CSS エッジフォールバックを縮小／撤廃。`@mermaid-js/layout-elk` 登録＋遅延ロード、frontmatter / `%%{init}%%` の `layout: elk` 時のみ ELK（グローバル強制なし）。旧「ELK Out」撤回。Chart 依存・ピクセル一致・`'unsafe-inline'`・HIP / strict / ソース併記 / Preview RO は不変。Requirements Brief AD-001–AD-015 |
 | 2026-09-06 | 概要, AD-007, §5, Spec Gaps, Related Tests, 改訂履歴 | Mermaid 表示密度（`mermaid-display-density`）: グローバル `themeVariables.fontSize: '13px'`（Mermaid 既定 ~16px よりやや小さく）。`var(--vscode-...)` 禁止。CSS `scale`/`zoom` は主手段にしない。per-diagram frontmatter 上書き可。redux kind マップ・nonce 再注入・ELK オプトイン・strict / HIP / ソース併記は不変 |
+| 2026-09-06 | 概要, AD-007, §5, Spec Gaps, Related Tests, 改訂履歴 | Mermaid 可読ビューポート（`mermaid-readable-viewport`）: グローバル `fontSize` を `'8px'` に置換（旧 `'13px'`）。密度（fontSize）と閲覧用ビューポート変換（fit／ズーム／パン／スクロール）を分離。タイトル全文可視。Editor Preview / Rich Editor の Mermaid NodeView のみ（Default Preview 埋め込みなし）。再 render 時 re-fit・a11y `aria-label`。redux / nonce / ELK / strict / HIP / ソース併記は不変。Requirements Brief AD-001–AD-013 |
