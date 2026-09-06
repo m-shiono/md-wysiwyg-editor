@@ -1,6 +1,6 @@
 /**
- * mermaid-contrast-readable — HIP label survival, island light canvas, XSS, wide-surface unchanged.
- * Red until build-agent adds HIP + island light theme/CSS (media/editor.ts etc. unchanged here).
+ * mermaid-contrast-readable — HIP label survival, standard kind theme map, XSS, wide-surface unchanged.
+ * Island-light + all-kinds-default withdrawn (fix-mermaid-edge-styles). Theme/island Red until build fix.
  */
 import * as assert from 'assert';
 import * as fs from 'fs';
@@ -163,7 +163,7 @@ suite('mermaid-contrast-readable', () => {
     assert.ok(/Cause A/.test(sanitized), 'safe foreignObject label text must remain');
   });
 
-  test('TC-004: dark and highContrast use island light Mermaid theme default', () => {
+  test('TC-004: dark and highContrast map to Mermaid theme dark', () => {
     const buildMermaidThemeConfig = getUtilExport<(kind: string) => MermaidThemeConfig>(
       'mermaid-theme',
       'buildMermaidThemeConfig',
@@ -174,10 +174,9 @@ suite('mermaid-contrast-readable', () => {
       const config = buildMermaidThemeConfig!(kind);
       assert.strictEqual(
         config.theme,
-        'default',
-        `kind ${kind}: island light canvas must use theme 'default' (or light), not 'dark'`,
+        'dark',
+        `kind ${kind}: must use theme 'dark' (standard kind map; forced 'default' is Fail)`,
       );
-      assert.notStrictEqual(config.theme, 'dark', `kind ${kind}: must not use theme dark on light island`);
       assert.strictEqual(config.securityLevel, 'strict', 'securityLevel strict must remain');
       for (const value of Object.values(config.themeVariables ?? {})) {
         assert.ok(!value.includes('var(--vscode-'), `themeVariables must not use var(--vscode-*): ${value}`);
@@ -185,11 +184,11 @@ suite('mermaid-contrast-readable', () => {
     }
   });
 
-  test('TC-005: mermaid island CSS defines scoped light surface background', () => {
+  test('TC-005: mermaid island CSS does not force a light surface', () => {
     const css = readRepoFile('media/editor.css');
     assert.ok(
-      islandSelectorHasLightSurface(css),
-      '.mermaid-preview / .mermaid-block must define a scoped light surface background',
+      !islandSelectorHasLightSurface(css),
+      '.mermaid-preview / .mermaid-block must not force a bright fixed surface (island light withdrawn)',
     );
   });
 
@@ -252,7 +251,7 @@ suite('mermaid-contrast-readable', () => {
     assert.ok(/sanitizeMermaidSvg/.test(editorSrc), 'sanitize stays in Webview display layer');
   });
 
-  test('TC-011: highContrast uses same island light theme policy as dark', () => {
+  test('TC-011: highContrast maps to Mermaid theme dark like dark kind', () => {
     const buildMermaidThemeConfig = getUtilExport<(kind: string) => MermaidThemeConfig>(
       'mermaid-theme',
       'buildMermaidThemeConfig',
@@ -261,10 +260,9 @@ suite('mermaid-contrast-readable', () => {
     const config = buildMermaidThemeConfig!('highContrast');
     assert.strictEqual(
       config.theme,
-      'default',
-      'highContrast island must use light theme default, not dark on bright canvas',
+      'dark',
+      "highContrast must map to theme 'dark' (same as dark kind; AD-004)",
     );
-    assert.notStrictEqual(config.theme, 'dark');
     assert.strictEqual(config.securityLevel, 'strict');
   });
 

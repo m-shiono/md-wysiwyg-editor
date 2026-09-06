@@ -223814,10 +223814,15 @@ img.ProseMirror-separator {
   function buildMermaidThemeConfig(kind) {
     switch (kind) {
       case "light":
+        return {
+          theme: "default",
+          themeVariables: {},
+          securityLevel: "strict"
+        };
       case "dark":
       case "highContrast":
         return {
-          theme: "default",
+          theme: "dark",
           themeVariables: {},
           securityLevel: "strict"
         };

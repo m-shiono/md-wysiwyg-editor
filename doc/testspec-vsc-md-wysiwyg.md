@@ -252,7 +252,7 @@
 | TC-146 | Happy | preview-line-height-readability | P1 | 非 Marp doc を Preview モード（`body[data-mode='preview']`）で表示 | Preview スコープ CSS で本文 `line-height: 1.6`（目安）。Markdown モードの line-height は変更しない | Preview 可読性 — 行間 | §1 Preview 可読性, AD-006 |
 | TC-147 | Happy | preview-prosemirror-opacity-contrast | P1 | Preview モードで TipTap RO（`.ProseMirror[contenteditable='false']`）を表示 | `body[data-mode='preview']` スコープで `opacity: 1`。ハードコード色なし（`--vscode-*` 継続）。Markdown モードの opacity ルールは Preview 用変更の対象外 | Preview 可読性 — コントラスト | §1 Preview 可読性, AD-006 |
 | TC-148 | Structural | preview-css-scoped-only | P1 | `editor.css`（または同等）の Preview / Markdown / Raw ルールを検査 | line-height・opacity 改善は `body[data-mode='preview']` 配下のみ。Markdown / Raw の同等プロパティに Preview 専用上書きを波及させない | Preview スコープ限定（AD-006） | §1 Preview 可読性, AD-006 |
-| TC-149 | Structural | mermaid-theme-built-in | P1 | Webview 内 Mermaid グローバル initialize 設定を検査 | VS Code kind 'dark' / 'highContrast' → 'dark'、'light' → 'default'。`themeVariables` に `var(--vscode-...)` を含めない。`securityLevel: 'strict'` 維持 | ビルトインテーマへの移行（mermaid-theme-crash-fix） | §5 正常系 7 |
+| TC-149 | Structural | mermaid-theme-built-in | P1 | Webview 内 Mermaid グローバル initialize 設定を検査 | VS Code kind 'dark' / 'highContrast' → 'dark'、'light' → 'default'。`themeVariables` に `var(--vscode-...)` を含めない。`securityLevel: 'strict'` 維持。**島ライト＋全 kind `default` は撤回**（`fix-mermaid-edge-styles` — 詳細 [testspec-fix-mermaid-edge-styles.md](testspec-fix-mermaid-edge-styles.md)） | 標準 kind マップ復帰 | §5 正常系 7 |
 | TC-150 | Corner | mermaid-init-isolation | P1 | `mermaid.initialize` またはテーマ切替処理で例外を発生させる（mock） | try-catch で隔離され、Webview 全体のメッセージングや描画が停止しない。Output にエラーが記録される | 初期化・テーマ切替の隔離（mermaid-theme-crash-fix） | §5 正常系 8 |
 | TC-151 | Structural | preview-display-layer-document-unchanged | P1 | TC-145 相当（themeUpdated + Mermaid 再描画）および TC-146–147 相当（Preview CSS 適用）後に Document を inspect | `markdownText` / `docJson` / serialize 出力がテーマ・CSS・再描画前と一致。表示層のみの変更（AD-002） | 三者同期 — 表示層非変更 | §1 AD-002, TC-082 |
 | TC-152 | Corner | regression-mermaid-foreignobject-sanitize | P0 | Mermaid flowchart 相当 SVG（`foreignObject` 内にノードラベル HTML、例: `Cause A`）を NodeView の DOMPurify sanitize 経路（`media/editor.ts` `.mermaid-preview`）に通す | sanitize 後も `foreignObject` とノードラベル文字列が残る。`script` / `on*` 除去・`securityLevel: 'strict'` は不変（§9） | Regression: Dark/Edit で flowchart ノードラベルが消える（DOMPurify 既定が `foreignObject` を除去） | §5 正常系 1/4, §9 |
@@ -724,6 +724,7 @@ P0 + P1 の机上トレース（実装前）。
 
 | 日付 | 変更内容 |
 |------|---------|
+| 2026-09-06 | TC-149 Expected 明確化（標準 kind マップ維持・島ライト撤回）。関連 [testspec-fix-mermaid-edge-styles.md](testspec-fix-mermaid-edge-styles.md) | `fix-mermaid-edge-styles` — テストコード未変更（design only） |
 | 2026-09-05 | TC-130–132 テストコード Red 化；Trace 更新 | `mermaid-snap-style-with-source` testspec-implementation。`preview-rich-embed` をソース表示 Expected に合わせた |
 | 2026-09-05 | TC-130–132 Expected 更新；Spec Digest / TC-082 / Self-Check / Trace 整合 | `mermaid-snap-style-with-source`: 旧「Preview ソース非表示」撤回。Preview でも図下ソース表示（エラー時含む）。詳細 suite は `testspec-mermaid-snap-style-with-source.md`。**テストコード未変更** |
 | 2026-09-05 | TC-152 追加 | 回帰: Mermaid NodeView DOMPurify 既定が flowchart `foreignObject` ラベルを除去（`fix-mermaid-dark-visibility`） |

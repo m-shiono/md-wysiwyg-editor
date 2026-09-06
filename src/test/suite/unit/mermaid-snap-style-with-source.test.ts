@@ -1,6 +1,6 @@
 /**
- * mermaid-snap-style-with-source — Preview/Markdown source co-display + Snap-style island/theme.
- * Intentional Red until build-agent removes Preview .mermaid-source hide CSS (media/ unchanged here).
+ * mermaid-snap-style-with-source — Preview/Markdown source co-display + standard kind theme map.
+ * Island-light + all-kinds-default withdrawn (fix-mermaid-edge-styles). Theme/island Red until build fix.
  */
 import * as assert from 'assert';
 import * as fs from 'fs';
@@ -140,17 +140,25 @@ suite('mermaid-snap-style-with-source', () => {
     );
   });
 
-  test('TC-005: all VS Code kinds map to Mermaid theme default with strict', () => {
+  test('TC-005: VS Code kinds map to standard Mermaid themes with strict', () => {
     const buildMermaidThemeConfig = getUtilExport<(kind: string) => MermaidThemeConfig>(
       'mermaid-theme',
       'buildMermaidThemeConfig',
     );
     assert.ok(buildMermaidThemeConfig, 'buildMermaidThemeConfig export required');
 
+    const expected: Record<string, string> = {
+      light: 'default',
+      dark: 'dark',
+      highContrast: 'dark',
+    };
     for (const kind of ['light', 'dark', 'highContrast'] as const) {
       const config = buildMermaidThemeConfig!(kind);
-      assert.strictEqual(config.theme, 'default', `kind ${kind} must use theme 'default' (AD-005)`);
-      assert.notStrictEqual(config.theme, 'dark', `kind ${kind}: island must not return theme dark`);
+      assert.strictEqual(
+        config.theme,
+        expected[kind],
+        `kind ${kind} must map to theme '${expected[kind]}' (standard kind map)`,
+      );
       assert.strictEqual(config.securityLevel, 'strict', 'securityLevel strict must remain');
       for (const value of Object.values(config.themeVariables ?? {})) {
         assert.ok(!value.includes('var(--vscode-'), `themeVariables must not use var(--vscode-*): ${value}`);
@@ -158,11 +166,11 @@ suite('mermaid-snap-style-with-source', () => {
     }
   });
 
-  test('TC-006: mermaid island CSS defines scoped light surface background', () => {
+  test('TC-006: mermaid island CSS does not force a light surface', () => {
     const css = readRepoFile('media/editor.css');
     assert.ok(
-      islandSelectorHasLightSurface(css),
-      '.mermaid-preview / .mermaid-block must define a scoped light surface (AD-006)',
+      !islandSelectorHasLightSurface(css),
+      '.mermaid-preview / .mermaid-block must not force a bright fixed surface (AD-005 withdrawn)',
     );
   });
 
@@ -244,7 +252,7 @@ suite('mermaid-snap-style-with-source', () => {
     );
   });
 
-  test('TC-012: themeUpdated path keeps theme default and strict', () => {
+  test('TC-012: themeUpdated path follows standard kind map and strict', () => {
     const themeSrc = readRepoFile('src/utils/mermaid-theme.ts');
     assert.ok(
       /handleThemeUpdated/.test(themeSrc),
@@ -259,9 +267,18 @@ suite('mermaid-snap-style-with-source', () => {
       'buildMermaidThemeConfig',
     );
     assert.ok(buildMermaidThemeConfig);
+    const expected: Record<string, string> = {
+      light: 'default',
+      dark: 'dark',
+      highContrast: 'dark',
+    };
     for (const kind of ['light', 'dark', 'highContrast'] as const) {
       const config = buildMermaidThemeConfig!(kind);
-      assert.strictEqual(config.theme, 'default');
+      assert.strictEqual(
+        config.theme,
+        expected[kind],
+        `themeUpdated: kind ${kind} → '${expected[kind]}'`,
+      );
       assert.strictEqual(config.securityLevel, 'strict');
     }
     const editorSrc = readRepoFile('media/editor.ts');
@@ -302,16 +319,22 @@ suite('mermaid-snap-style-with-source', () => {
     );
   });
 
-  test('TC-014: mermaid-contrast-readable HIP and island contracts still hold', () => {
+  test('TC-014: HIP strict and no-island regression still hold', () => {
     const editorSrc = readRepoFile('media/editor.ts');
     assert.ok(
       /HTML_INTEGRATION_POINTS\s*:\s*\{[\s\S]*?foreignobject\s*:\s*true/i.test(editorSrc),
       'HIP foreignobject must remain (contrast-readable regression)',
     );
+    const buildMermaidThemeConfig = getUtilExport<(kind: string) => MermaidThemeConfig>(
+      'mermaid-theme',
+      'buildMermaidThemeConfig',
+    );
+    assert.ok(buildMermaidThemeConfig);
+    assert.strictEqual(buildMermaidThemeConfig!('light').securityLevel, 'strict');
     const css = readRepoFile('media/editor.css');
     assert.ok(
-      islandSelectorHasLightSurface(css),
-      'island light surface must remain (contrast-readable regression)',
+      !islandSelectorHasLightSurface(css),
+      'island light surface must not be forced (fix-mermaid-edge-styles AD-005)',
     );
     const suitePath = path.resolve(
       process.cwd(),

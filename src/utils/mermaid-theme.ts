@@ -7,13 +7,18 @@ export type MermaidThemeConfig = {
 };
 
 export function buildMermaidThemeConfig(kind: ThemeKind): MermaidThemeConfig {
-  // 島ライトキャンバス上では Mermaid dark を使わない（mermaid-contrast-readable UD-001=B / AD-006）
+  // 標準 kind マップ（fix-mermaid-edge-styles AD-004）— 島ライト強制は撤回済み
   switch (kind) {
     case 'light':
+      return {
+        theme: 'default',
+        themeVariables: {},
+        securityLevel: 'strict',
+      };
     case 'dark':
     case 'highContrast':
       return {
-        theme: 'default',
+        theme: 'dark',
         themeVariables: {},
         securityLevel: 'strict',
       };

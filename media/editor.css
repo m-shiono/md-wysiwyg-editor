@@ -339,12 +339,23 @@ body[data-readonly='true'] #link-input-bar {
   display: flex;
   align-items: center;
   justify-content: center;
-  /* 島ライトキャンバス — ダークテーマでもノード・ラベルを識別（UD-001=B）。広い面の背景は変えない */
-  background-color: white;
 }
 
 .mermaid-preview svg {
   max-width: 100%;
+}
+
+/*
+ * CSP blocks Mermaid SVG inline <style>, so edge presentation must live here
+ * (fix-mermaid-edge-styles AD-002/003). Without fill:none, SVG paths paint black blobs.
+ */
+.mermaid-preview .edgePath .path,
+.mermaid-preview .edgePaths .path,
+.mermaid-preview .flowchart-link,
+.mermaid-preview path.flowchart-link {
+  fill: none;
+  stroke: var(--vscode-foreground);
+  stroke-width: 2px;
 }
 
 .mermaid-error {
