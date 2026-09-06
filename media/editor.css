@@ -373,8 +373,8 @@ body[data-readonly='true'] #link-input-bar {
   border-radius: 2px;
   background: transparent;
   cursor: grab;
-  /* Title / label edges must not clip inside the scroll frame */
-  padding: 4px;
+  /* Extra left/right pad so centered Mermaid titles are not clipped at the frame edge */
+  padding: 8px 12px;
 }
 
 .mermaid-viewport.is-panning {
@@ -385,6 +385,7 @@ body[data-readonly='true'] #link-input-bar {
 .mermaid-viewport-canvas {
   display: inline-block;
   transform-origin: 0 0;
+  overflow: visible;
   /* Density stays fontSize; viewport zoom uses transform only */
 }
 
@@ -393,6 +394,7 @@ body[data-readonly='true'] #link-input-bar {
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
+  overflow: visible;
 }
 
 /* Natural SVG size inside viewport — do not force max-width (fit uses transform) */

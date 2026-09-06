@@ -1,5 +1,5 @@
 /**
- * mermaid-readable-viewport — global fontSize 8px, title visibility,
+ * mermaid-readable-viewport — global fontSize 10px, title visibility,
  * Editor Preview / Rich Editor viewport fit / zoom / pan / scroll / re-fit / a11y,
  * density≠viewport, Default Preview exclusion, redux / HIP / strict / nonce / ELK regressions.
  * Intentional Red until build-agent lands production (tests-only phase).
@@ -194,7 +194,7 @@ function hasElkRegistration(sources: string[]): boolean {
 suite('mermaid-readable-viewport', () => {
   // --- P0 ---
 
-  test('TC-001: all kinds use themeVariables.fontSize 8px (not 13px)', () => {
+  test('TC-001: all kinds use themeVariables.fontSize 10px (not 8px/13px)', () => {
     const buildMermaidThemeConfig = getUtilExport<(kind: string) => MermaidThemeConfig>(
       'mermaid-theme',
       'buildMermaidThemeConfig',
@@ -204,13 +204,18 @@ suite('mermaid-readable-viewport', () => {
       const config = buildMermaidThemeConfig!(kind);
       assert.strictEqual(
         config.themeVariables?.fontSize,
-        '8px',
-        `kind ${kind}: themeVariables.fontSize must be '8px' (mermaid-readable-viewport)`,
+        '10px',
+        `kind ${kind}: themeVariables.fontSize must be '10px' (mermaid-readable-viewport)`,
       );
       assert.notStrictEqual(
         config.themeVariables?.fontSize,
         '13px',
         `kind ${kind}: legacy '13px' must not remain`,
+      );
+      assert.notStrictEqual(
+        config.themeVariables?.fontSize,
+        '8px',
+        `kind ${kind}: legacy '8px' must not remain`,
       );
     }
   });
@@ -237,8 +242,8 @@ suite('mermaid-readable-viewport', () => {
     const editorSrc = readRepoFile('media/editor.ts');
     const themeSrc = readRepoFile('src/utils/mermaid-theme.ts');
     assert.ok(
-      /fontSize\s*:\s*['"]8px['"]/.test(themeSrc),
-      "density primary means must be themeVariables.fontSize '8px'",
+      /fontSize\s*:\s*['"]10px['"]/.test(themeSrc),
+      "density primary means must be themeVariables.fontSize '10px'",
     );
     assert.ok(
       !densityUsesCssScaleAsPrimary(css, editorSrc),
@@ -274,7 +279,7 @@ suite('mermaid-readable-viewport', () => {
     );
   });
 
-  test('TC-006: zoom in/out changes viewport transform while fontSize stays 8px', () => {
+  test('TC-006: zoom in/out changes viewport transform while fontSize stays 10px', () => {
     const editorSrc = readRepoFile('media/editor.ts');
     const buildMermaidThemeConfig = getUtilExport<(kind: string) => MermaidThemeConfig>(
       'mermaid-theme',
@@ -285,8 +290,8 @@ suite('mermaid-readable-viewport', () => {
     for (const kind of KINDS) {
       assert.strictEqual(
         buildMermaidThemeConfig!(kind).themeVariables?.fontSize,
-        '8px',
-        'zoom must not change density fontSize away from 8px',
+        '10px',
+        'zoom must not change density fontSize away from 10px',
       );
     }
     assert.ok(
@@ -498,12 +503,12 @@ suite('mermaid-readable-viewport', () => {
     );
   });
 
-  test('TC-019: per-diagram fontSize override remains allowed without breaking global 8px', () => {
+  test('TC-019: per-diagram fontSize override remains allowed without breaking global 10px', () => {
     const themeSrc = readRepoFile('src/utils/mermaid-theme.ts');
     const editorSrc = readRepoFile('media/editor.ts');
     assert.ok(
-      /fontSize\s*:\s*['"]8px['"]/.test(themeSrc),
-      "global default remains '8px'",
+      /fontSize\s*:\s*['"]10px['"]/.test(themeSrc),
+      "global default remains '10px'",
     );
     // Mermaid native frontmatter / %%{init}%% is delegated — do not strip themeVariables
     assert.ok(
@@ -514,7 +519,7 @@ suite('mermaid-readable-viewport', () => {
     );
   });
 
-  test('TC-020: related suites Expected align with global fontSize 8px', () => {
+  test('TC-020: related suites Expected align with global fontSize 10px', () => {
     const relatedSuites = [
       'src/test/suite/unit/mermaid-redux-elk-fidelity.test.ts',
       'src/test/suite/unit/fix-mermaid-edge-styles.test.ts',
@@ -529,8 +534,8 @@ suite('mermaid-readable-viewport', () => {
         `${suitePath} must not still require fontSize '13px'`,
       );
       assert.ok(
-        /fontSize[\s\S]{0,80}'8px'|fontSize[\s\S]{0,80}"8px"/.test(src),
-        `${suitePath} must expect fontSize '8px'`,
+        /fontSize[\s\S]{0,80}'10px'|fontSize[\s\S]{0,80}"10px"/.test(src),
+        `${suitePath} must expect fontSize '10px'`,
       );
     }
     const relatedSpecs = [
@@ -542,11 +547,11 @@ suite('mermaid-readable-viewport', () => {
     ];
     for (const specPath of relatedSpecs) {
       const spec = readRepoFile(specPath);
-      // TC-facing Expected should prefer 8px; allow historical changelog mentions of 13px
+      // TC-facing Expected should prefer 10px; allow historical changelog mentions of 8px/13px
       const matrixOrTc149 =
-        /fontSize[^|\n]*8px|`8px`|'8px'|"8px"/.test(spec) ||
-        /TC-149[\s\S]{0,200}8px/.test(spec);
-      assert.ok(matrixOrTc149, `${specPath} Expected should align with global fontSize 8px`);
+        /fontSize[^|\n]*10px|`10px`|'10px'|"10px"/.test(spec) ||
+        /TC-149[\s\S]{0,200}10px/.test(spec);
+      assert.ok(matrixOrTc149, `${specPath} Expected should align with global fontSize 10px`);
     }
   });
 

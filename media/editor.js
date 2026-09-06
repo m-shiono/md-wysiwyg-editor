@@ -223822,14 +223822,14 @@ img.ProseMirror-separator {
       case "light":
         return {
           theme: "redux",
-          themeVariables: { fontSize: "8px" },
+          themeVariables: { fontSize: "10px" },
           securityLevel: "strict"
         };
       case "dark":
       case "highContrast":
         return {
           theme: "redux-dark",
-          themeVariables: { fontSize: "8px" },
+          themeVariables: { fontSize: "10px" },
           securityLevel: "strict"
         };
       default: {
@@ -223837,7 +223837,7 @@ img.ProseMirror-separator {
         void _exhaustive;
         return {
           theme: "redux",
-          themeVariables: { fontSize: "8px" },
+          themeVariables: { fontSize: "10px" },
           securityLevel: "strict"
         };
       }
@@ -223878,7 +223878,8 @@ img.ProseMirror-separator {
   var MERMAID_VIEWPORT_ZOOM_STEP = 1.25;
   var MERMAID_VIEWPORT_MIN_SCALE = 0.2;
   var MERMAID_VIEWPORT_MAX_SCALE = 8;
-  var MERMAID_TITLE_VIEWBOX_PAD = 12;
+  var MERMAID_TITLE_VIEWBOX_PAD = 24;
+  var MERMAID_TITLE_VIEWBOX_PAD_X = 36;
   var mermaidTimers = /* @__PURE__ */ new Map();
   var mermaidRerenderCallbacks = /* @__PURE__ */ new Set();
   var mermaidThemeRerenderTimer;
@@ -224216,6 +224217,53 @@ img.ProseMirror-separator {
       HTML_INTEGRATION_POINTS: { foreignobject: true }
     });
   }
+  function expandBoundsForSvgText(el, bounds4) {
+    if (typeof el.getBBox !== "function") {
+      return;
+    }
+    try {
+      const tb = el.getBBox();
+      let left3 = tb.x;
+      let right3 = tb.x + tb.width;
+      const top2 = tb.y;
+      const bottom2 = tb.y + tb.height;
+      const textEl = el;
+      if (typeof textEl.getComputedTextLength === "function") {
+        const textLen = textEl.getComputedTextLength();
+        if (Number.isFinite(textLen) && textLen > 0) {
+          let anchor2 = el.getAttribute("text-anchor") || (typeof getComputedStyle === "function" ? getComputedStyle(el).getPropertyValue("text-anchor") : "") || "start";
+          anchor2 = anchor2.trim() || "start";
+          let anchorX;
+          const xAttr = el.getAttribute("x");
+          const xNum = xAttr !== null && xAttr !== "" ? Number(xAttr) : NaN;
+          if (Number.isFinite(xNum)) {
+            anchorX = xNum;
+          } else if (anchor2 === "middle") {
+            anchorX = tb.x + tb.width / 2;
+          } else if (anchor2 === "end") {
+            anchorX = tb.x + tb.width;
+          } else {
+            anchorX = tb.x;
+          }
+          if (anchor2 === "middle") {
+            left3 = Math.min(left3, anchorX - textLen / 2);
+            right3 = Math.max(right3, anchorX + textLen / 2);
+          } else if (anchor2 === "end") {
+            left3 = Math.min(left3, anchorX - textLen);
+            right3 = Math.max(right3, anchorX);
+          } else {
+            left3 = Math.min(left3, anchorX);
+            right3 = Math.max(right3, anchorX + textLen);
+          }
+        }
+      }
+      bounds4.minX = Math.min(bounds4.minX, left3);
+      bounds4.minY = Math.min(bounds4.minY, top2);
+      bounds4.maxX = Math.max(bounds4.maxX, right3);
+      bounds4.maxY = Math.max(bounds4.maxY, bottom2);
+    } catch {
+    }
+  }
   function ensureTitleVisible(svgRoot) {
     try {
       svgRoot.style.overflow = "visible";
@@ -224223,29 +224271,21 @@ img.ProseMirror-separator {
       if (!Number.isFinite(bbox.width) || !Number.isFinite(bbox.height) || bbox.width <= 0) {
         return;
       }
-      let minX = bbox.x;
-      let minY = bbox.y;
-      let maxX = bbox.x + bbox.width;
-      let maxY = bbox.y + bbox.height;
-      svgRoot.querySelectorAll("text, .titleText, title").forEach((node2) => {
-        const el = node2;
-        if (typeof el.getBBox !== "function") {
-          return;
-        }
-        try {
-          const tb = el.getBBox();
-          minX = Math.min(minX, tb.x);
-          minY = Math.min(minY, tb.y);
-          maxX = Math.max(maxX, tb.x + tb.width);
-          maxY = Math.max(maxY, tb.y + tb.height);
-        } catch {
-        }
+      const bounds4 = {
+        minX: bbox.x,
+        minY: bbox.y,
+        maxX: bbox.x + bbox.width,
+        maxY: bbox.y + bbox.height
+      };
+      svgRoot.querySelectorAll("text, .titleText").forEach((node2) => {
+        expandBoundsForSvgText(node2, bounds4);
       });
-      const pad3 = MERMAID_TITLE_VIEWBOX_PAD;
-      const vbX = minX - pad3;
-      const vbY = minY - pad3;
-      const vbW = Math.max(1, maxX - minX + pad3 * 2);
-      const vbH = Math.max(1, maxY - minY + pad3 * 2);
+      const padY = MERMAID_TITLE_VIEWBOX_PAD;
+      const padX = MERMAID_TITLE_VIEWBOX_PAD_X;
+      const vbX = bounds4.minX - padX;
+      const vbY = bounds4.minY - padY;
+      const vbW = Math.max(1, bounds4.maxX - bounds4.minX + padX * 2);
+      const vbH = Math.max(1, bounds4.maxY - bounds4.minY + padY * 2);
       svgRoot.setAttribute("viewBox", `${vbX} ${vbY} ${vbW} ${vbH}`);
       if (!svgRoot.getAttribute("width") || svgRoot.getAttribute("width") === "100%") {
         svgRoot.setAttribute("width", String(vbW));

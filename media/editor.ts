@@ -65,7 +65,9 @@ const MERMAID_VIEWPORT_ZOOM_STEP = 1.25;
 const MERMAID_VIEWPORT_MIN_SCALE = 0.2;
 const MERMAID_VIEWPORT_MAX_SCALE = 8;
 /** Extra viewBox padding so Mermaid titleText is not clipped (AD-003). */
-const MERMAID_TITLE_VIEWBOX_PAD = 12;
+const MERMAID_TITLE_VIEWBOX_PAD = 24;
+/** Extra horizontal pad — long centered titles need more than vertical (leading glyph clip). */
+const MERMAID_TITLE_VIEWBOX_PAD_X = 36;
 const mermaidTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const mermaidRerenderCallbacks = new Set<() => void>();
 let mermaidThemeRerenderTimer: ReturnType<typeof setTimeout> | undefined;
@@ -500,6 +502,71 @@ function sanitizeMermaidSvg(svg: string): string {
 }
 
 /**
+ * Expand text bounds using getBBox plus getComputedTextLength when available.
+ * text-anchor middle/end can under-report left extent via getBBox alone (AD-003).
+ */
+function expandBoundsForSvgText(
+  el: SVGGraphicsElement,
+  bounds: { minX: number; minY: number; maxX: number; maxY: number },
+): void {
+  if (typeof el.getBBox !== 'function') {
+    return;
+  }
+  try {
+    const tb = el.getBBox();
+    let left = tb.x;
+    let right = tb.x + tb.width;
+    const top = tb.y;
+    const bottom = tb.y + tb.height;
+
+    const textEl = el as SVGTextContentElement;
+    if (typeof textEl.getComputedTextLength === 'function') {
+      const textLen = textEl.getComputedTextLength();
+      if (Number.isFinite(textLen) && textLen > 0) {
+        let anchor =
+          el.getAttribute('text-anchor') ||
+          (typeof getComputedStyle === 'function'
+            ? getComputedStyle(el).getPropertyValue('text-anchor')
+            : '') ||
+          'start';
+        anchor = anchor.trim() || 'start';
+
+        let anchorX: number;
+        const xAttr = el.getAttribute('x');
+        const xNum = xAttr !== null && xAttr !== '' ? Number(xAttr) : NaN;
+        if (Number.isFinite(xNum)) {
+          anchorX = xNum;
+        } else if (anchor === 'middle') {
+          anchorX = tb.x + tb.width / 2;
+        } else if (anchor === 'end') {
+          anchorX = tb.x + tb.width;
+        } else {
+          anchorX = tb.x;
+        }
+
+        if (anchor === 'middle') {
+          left = Math.min(left, anchorX - textLen / 2);
+          right = Math.max(right, anchorX + textLen / 2);
+        } else if (anchor === 'end') {
+          left = Math.min(left, anchorX - textLen);
+          right = Math.max(right, anchorX);
+        } else {
+          left = Math.min(left, anchorX);
+          right = Math.max(right, anchorX + textLen);
+        }
+      }
+    }
+
+    bounds.minX = Math.min(bounds.minX, left);
+    bounds.minY = Math.min(bounds.minY, top);
+    bounds.maxX = Math.max(bounds.maxX, right);
+    bounds.maxY = Math.max(bounds.maxY, bottom);
+  } catch {
+    // getBBox / getComputedTextLength can throw for detached / display:none nodes
+  }
+}
+
+/**
  * Expand SVG viewBox / overflow so Mermaid title text is fully visible (AD-003).
  * Display-layer only — does not touch Document / serialize.
  */
@@ -510,31 +577,22 @@ function ensureTitleVisible(svgRoot: SVGSVGElement): void {
     if (!Number.isFinite(bbox.width) || !Number.isFinite(bbox.height) || bbox.width <= 0) {
       return;
     }
-    let minX = bbox.x;
-    let minY = bbox.y;
-    let maxX = bbox.x + bbox.width;
-    let maxY = bbox.y + bbox.height;
+    const bounds = {
+      minX: bbox.x,
+      minY: bbox.y,
+      maxX: bbox.x + bbox.width,
+      maxY: bbox.y + bbox.height,
+    };
     // Include title / titleText nodes that may sit above the diagram bbox
-    svgRoot.querySelectorAll('text, .titleText, title').forEach((node) => {
-      const el = node as SVGGraphicsElement;
-      if (typeof el.getBBox !== 'function') {
-        return;
-      }
-      try {
-        const tb = el.getBBox();
-        minX = Math.min(minX, tb.x);
-        minY = Math.min(minY, tb.y);
-        maxX = Math.max(maxX, tb.x + tb.width);
-        maxY = Math.max(maxY, tb.y + tb.height);
-      } catch {
-        // getBBox can throw for detached / display:none nodes
-      }
+    svgRoot.querySelectorAll('text, .titleText').forEach((node) => {
+      expandBoundsForSvgText(node as SVGGraphicsElement, bounds);
     });
-    const pad = MERMAID_TITLE_VIEWBOX_PAD;
-    const vbX = minX - pad;
-    const vbY = minY - pad;
-    const vbW = Math.max(1, maxX - minX + pad * 2);
-    const vbH = Math.max(1, maxY - minY + pad * 2);
+    const padY = MERMAID_TITLE_VIEWBOX_PAD;
+    const padX = MERMAID_TITLE_VIEWBOX_PAD_X;
+    const vbX = bounds.minX - padX;
+    const vbY = bounds.minY - padY;
+    const vbW = Math.max(1, bounds.maxX - bounds.minX + padX * 2);
+    const vbH = Math.max(1, bounds.maxY - bounds.minY + padY * 2);
     svgRoot.setAttribute('viewBox', `${vbX} ${vbY} ${vbW} ${vbH}`);
     // Keep width/height consistent with padded viewBox so fit math stays correct
     if (!svgRoot.getAttribute('width') || svgRoot.getAttribute('width') === '100%') {
