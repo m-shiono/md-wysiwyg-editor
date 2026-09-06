@@ -501,16 +501,17 @@ function sanitizeMermaidSvg(svg: string): string {
   });
 }
 
+type SvgBounds = { minX: number; minY: number; maxX: number; maxY: number };
+
 /**
- * Expand text bounds using getBBox plus getComputedTextLength when available.
+ * Text horizontal/vertical extent — getBBox plus getComputedTextLength.
  * text-anchor middle/end can under-report left extent via getBBox alone (AD-003).
  */
-function expandBoundsForSvgText(
+function getSvgTextExtent(
   el: SVGGraphicsElement,
-  bounds: { minX: number; minY: number; maxX: number; maxY: number },
-): void {
+): { left: number; right: number; top: number; bottom: number } | null {
   if (typeof el.getBBox !== 'function') {
-    return;
+    return null;
   }
   try {
     const tb = el.getBBox();
@@ -557,36 +558,232 @@ function expandBoundsForSvgText(
       }
     }
 
-    bounds.minX = Math.min(bounds.minX, left);
-    bounds.minY = Math.min(bounds.minY, top);
-    bounds.maxX = Math.max(bounds.maxX, right);
-    bounds.maxY = Math.max(bounds.maxY, bottom);
+    return { left, right, top, bottom };
   } catch {
     // getBBox / getComputedTextLength can throw for detached / display:none nodes
+    return null;
+  }
+}
+
+function expandBoundsForSvgText(el: SVGGraphicsElement, bounds: SvgBounds): void {
+  const extent = getSvgTextExtent(el);
+  if (!extent) {
+    return;
+  }
+  bounds.minX = Math.min(bounds.minX, extent.left);
+  bounds.minY = Math.min(bounds.minY, extent.top);
+  bounds.maxX = Math.max(bounds.maxX, extent.right);
+  bounds.maxY = Math.max(bounds.maxY, extent.bottom);
+}
+
+function expandBoundsFromBBox(el: SVGGraphicsElement, bounds: SvgBounds): boolean {
+  if (typeof el.getBBox !== 'function') {
+    return false;
+  }
+  try {
+    const b = el.getBBox();
+    if (!Number.isFinite(b.x) || !Number.isFinite(b.y)) {
+      return false;
+    }
+    if (!(b.width > 0 || b.height > 0)) {
+      return false;
+    }
+    bounds.minX = Math.min(bounds.minX, b.x);
+    bounds.minY = Math.min(bounds.minY, b.y);
+    bounds.maxX = Math.max(bounds.maxX, b.x + b.width);
+    bounds.maxY = Math.max(bounds.maxY, b.y + b.height);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Prefer Mermaid `.titleText`; else title-like text above diagram content (not node labels).
+ */
+function findMermaidTitleElements(svgRoot: SVGSVGElement): SVGGraphicsElement[] {
+  const byClass = Array.from(
+    svgRoot.querySelectorAll('.titleText, g.title > text, text.title'),
+  ) as SVGGraphicsElement[];
+  if (byClass.length > 0) {
+    return byClass;
+  }
+
+  const shapeBounds: SvgBounds = {
+    minX: Infinity,
+    minY: Infinity,
+    maxX: -Infinity,
+    maxY: -Infinity,
+  };
+  let hasShapes = false;
+  svgRoot
+    .querySelectorAll('path, rect, circle, ellipse, polygon, polyline, line, foreignObject')
+    .forEach((node) => {
+      if (expandBoundsFromBBox(node as SVGGraphicsElement, shapeBounds)) {
+        hasShapes = true;
+      }
+    });
+  if (!hasShapes) {
+    return [];
+  }
+
+  const above: { el: SVGGraphicsElement; top: number }[] = [];
+  svgRoot.querySelectorAll('text').forEach((node) => {
+    const el = node as SVGGraphicsElement;
+    const extent = getSvgTextExtent(el);
+    if (!extent) {
+      return;
+    }
+    // Title sits above diagram content; node labels overlap the shape band
+    if (extent.bottom <= shapeBounds.minY + 2) {
+      above.push({ el, top: extent.top });
+    }
+  });
+  if (above.length === 0) {
+    return [];
+  }
+  above.sort((a, b) => a.top - b.top);
+  const topY = above[0].top;
+  // Only the topmost band (diagram title), not every label above a subgraph
+  return above.filter((item) => item.top <= topY + 4).map((item) => item.el);
+}
+
+function computeDiagramContentBounds(
+  svgRoot: SVGSVGElement,
+  titleEls: SVGGraphicsElement[],
+): SvgBounds | null {
+  const titleSet = new Set<Element>(titleEls);
+  const bounds: SvgBounds = {
+    minX: Infinity,
+    minY: Infinity,
+    maxX: -Infinity,
+    maxY: -Infinity,
+  };
+  let found = false;
+
+  const isUnderTitle = (node: Element): boolean => {
+    for (const title of titleEls) {
+      if (title === node || title.contains(node)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  svgRoot
+    .querySelectorAll(
+      'path, rect, circle, ellipse, polygon, polyline, line, foreignObject, text, .label, .node',
+    )
+    .forEach((node) => {
+      if (titleSet.has(node) || isUnderTitle(node)) {
+        return;
+      }
+      const el = node as SVGGraphicsElement;
+      if (el.tagName.toLowerCase() === 'text') {
+        const extent = getSvgTextExtent(el);
+        if (!extent) {
+          return;
+        }
+        bounds.minX = Math.min(bounds.minX, extent.left);
+        bounds.minY = Math.min(bounds.minY, extent.top);
+        bounds.maxX = Math.max(bounds.maxX, extent.right);
+        bounds.maxY = Math.max(bounds.maxY, extent.bottom);
+        found = true;
+        return;
+      }
+      if (expandBoundsFromBBox(el, bounds)) {
+        found = true;
+      }
+    });
+
+  return found ? bounds : null;
+}
+
+/** Shift title right via x (respects text-anchor) or transform translate. */
+function shiftSvgTextByX(el: SVGGraphicsElement, deltaX: number): void {
+  if (!(deltaX > 0) || !Number.isFinite(deltaX)) {
+    return;
+  }
+
+  const xAttr = el.getAttribute('x');
+  const xNum = xAttr !== null && xAttr !== '' ? Number(xAttr) : NaN;
+  if (Number.isFinite(xNum)) {
+    el.setAttribute('x', String(xNum + deltaX));
+  } else {
+    const existing = el.getAttribute('transform')?.trim() ?? '';
+    el.setAttribute(
+      'transform',
+      existing ? `translate(${deltaX},0) ${existing}` : `translate(${deltaX},0)`,
+    );
+  }
+
+  el.querySelectorAll('tspan').forEach((tspan) => {
+    const tx = tspan.getAttribute('x');
+    if (tx === null || tx === '') {
+      return;
+    }
+    const n = Number(tx);
+    if (Number.isFinite(n)) {
+      tspan.setAttribute('x', String(n + deltaX));
+    }
+  });
+}
+
+/**
+ * If title hangs left of diagram content, shift it right so title left >= diagram left.
+ * Prefer position shift over only growing left viewBox pad (zoom clip of leading glyphs).
+ */
+function alignMermaidTitleToDiagram(svgRoot: SVGSVGElement): void {
+  const titles = findMermaidTitleElements(svgRoot);
+  if (titles.length === 0) {
+    return;
+  }
+  const content = computeDiagramContentBounds(svgRoot, titles);
+  if (!content || !Number.isFinite(content.minX)) {
+    return;
+  }
+
+  for (const title of titles) {
+    const extent = getSvgTextExtent(title);
+    if (!extent) {
+      continue;
+    }
+    const deltaX = content.minX - extent.left;
+    if (deltaX > 0.5) {
+      shiftSvgTextByX(title, deltaX);
+    }
   }
 }
 
 /**
  * Expand SVG viewBox / overflow so Mermaid title text is fully visible (AD-003).
+ * Aligns title so it does not hang left of diagram content, then pads viewBox.
  * Display-layer only — does not touch Document / serialize.
  */
 function ensureTitleVisible(svgRoot: SVGSVGElement): void {
   try {
     svgRoot.style.overflow = 'visible';
+    alignMermaidTitleToDiagram(svgRoot);
+
     const bbox = svgRoot.getBBox();
     if (!Number.isFinite(bbox.width) || !Number.isFinite(bbox.height) || bbox.width <= 0) {
       return;
     }
-    const bounds = {
+    const bounds: SvgBounds = {
       minX: bbox.x,
       minY: bbox.y,
       maxX: bbox.x + bbox.width,
       maxY: bbox.y + bbox.height,
     };
     // Include title / titleText nodes that may sit above the diagram bbox
-    svgRoot.querySelectorAll('text, .titleText').forEach((node) => {
-      expandBoundsForSvgText(node as SVGGraphicsElement, bounds);
-    });
+    const titles = findMermaidTitleElements(svgRoot);
+    if (titles.length > 0) {
+      titles.forEach((node) => expandBoundsForSvgText(node, bounds));
+    } else {
+      svgRoot.querySelectorAll('text, .titleText').forEach((node) => {
+        expandBoundsForSvgText(node as SVGGraphicsElement, bounds);
+      });
+    }
     const padY = MERMAID_TITLE_VIEWBOX_PAD;
     const padX = MERMAID_TITLE_VIEWBOX_PAD_X;
     const vbX = bounds.minX - padX;

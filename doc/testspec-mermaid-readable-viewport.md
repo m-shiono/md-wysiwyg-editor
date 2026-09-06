@@ -43,7 +43,7 @@
 | 条件 | 戻り値 / 期待状態 | 仕様根拠 |
 |------|-------------------|---------|
 | グローバル密度 | 全 kind で `themeVariables.fontSize === '10px'`。`var(--vscode-...)` なし。密度主手段に CSS `scale`/`zoom` を使わない | §5 正常系 7a、AD-001 |
-| タイトル全文可視 | 図タイトルが枠外クリップ／欠落なく可視（viewBox / overflow / padding 等の表示層契約） | §5 正常系 7b、AD-003 |
+| タイトル全文可視 | 図タイトルが枠外クリップ／欠落なく可視。タイトルが図左端より左にはみ出さないよう表示層で align／shift（viewBox / overflow / padding 含む） | §5 正常系 7b、AD-003 |
 | 初期 fit | 描画成功後、図全体が枠内に収まる（contain / fit-to-viewport） | §5 正常系 7c、AD-004 |
 | ズーム | 虫眼鏡または同等 UI でイン／アウト。ビューポート変換（CSS transform 等）で 10px 図を拡大して読める。密度契約とは別 | §5 正常系 7c、AD-005 |
 | パン／スクロール | 枠内パン／ドラッグが可能（**特定修飾キー／中ボタンを必須ロックしない** — Spec Gap RK-004）。必要時に縦横スクロールバー | §5 正常系 7c / Spec Gaps、AD-006 |
@@ -80,7 +80,7 @@
 | TC-001 | Happy | fontsize-10px-all-kinds | P0 | `buildMermaidThemeConfig` 全 kind（`light` / `dark` / `highContrast`） | いずれも `themeVariables.fontSize === '10px'`。`'8px'` / `'13px'` は Fail | グローバル密度 10px（AD-001） | §5 正常系 7a |
 | TC-002 | Structural | no-vscode-var-in-theme-variables | P0 | 同上 theme config | `themeVariables` に `var(--vscode-...)` **なし** | CSS 変数禁止維持 | §5 正常系 7 / 7a |
 | TC-003 | Structural | density-not-css-scale | P0 | `.mermaid-preview` / 密度関連 CSS・ヘルパ | 密度の主手段として `transform: scale(...)` / `zoom` による見た目縮小を**要求しない**（ビューポート変換用 transform とは別契約） | 密度≠scale（AD-001） | §5 正常系 7a、Non-Goals |
-| TC-004 | Happy | title-not-clipped | P0 | タイトル付き Mermaid 図の render／NodeView 表示層契約（viewBox / overflow / padding 等） | タイトル文字列が枠外クリップや欠落なく全文可視。`docJson` / `markdownText` / serialize 不変 | タイトル全文可視（AD-003） | §5 正常系 7b |
+| TC-004 | Happy | title-not-clipped | P0 | タイトル付き Mermaid 図の render／NodeView 表示層契約（viewBox / overflow / padding／title align・shift 等） | タイトル文字列が枠外クリップや欠落なく全文可視。タイトル左端が図コンテンツ左端より左にはみ出さない（align／shift）。`docJson` / `markdownText` / serialize 不変 | タイトル全文可視（AD-003） | §5 正常系 7b |
 | TC-005 | Happy | initial-fit | P0 | 描画成功後の Mermaid NodeView（大きめ図 fixture 可） | 初期ビューポートが全体 fit（contain / fit-to-viewport）。枠内に図全体が収まる契約 | 初期 fit（AD-004） | §5 正常系 7c |
 | TC-006 | Happy | zoom-in-out | P0 | Zoom in / Zoom out コントロール操作（または同等 API） | ズームインでビューポート拡大（transform 等）。ズームアウトで縮小。密度 `fontSize` は `'10px'` のまま | ズームで 10px 図を読める（AD-005） | §5 正常系 7c |
 | TC-007 | Happy | zoom-a11y | P0 | ズーム／Fit UI | キーボード到達可能。各コントロールに `aria-label`（例: Zoom in / Zoom out / Fit）。コントラストは `--vscode-*` 系 | a11y 最低限（AD-011） | §5 正常系 7c |
@@ -244,3 +244,4 @@
 | 2026-09-06 | 初版 — `fontSize: '8px'`・タイトル全文可視・初期 fit・ズーム／a11y・パン（modifier 非固定）／スクロール・re-fit・Preview RO・Default Preview 非対象・redux/HIP/strict/nonce/ELK 回帰（設計のみ）。関連 suite `13px`→`8px` 更新指示 |
 | 2026-09-06 | testspec-implementation — `mermaid-readable-viewport.test.ts` 追加・unit-entry 登録・関連 suite Expected `8px` 更新。Trace を意図的 Red に更新 |
 | 2026-09-06 | 密度 polish: Expected／TC のグローバル `fontSize` を `'8px'` → `'10px'`。タイトル左欠け対策（viewBox / `getComputedTextLength` / 水平パッド）を契約に追随 |
+| 2026-09-06 | タイトル align／shift: TC-004 Expected に「title left ≥ diagram content left」を追記。表示層契約を Outputs に同期 |

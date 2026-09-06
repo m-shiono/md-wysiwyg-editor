@@ -78,15 +78,19 @@ function densityUsesCssScaleAsPrimary(css: string, editorSrc: string): boolean {
   return previewScale && !hasViewportZoomApi;
 }
 
-/** Title visibility contract: overflow / viewBox / padding adjustments near mermaid title. */
+/** Title visibility contract: overflow / viewBox / padding, plus title align/shift to diagram. */
 function hasTitleVisibilityContract(editorSrc: string, css: string): boolean {
   const joined = `${editorSrc}\n${css}`;
-  return (
+  const hasPadOrOverflow =
     /title.*(overflow|viewBox|padding|clip)|overflow.*visible|viewBox.*(title|pad)|mermaid.*title.*(visible|clip|padding)/i.test(
       joined,
     ) ||
-    /ensureTitleVisible|titleNotClipped|mermaidTitlePadding|adjustMermaidViewBox/i.test(joined)
-  );
+    /ensureTitleVisible|titleNotClipped|mermaidTitlePadding|adjustMermaidViewBox/i.test(joined);
+  const hasAlignOrShift =
+    /alignMermaidTitleToDiagram|shiftSvgTextByX|title.*(?:align|shift)|diagram.*(?:left|content).*title|titleLeft|alignTitle/i.test(
+      editorSrc,
+    );
+  return hasPadOrOverflow && hasAlignOrShift;
 }
 
 /** Initial fit / contain / fit-to-viewport helpers present. */
@@ -256,16 +260,24 @@ suite('mermaid-readable-viewport', () => {
     const css = readRepoFile('media/editor.css');
     assert.ok(
       hasTitleVisibilityContract(editorSrc, css),
-      'display-layer must adjust viewBox / overflow / padding so Mermaid titles are fully visible (AD-003)',
+      'display-layer must adjust viewBox / overflow / padding and align/shift title so it does not hang left of diagram content (AD-003)',
+    );
+    assert.ok(
+      /ensureTitleVisible/.test(editorSrc) && /alignMermaidTitleToDiagram/.test(editorSrc),
+      'ensureTitleVisible path must align/shift Mermaid title relative to diagram content',
     );
     const serializerSrc = readRepoFile('src/serializers/markdown-serializer.ts');
     const documentSrc = readRepoFile('src/providers/markdown-document.ts');
     assert.ok(
-      !/ensureTitleVisible|titleNotClipped|adjustMermaidViewBox/i.test(serializerSrc),
+      !/ensureTitleVisible|titleNotClipped|adjustMermaidViewBox|alignMermaidTitleToDiagram/i.test(
+        serializerSrc,
+      ),
       'title visibility must not live in markdown-serializer (docJson/markdownText untouched)',
     );
     assert.ok(
-      !/ensureTitleVisible|titleNotClipped|adjustMermaidViewBox/i.test(documentSrc),
+      !/ensureTitleVisible|titleNotClipped|adjustMermaidViewBox|alignMermaidTitleToDiagram/i.test(
+        documentSrc,
+      ),
       'title visibility must not live in markdown-document',
     );
   });

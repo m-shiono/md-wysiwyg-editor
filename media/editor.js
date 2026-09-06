@@ -224217,9 +224217,9 @@ img.ProseMirror-separator {
       HTML_INTEGRATION_POINTS: { foreignobject: true }
     });
   }
-  function expandBoundsForSvgText(el, bounds4) {
+  function getSvgTextExtent(el) {
     if (typeof el.getBBox !== "function") {
-      return;
+      return null;
     }
     try {
       const tb = el.getBBox();
@@ -224257,16 +224257,174 @@ img.ProseMirror-separator {
           }
         }
       }
-      bounds4.minX = Math.min(bounds4.minX, left3);
-      bounds4.minY = Math.min(bounds4.minY, top2);
-      bounds4.maxX = Math.max(bounds4.maxX, right3);
-      bounds4.maxY = Math.max(bounds4.maxY, bottom2);
+      return { left: left3, right: right3, top: top2, bottom: bottom2 };
     } catch {
+      return null;
+    }
+  }
+  function expandBoundsForSvgText(el, bounds4) {
+    const extent2 = getSvgTextExtent(el);
+    if (!extent2) {
+      return;
+    }
+    bounds4.minX = Math.min(bounds4.minX, extent2.left);
+    bounds4.minY = Math.min(bounds4.minY, extent2.top);
+    bounds4.maxX = Math.max(bounds4.maxX, extent2.right);
+    bounds4.maxY = Math.max(bounds4.maxY, extent2.bottom);
+  }
+  function expandBoundsFromBBox(el, bounds4) {
+    if (typeof el.getBBox !== "function") {
+      return false;
+    }
+    try {
+      const b3 = el.getBBox();
+      if (!Number.isFinite(b3.x) || !Number.isFinite(b3.y)) {
+        return false;
+      }
+      if (!(b3.width > 0 || b3.height > 0)) {
+        return false;
+      }
+      bounds4.minX = Math.min(bounds4.minX, b3.x);
+      bounds4.minY = Math.min(bounds4.minY, b3.y);
+      bounds4.maxX = Math.max(bounds4.maxX, b3.x + b3.width);
+      bounds4.maxY = Math.max(bounds4.maxY, b3.y + b3.height);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  function findMermaidTitleElements(svgRoot) {
+    const byClass = Array.from(
+      svgRoot.querySelectorAll(".titleText, g.title > text, text.title")
+    );
+    if (byClass.length > 0) {
+      return byClass;
+    }
+    const shapeBounds = {
+      minX: Infinity,
+      minY: Infinity,
+      maxX: -Infinity,
+      maxY: -Infinity
+    };
+    let hasShapes = false;
+    svgRoot.querySelectorAll("path, rect, circle, ellipse, polygon, polyline, line, foreignObject").forEach((node2) => {
+      if (expandBoundsFromBBox(node2, shapeBounds)) {
+        hasShapes = true;
+      }
+    });
+    if (!hasShapes) {
+      return [];
+    }
+    const above = [];
+    svgRoot.querySelectorAll("text").forEach((node2) => {
+      const el = node2;
+      const extent2 = getSvgTextExtent(el);
+      if (!extent2) {
+        return;
+      }
+      if (extent2.bottom <= shapeBounds.minY + 2) {
+        above.push({ el, top: extent2.top });
+      }
+    });
+    if (above.length === 0) {
+      return [];
+    }
+    above.sort((a2, b3) => a2.top - b3.top);
+    const topY = above[0].top;
+    return above.filter((item) => item.top <= topY + 4).map((item) => item.el);
+  }
+  function computeDiagramContentBounds(svgRoot, titleEls) {
+    const titleSet = new Set(titleEls);
+    const bounds4 = {
+      minX: Infinity,
+      minY: Infinity,
+      maxX: -Infinity,
+      maxY: -Infinity
+    };
+    let found2 = false;
+    const isUnderTitle = (node2) => {
+      for (const title2 of titleEls) {
+        if (title2 === node2 || title2.contains(node2)) {
+          return true;
+        }
+      }
+      return false;
+    };
+    svgRoot.querySelectorAll(
+      "path, rect, circle, ellipse, polygon, polyline, line, foreignObject, text, .label, .node"
+    ).forEach((node2) => {
+      if (titleSet.has(node2) || isUnderTitle(node2)) {
+        return;
+      }
+      const el = node2;
+      if (el.tagName.toLowerCase() === "text") {
+        const extent2 = getSvgTextExtent(el);
+        if (!extent2) {
+          return;
+        }
+        bounds4.minX = Math.min(bounds4.minX, extent2.left);
+        bounds4.minY = Math.min(bounds4.minY, extent2.top);
+        bounds4.maxX = Math.max(bounds4.maxX, extent2.right);
+        bounds4.maxY = Math.max(bounds4.maxY, extent2.bottom);
+        found2 = true;
+        return;
+      }
+      if (expandBoundsFromBBox(el, bounds4)) {
+        found2 = true;
+      }
+    });
+    return found2 ? bounds4 : null;
+  }
+  function shiftSvgTextByX(el, deltaX) {
+    if (!(deltaX > 0) || !Number.isFinite(deltaX)) {
+      return;
+    }
+    const xAttr = el.getAttribute("x");
+    const xNum = xAttr !== null && xAttr !== "" ? Number(xAttr) : NaN;
+    if (Number.isFinite(xNum)) {
+      el.setAttribute("x", String(xNum + deltaX));
+    } else {
+      const existing = el.getAttribute("transform")?.trim() ?? "";
+      el.setAttribute(
+        "transform",
+        existing ? `translate(${deltaX},0) ${existing}` : `translate(${deltaX},0)`
+      );
+    }
+    el.querySelectorAll("tspan").forEach((tspan) => {
+      const tx = tspan.getAttribute("x");
+      if (tx === null || tx === "") {
+        return;
+      }
+      const n2 = Number(tx);
+      if (Number.isFinite(n2)) {
+        tspan.setAttribute("x", String(n2 + deltaX));
+      }
+    });
+  }
+  function alignMermaidTitleToDiagram(svgRoot) {
+    const titles = findMermaidTitleElements(svgRoot);
+    if (titles.length === 0) {
+      return;
+    }
+    const content = computeDiagramContentBounds(svgRoot, titles);
+    if (!content || !Number.isFinite(content.minX)) {
+      return;
+    }
+    for (const title2 of titles) {
+      const extent2 = getSvgTextExtent(title2);
+      if (!extent2) {
+        continue;
+      }
+      const deltaX = content.minX - extent2.left;
+      if (deltaX > 0.5) {
+        shiftSvgTextByX(title2, deltaX);
+      }
     }
   }
   function ensureTitleVisible(svgRoot) {
     try {
       svgRoot.style.overflow = "visible";
+      alignMermaidTitleToDiagram(svgRoot);
       const bbox = svgRoot.getBBox();
       if (!Number.isFinite(bbox.width) || !Number.isFinite(bbox.height) || bbox.width <= 0) {
         return;
@@ -224277,9 +224435,14 @@ img.ProseMirror-separator {
         maxX: bbox.x + bbox.width,
         maxY: bbox.y + bbox.height
       };
-      svgRoot.querySelectorAll("text, .titleText").forEach((node2) => {
-        expandBoundsForSvgText(node2, bounds4);
-      });
+      const titles = findMermaidTitleElements(svgRoot);
+      if (titles.length > 0) {
+        titles.forEach((node2) => expandBoundsForSvgText(node2, bounds4));
+      } else {
+        svgRoot.querySelectorAll("text, .titleText").forEach((node2) => {
+          expandBoundsForSvgText(node2, bounds4);
+        });
+      }
       const padY = MERMAID_TITLE_VIEWBOX_PAD;
       const padX = MERMAID_TITLE_VIEWBOX_PAD_X;
       const vbX = bounds4.minX - padX;
