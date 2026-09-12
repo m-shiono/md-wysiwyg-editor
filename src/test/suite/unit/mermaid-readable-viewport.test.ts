@@ -1,5 +1,5 @@
 /**
- * mermaid-readable-viewport — global fontSize 10px, title visibility,
+ * mermaid-readable-viewport — global fontSize 12px, title visibility,
  * Editor Preview / Rich Editor viewport fit / zoom / pan / scroll / re-fit / a11y,
  * density≠viewport, Default Preview exclusion, redux / HIP / strict / nonce / ELK regressions.
  * Intentional Red until build-agent lands production (tests-only phase).
@@ -32,6 +32,7 @@ type MermaidThemeConfig = {
   themeVariables: Record<string, string>;
   securityLevel: string;
   layout?: string;
+  flowchart?: { wrappingWidth: number; padding: number };
 };
 
 const REDUX_KIND_THEME_MAP: Record<'light' | 'dark' | 'highContrast', string> = {
@@ -198,7 +199,7 @@ function hasElkRegistration(sources: string[]): boolean {
 suite('mermaid-readable-viewport', () => {
   // --- P0 ---
 
-  test('TC-001: all kinds use themeVariables.fontSize 10px (not 8px/13px)', () => {
+  test('TC-001: all kinds use themeVariables.fontSize 12px (not 8px/13px)', () => {
     const buildMermaidThemeConfig = getUtilExport<(kind: string) => MermaidThemeConfig>(
       'mermaid-theme',
       'buildMermaidThemeConfig',
@@ -208,8 +209,8 @@ suite('mermaid-readable-viewport', () => {
       const config = buildMermaidThemeConfig!(kind);
       assert.strictEqual(
         config.themeVariables?.fontSize,
-        '10px',
-        `kind ${kind}: themeVariables.fontSize must be '10px' (mermaid-readable-viewport)`,
+        '12px',
+        `kind ${kind}: themeVariables.fontSize must be '12px' (mermaid-readable-viewport)`,
       );
       assert.notStrictEqual(
         config.themeVariables?.fontSize,
@@ -220,6 +221,21 @@ suite('mermaid-readable-viewport', () => {
         config.themeVariables?.fontSize,
         '8px',
         `kind ${kind}: legacy '8px' must not remain`,
+      );
+      assert.notStrictEqual(
+        config.themeVariables?.fontSize,
+        '10px',
+        `kind ${kind}: legacy '10px' must not remain`,
+      );
+      assert.strictEqual(
+        config.flowchart?.wrappingWidth,
+        200,
+        `kind ${kind}: flowchart.wrappingWidth must be 200 (Default-like hug→wrap)`,
+      );
+      assert.strictEqual(
+        config.flowchart?.padding,
+        15,
+        `kind ${kind}: flowchart.padding must be 15`,
       );
     }
   });
@@ -246,12 +262,61 @@ suite('mermaid-readable-viewport', () => {
     const editorSrc = readRepoFile('media/editor.ts');
     const themeSrc = readRepoFile('src/utils/mermaid-theme.ts');
     assert.ok(
-      /fontSize\s*:\s*['"]10px['"]/.test(themeSrc),
-      "density primary means must be themeVariables.fontSize '10px'",
+      /fontSize\s*:\s*['"]12px['"]|MERMAID_DENSITY_FONT_SIZE\s*=\s*['"]12px['"]/.test(themeSrc),
+      "density primary means must be themeVariables.fontSize '12px'",
     );
     assert.ok(
       !densityUsesCssScaleAsPrimary(css, editorSrc),
       'density must not rely on transform:scale / zoom as primary shrink (viewport transform is separate)',
+    );
+  });
+
+  test('TC-003b: flowchart initialize passes wrappingWidth 200 and padding 15', () => {
+    const editorSrc = readRepoFile('media/editor.ts');
+    assert.ok(
+      /wrappingWidth\s*:\s*config\.flowchart\.wrappingWidth|wrappingWidth\s*:\s*200/.test(editorSrc),
+      'both mermaid.initialize paths must pass flowchart.wrappingWidth (200)',
+    );
+    assert.ok(
+      /padding\s*:\s*config\.flowchart\.padding|padding\s*:\s*15/.test(editorSrc),
+      'both mermaid.initialize paths must pass flowchart.padding (15)',
+    );
+    // Both initializeMermaidTheme and registerMermaidThemeRuntime.initialize
+    const initializeBlocks = editorSrc.match(/mermaid\.initialize\s*\(\s*\{[\s\S]*?\}\s*\)/g) ?? [];
+    assert.ok(
+      initializeBlocks.length >= 2,
+      'expected both mermaid.initialize call sites',
+    );
+    for (const block of initializeBlocks) {
+      assert.ok(
+        /flowchart\s*:/.test(block) && /wrappingWidth/.test(block) && /padding/.test(block),
+        'each mermaid.initialize must include flowchart wrappingWidth/padding',
+      );
+    }
+  });
+
+  test('TC-003c: Host-nonce measure CSS applies font-size 12px before mermaid.render', () => {
+    const editorSrc = readRepoFile('media/editor.ts');
+    assert.ok(
+      /ensureMermaidMeasureFontCss/.test(editorSrc),
+      'measure font CSS helper required before mermaid.render',
+    );
+    assert.ok(
+      /ensureMermaidMeasureFontCss\s*\(\s*\)[\s\S]{0,200}mermaid\.render/.test(editorSrc),
+      'ensureMermaidMeasureFontCss must run before mermaid.render',
+    );
+    assert.ok(
+      /font-size:\s*\$\{MERMAID_DENSITY_FONT_SIZE\}|font-size:\s*12px/.test(editorSrc),
+      'measure CSS must set font-size 12px on label context',
+    );
+    assert.ok(
+      /setAttribute\(\s*['"]nonce['"]/.test(editorSrc) &&
+        /MERMAID_MEASURE_FONT_STYLE_ID|mermaid-density-measure-font/.test(editorSrc),
+      'measure CSS must use Host-identical nonce (no style-src unsafe-inline)',
+    );
+    assert.ok(
+      !/style-src[^;]*unsafe-inline/.test(readRepoFile('src/providers/markdown-editor-provider.ts')),
+      "must not add style-src 'unsafe-inline'",
     );
   });
 
@@ -291,7 +356,7 @@ suite('mermaid-readable-viewport', () => {
     );
   });
 
-  test('TC-006: zoom in/out changes viewport transform while fontSize stays 10px', () => {
+  test('TC-006: zoom in/out changes viewport transform while fontSize stays 12px', () => {
     const editorSrc = readRepoFile('media/editor.ts');
     const buildMermaidThemeConfig = getUtilExport<(kind: string) => MermaidThemeConfig>(
       'mermaid-theme',
@@ -302,8 +367,8 @@ suite('mermaid-readable-viewport', () => {
     for (const kind of KINDS) {
       assert.strictEqual(
         buildMermaidThemeConfig!(kind).themeVariables?.fontSize,
-        '10px',
-        'zoom must not change density fontSize away from 10px',
+        '12px',
+        'zoom must not change density fontSize away from 12px',
       );
     }
     assert.ok(
@@ -515,12 +580,12 @@ suite('mermaid-readable-viewport', () => {
     );
   });
 
-  test('TC-019: per-diagram fontSize override remains allowed without breaking global 10px', () => {
+  test('TC-019: per-diagram fontSize override remains allowed without breaking global 12px', () => {
     const themeSrc = readRepoFile('src/utils/mermaid-theme.ts');
     const editorSrc = readRepoFile('media/editor.ts');
     assert.ok(
-      /fontSize\s*:\s*['"]10px['"]/.test(themeSrc),
-      "global default remains '10px'",
+      /fontSize\s*:\s*['"]12px['"]|MERMAID_DENSITY_FONT_SIZE\s*=\s*['"]12px['"]/.test(themeSrc),
+      "global default remains '12px'",
     );
     // Mermaid native frontmatter / %%{init}%% is delegated — do not strip themeVariables
     assert.ok(
@@ -531,7 +596,7 @@ suite('mermaid-readable-viewport', () => {
     );
   });
 
-  test('TC-020: related suites Expected align with global fontSize 10px', () => {
+  test('TC-020: related suites Expected align with global fontSize 12px', () => {
     const relatedSuites = [
       'src/test/suite/unit/mermaid-redux-elk-fidelity.test.ts',
       'src/test/suite/unit/fix-mermaid-edge-styles.test.ts',
@@ -546,8 +611,8 @@ suite('mermaid-readable-viewport', () => {
         `${suitePath} must not still require fontSize '13px'`,
       );
       assert.ok(
-        /fontSize[\s\S]{0,80}'10px'|fontSize[\s\S]{0,80}"10px"/.test(src),
-        `${suitePath} must expect fontSize '10px'`,
+        /fontSize[\s\S]{0,80}'12px'|fontSize[\s\S]{0,80}"12px"/.test(src),
+        `${suitePath} must expect fontSize '12px'`,
       );
     }
     const relatedSpecs = [
@@ -559,11 +624,11 @@ suite('mermaid-readable-viewport', () => {
     ];
     for (const specPath of relatedSpecs) {
       const spec = readRepoFile(specPath);
-      // TC-facing Expected should prefer 10px; allow historical changelog mentions of 8px/13px
+      // TC-facing Expected should prefer 12px; allow historical changelog mentions of 8px/10px/13px
       const matrixOrTc149 =
-        /fontSize[^|\n]*10px|`10px`|'10px'|"10px"/.test(spec) ||
-        /TC-149[\s\S]{0,200}10px/.test(spec);
-      assert.ok(matrixOrTc149, `${specPath} Expected should align with global fontSize 10px`);
+        /fontSize[^|\n]*12px|`12px`|'12px'|"12px"/.test(spec) ||
+        /TC-149[\s\S]{0,200}12px/.test(spec);
+      assert.ok(matrixOrTc149, `${specPath} Expected should align with global fontSize 12px`);
     }
   });
 

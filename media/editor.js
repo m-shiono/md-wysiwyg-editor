@@ -223817,28 +223817,40 @@ img.ProseMirror-separator {
   }
 
   // src/utils/mermaid-theme.ts
+  var MERMAID_DENSITY_FONT_SIZE = "12px";
+  var MERMAID_FLOWCHART_LAYOUT = {
+    wrappingWidth: 200,
+    padding: 15
+  };
   function buildMermaidThemeConfig(kind) {
+    const flowchart = {
+      wrappingWidth: MERMAID_FLOWCHART_LAYOUT.wrappingWidth,
+      padding: MERMAID_FLOWCHART_LAYOUT.padding
+    };
     switch (kind) {
       case "light":
         return {
           theme: "redux",
-          themeVariables: { fontSize: "10px" },
-          securityLevel: "strict"
+          themeVariables: { fontSize: MERMAID_DENSITY_FONT_SIZE },
+          securityLevel: "strict",
+          flowchart
         };
       case "dark":
       case "highContrast":
         return {
           theme: "redux-dark",
-          themeVariables: { fontSize: "10px" },
-          securityLevel: "strict"
+          themeVariables: { fontSize: MERMAID_DENSITY_FONT_SIZE },
+          securityLevel: "strict",
+          flowchart
         };
       default: {
         const _exhaustive = kind;
         void _exhaustive;
         return {
           theme: "redux",
-          themeVariables: { fontSize: "10px" },
-          securityLevel: "strict"
+          themeVariables: { fontSize: MERMAID_DENSITY_FONT_SIZE },
+          securityLevel: "strict",
+          flowchart
         };
       }
     }
@@ -223859,6 +223871,7 @@ img.ProseMirror-separator {
   }
 
   // media/editor.ts
+  var MERMAID_MEASURE_FONT_STYLE_ID = "mermaid-density-measure-font";
   var StrikeWithoutShortcut = Strike.extend({
     addKeyboardShortcuts() {
       return {};
@@ -223886,6 +223899,23 @@ img.ProseMirror-separator {
   var elkLayoutRegisterPromise;
   function getHostCspNonce() {
     return document.body?.getAttribute("data-csp-nonce") ?? "";
+  }
+  function ensureMermaidMeasureFontCss() {
+    let styleEl = document.getElementById(MERMAID_MEASURE_FONT_STYLE_ID);
+    if (!styleEl) {
+      styleEl = document.createElement("style");
+      styleEl.id = MERMAID_MEASURE_FONT_STYLE_ID;
+      const nonce = getHostCspNonce();
+      if (nonce) {
+        styleEl.setAttribute("nonce", nonce);
+      }
+      document.head.appendChild(styleEl);
+    }
+    styleEl.textContent = [
+      `.nodeLabel, .edgeLabel, .label, .labelBkg, foreignObject div, foreignObject span {`,
+      `  font-size: ${MERMAID_DENSITY_FONT_SIZE};`,
+      `}`
+    ].join("\n");
   }
   function sourceRequestsElkLayout(source3) {
     return /(?:^|[\s,{])layout\s*:\s*['"]?elk\b/i.test(source3) || /flowchart-elk/i.test(source3);
@@ -223961,12 +223991,18 @@ img.ProseMirror-separator {
         startOnLoad: false,
         theme: config3.theme,
         themeVariables: config3.themeVariables,
-        securityLevel: "strict"
+        securityLevel: "strict",
+        // Default-like hug→wrap (stock Mermaid defaults; explicit for contract)
+        flowchart: {
+          wrappingWidth: config3.flowchart.wrappingWidth,
+          padding: config3.flowchart.padding
+        }
       });
     } catch (err) {
       console.error("Mermaid initialization failed:", err);
     }
   }
+  ensureMermaidMeasureFontCss();
   initializeMermaidTheme("dark");
   function scheduleMermaidThemeRerender() {
     if (mermaidThemeRerenderTimer) {
@@ -223985,7 +224021,11 @@ img.ProseMirror-separator {
           startOnLoad: false,
           theme: config3.theme,
           themeVariables: config3.themeVariables,
-          securityLevel: "strict"
+          securityLevel: "strict",
+          flowchart: {
+            wrappingWidth: config3.flowchart.wrappingWidth,
+            padding: config3.flowchart.padding
+          }
         });
       } catch (err) {
         console.error("Mermaid runtime initialization failed:", err);
@@ -224136,6 +224176,7 @@ img.ProseMirror-separator {
               try {
                 const renderSource = buildMermaidRenderSource(source3);
                 await ensureElkLayoutRegistered(renderSource);
+                ensureMermaidMeasureFontCss();
                 const { svg: renderedSvg } = await mermaid_default.render(
                   `${viewId}-svg`,
                   renderSource || " "

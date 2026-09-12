@@ -43,8 +43,8 @@
 
 | 条件 | 戻り値 / 期待状態 | 仕様根拠 |
 |------|-------------------|---------|
-| kind `light` | Mermaid `theme: 'redux'` + `securityLevel: 'strict'`。`themeVariables.fontSize === '10px'`。`themeVariables` に `var(--vscode-...)` なし | §5 正常系 7 / 7a、AD-004、`mermaid-display-density` |
-| kind `dark` / `highContrast` | Mermaid `theme: 'redux-dark'` + strict。`themeVariables.fontSize === '10px'`。classic `default`/`dark` マップ禁止。`var(--vscode-...)` なし | §5 正常系 7 / 7a、AD-004、`mermaid-display-density` |
+| kind `light` | Mermaid `theme: 'redux'` + `securityLevel: 'strict'`。`themeVariables.fontSize === '12px'`。`themeVariables` に `var(--vscode-...)` なし | §5 正常系 7 / 7a、AD-004、`mermaid-display-density` |
+| kind `dark` / `highContrast` | Mermaid `theme: 'redux-dark'` + strict。`themeVariables.fontSize === '12px'`。classic `default`/`dark` マップ禁止。`var(--vscode-...)` なし | §5 正常系 7 / 7a、AD-004、`mermaid-display-density` |
 | nonce 再注入 | render 由来 presentation `<style>` が Host 同一 nonce 付きで Webview に存在。セレクタは `.mermaid-preview` / 図スコープに閉じる。ユーザー／ソース由来の任意 CSS 素通しなし | §5 正常系 11、AD-002 |
 | CSP | `style-src` に `'unsafe-inline'` **なし** | §9、AD-001 |
 | flowchart エッジ可視 | CSP＋sanitize＋再注入後、エッジが黒塗りブロブにならず stroke が可視（DOM/CSS 契約で近似） | §5 受け入れ (b) |
@@ -81,9 +81,9 @@
 
 | ID | Category | Domain Tag | Priority | Input | Expected | Rationale | Spec Ref |
 |----|----------|------------|----------|-------|----------|-----------|----------|
-| TC-001 | Happy | theme-light-redux | P0 | `buildMermaidThemeConfig('light')`（または同等） | `theme: 'redux'`、`securityLevel: 'strict'`、`themeVariables.fontSize === '10px'`、`themeVariables` に `var(--vscode-...)` なし。classic `'default'` マップは Fail | kind→redux＋表示密度（AD-004 / `mermaid-display-density`） | §5 正常系 7 / 7a |
-| TC-002 | Happy | theme-dark-redux-dark | P0 | `buildMermaidThemeConfig('dark')` | `theme: 'redux-dark'`（`'dark'` classic / `'default'` 強制ではない）。strict。`themeVariables.fontSize === '10px'`。`var(--vscode-...)` なし | dark→redux-dark＋密度 | §5 正常系 7 / 7a |
-| TC-003 | Happy | theme-hc-redux-dark | P0 | `buildMermaidThemeConfig('highContrast')` | `theme: 'redux-dark'`。専用 HC パレット不要。strict。`themeVariables.fontSize === '10px'`。`var(--vscode-...)` なし | HC 同マップ＋密度（AD-004） | §5 正常系 7 / 7a |
+| TC-001 | Happy | theme-light-redux | P0 | `buildMermaidThemeConfig('light')`（または同等） | `theme: 'redux'`、`securityLevel: 'strict'`、`themeVariables.fontSize === '12px'`、`themeVariables` に `var(--vscode-...)` なし。classic `'default'` マップは Fail | kind→redux＋表示密度（AD-004 / `mermaid-display-density`） | §5 正常系 7 / 7a |
+| TC-002 | Happy | theme-dark-redux-dark | P0 | `buildMermaidThemeConfig('dark')` | `theme: 'redux-dark'`（`'dark'` classic / `'default'` 強制ではない）。strict。`themeVariables.fontSize === '12px'`。`var(--vscode-...)` なし | dark→redux-dark＋密度 | §5 正常系 7 / 7a |
+| TC-003 | Happy | theme-hc-redux-dark | P0 | `buildMermaidThemeConfig('highContrast')` | `theme: 'redux-dark'`。専用 HC パレット不要。strict。`themeVariables.fontSize === '12px'`。`var(--vscode-...)` なし | HC 同マップ＋密度（AD-004） | §5 正常系 7 / 7a |
 | TC-004 | Happy | nonce-presentation-reinject | P0 | Mermaid `render` 結果に presentation `<style>` を含む fixture／経路を検査（または再注入ヘルパの契約） | Host 発行と**同一 nonce** 付き `<style>` が Webview に再注入される（セレクタは `.mermaid-preview` / 当該図スコープ）。ユーザー／Mermaid ソース由来の任意 CSS 素通し経路なし。同等の CSP 安全手段でも可（`'unsafe-inline'` は不可） | CSP 下で本物 presentation を効かせる（AD-002） | §5 正常系 11 |
 | TC-005 | Structural | csp-no-unsafe-inline | P0 | Custom Editor Webview CSP 生成 | `style-src` に `'unsafe-inline'` **なし**。`nonce-` 付き許可あり。Marp パネル CSP は本 TC 対象外 | セキュリティ不変（AD-001） | §9 |
 | TC-006 | Happy | flowchart-edge-visible-after-reinject | P0 | CSP＋HIP sanitize＋nonce 再注入後の flowchart エッジ契約（静的 CSS／再注入 style の共起、またはヘルパ出力） | エッジ／パスが黒塗りブロブにならない契約（`fill: none` 相当が presentation 再注入側、または欠落時のみ最小安全網）。永続必須の全面 `stroke: var(--vscode-foreground)` 上書きを**唯一の正**としない | 受け入れ (b) | §5 正常系 11、受け入れ |
@@ -91,7 +91,7 @@
 | TC-008 | Structural | no-global-forced-elk | P0 | グローバル `mermaid.initialize`／`buildMermaidThemeConfig`（または同等）を検査 | `layout: 'elk'`（または同等の全図 ELK 強制）が**含まれない**。`layout` 未指定ソースは dagre 系既定のまま | オプトインのみ（AD-006） | §5 正常系 12、Non-Goals |
 | TC-009 | Structural | host-css-edge-fallback-shrunk | P0 | `media/editor.css`（または Host nonce 静的エッジ CSS）を検査 | 永続必須の `stroke: var(--vscode-foreground)` 等による redux 配色上書きを**要求しない**。残存する場合はコメント／範囲が「本物 CSS 欠落時の安全網」に限定され、島ライト強制は不在 | Host CSS 縮小（AD-003） | §5 正常系 11 |
 | TC-010 | Corner | hip-regression | P0 | sanitize options（または contrast-readable TC-001/002 相当） | `HTML_INTEGRATION_POINTS: { foreignobject: true }`（または同等）。ラベル HTML 残存契約は contrast-readable と整合 | HIP 不変（AD-008） | §5 正常系 10 |
-| TC-011 | Structural | security-level-strict | P0 | `buildMermaidThemeConfig` 全 kind および initialize 経路 | いずれも `securityLevel: 'strict'`。全 kind で `themeVariables.fontSize === '10px'`（`var(--vscode-...)` なし） | strict 不変＋グローバル密度 | §5 正常系 7 / 7a、AD-008、`mermaid-display-density` |
+| TC-011 | Structural | security-level-strict | P0 | `buildMermaidThemeConfig` 全 kind および initialize 経路 | いずれも `securityLevel: 'strict'`。全 kind で `themeVariables.fontSize === '12px'`（`var(--vscode-...)` なし） | strict 不変＋グローバル密度 | §5 正常系 7 / 7a、AD-008、`mermaid-display-density` |
 | TC-012 | Structural | source-below-diagram | P0 | Mermaid NodeView DOM 構築順 | `.mermaid-preview` が `.mermaid-source` より先（図の下にソース） | ソース併記回帰 | §5 正常系 4 |
 | TC-013 | Corner | preview-source-readonly | P0 | Preview 表示中のソース領域 | 編集イベントを Document へ送らない（`contenteditable=false` またはイベント非送出） | Preview 厳密 RO | §1、§5 正常系 5 |
 | TC-014 | Structural | elk-lazy-register | P1 | `@mermaid-js/layout-elk` の import／`registerLayoutLoaders` 呼び出し箇所 | 動的 import／コード分割、または初回 ELK 要求時登録のいずれか。初期バンドルへの不用意な静的肥大化を避ける契約 | 遅延ロード（AD-007） | §5 正常系 12 |
@@ -242,7 +242,8 @@
 | 日付 | 変更内容 |
 |------|---------|
 | 2026-09-06 | `mermaid-readable-viewport`: TC-001–003 / TC-011 および Spec Digest Outputs のグローバル `fontSize` を `'13px'` → `'8px'` に更新 |
-| 2026-09-06 | 密度 polish: Expected のグローバル `fontSize` を `'8px'` → `'10px'` に更新 |
+| 2026-09-06 | 密度 polish: Expected のグローバル `fontSize` を `'8px'` → `'12px'` に更新 |
 | 2026-09-06 | `mermaid-display-density`: TC-001–003 / TC-011 Expected にグローバル `themeVariables.fontSize === '13px'`（`var(--vscode-...)` なし）を追加。Spec Digest Outputs 追随 |
 | 2026-09-06 | testspec-implementation: `mermaid-redux-elk-fidelity.test.ts` TC-001–020 追加。関連 suite Expected を redux へ追随。Trace を意図的 Red で更新 |
 | 2026-09-06 | 初版 — redux kind マップ・nonce presentation 再注入・ELK オプトイン／非強制・Host CSS 縮小・HIP/strict/ソース併記/Preview RO/`unsafe-inline` なし回帰（設計のみ） |
+| 2026-09-06 | ノード寸法 polish（choice B）: Expected のグローバル `fontSize` を `'10px'` → `'12px'` に更新 |

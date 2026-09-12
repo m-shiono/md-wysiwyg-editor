@@ -252,7 +252,7 @@
 | TC-146 | Happy | preview-line-height-readability | P1 | 非 Marp doc を Preview モード（`body[data-mode='preview']`）で表示 | Preview スコープ CSS で本文 `line-height: 1.6`（目安）。Markdown モードの line-height は変更しない | Preview 可読性 — 行間 | §1 Preview 可読性, AD-006 |
 | TC-147 | Happy | preview-prosemirror-opacity-contrast | P1 | Preview モードで TipTap RO（`.ProseMirror[contenteditable='false']`）を表示 | `body[data-mode='preview']` スコープで `opacity: 1`。ハードコード色なし（`--vscode-*` 継続）。Markdown モードの opacity ルールは Preview 用変更の対象外 | Preview 可読性 — コントラスト | §1 Preview 可読性, AD-006 |
 | TC-148 | Structural | preview-css-scoped-only | P1 | `editor.css`（または同等）の Preview / Markdown / Raw ルールを検査 | line-height・opacity 改善は `body[data-mode='preview']` 配下のみ。Markdown / Raw の同等プロパティに Preview 専用上書きを波及させない | Preview スコープ限定（AD-006） | §1 Preview 可読性, AD-006 |
-| TC-149 | Structural | mermaid-theme-built-in | P1 | Webview 内 Mermaid グローバル initialize 設定を検査 | VS Code kind 'dark' / 'highContrast' → `'redux-dark'`、'light' → `'redux'`。全 kind で `themeVariables.fontSize === '10px'`。`themeVariables` に `var(--vscode-...)` を含めない。`securityLevel: 'strict'` 維持。**classic `default`/`dark` マップ＋島ライトは撤回**（`mermaid-redux-elk-fidelity` / `mermaid-display-density` — 詳細 [testspec-mermaid-redux-elk-fidelity.md](testspec-mermaid-redux-elk-fidelity.md)） | redux kind マップ＋表示密度 | §5 正常系 7 / 7a |
+| TC-149 | Structural | mermaid-theme-built-in | P1 | Webview 内 Mermaid グローバル initialize 設定を検査 | VS Code kind 'dark' / 'highContrast' → `'redux-dark'`、'light' → `'redux'`。全 kind で `themeVariables.fontSize === '12px'`。`themeVariables` に `var(--vscode-...)` を含めない。`securityLevel: 'strict'` 維持。**classic `default`/`dark` マップ＋島ライトは撤回**（`mermaid-redux-elk-fidelity` / `mermaid-display-density` — 詳細 [testspec-mermaid-redux-elk-fidelity.md](testspec-mermaid-redux-elk-fidelity.md)） | redux kind マップ＋表示密度 | §5 正常系 7 / 7a |
 | TC-150 | Corner | mermaid-init-isolation | P1 | `mermaid.initialize` またはテーマ切替処理で例外を発生させる（mock） | try-catch で隔離され、Webview 全体のメッセージングや描画が停止しない。Output にエラーが記録される | 初期化・テーマ切替の隔離（mermaid-theme-crash-fix） | §5 正常系 8 |
 | TC-151 | Structural | preview-display-layer-document-unchanged | P1 | TC-145 相当（themeUpdated + Mermaid 再描画）および TC-146–147 相当（Preview CSS 適用）後に Document を inspect | `markdownText` / `docJson` / serialize 出力がテーマ・CSS・再描画前と一致。表示層のみの変更（AD-002） | 三者同期 — 表示層非変更 | §1 AD-002, TC-082 |
 | TC-152 | Corner | regression-mermaid-foreignobject-sanitize | P0 | Mermaid flowchart 相当 SVG（`foreignObject` 内にノードラベル HTML、例: `Cause A`）を NodeView の DOMPurify sanitize 経路（`media/editor.ts` `.mermaid-preview`）に通す | sanitize 後も `foreignObject` とノードラベル文字列が残る。`script` / `on*` 除去・`securityLevel: 'strict'` は不変（§9） | Regression: Dark/Edit で flowchart ノードラベルが消える（DOMPurify 既定が `foreignObject` を除去） | §5 正常系 1/4, §9 |
@@ -381,7 +381,7 @@ P0 + P1 の机上トレース（実装前）。
 | TC-144 | init/ready + theme change → `themeUpdated` `{ kind }` のみ | ✅ 期待どおり（未実装 — Red 予定） |
 | TC-145 | `themeUpdated` → `mermaid.initialize` 更新 → NodeView 再 render、Document 不変 | ✅ 期待どおり（未実装 — Red 予定） |
 | TC-146–148 | `body[data-mode='preview']` の line-height / opacity / スコープ限定 | ✅ 期待どおり（未実装 — Red 予定） |
-| TC-149 | `theme: 'redux-dark'` (for dark/HC kind) / `'redux'` (light) + `themeVariables.fontSize === '10px'` + `themeVariables` contains NO `var(...)` | ✅ 期待どおり（未実装 — Red 予定） |
+| TC-149 | `theme: 'redux-dark'` (for dark/HC kind) / `'redux'` (light) + `themeVariables.fontSize === '12px'` + `themeVariables` contains NO `var(...)` | ✅ 期待どおり（未実装 — Red 予定） |
 | TC-150 | `mermaid.initialize` exception → try-catch isolated | ✅ 期待どおり（未実装 — Red 予定） |
 | TC-151 | テーマ/CSS/再描画後も serialize 不変 | ✅ 期待どおり（未実装 — Red 予定） |
 | TC-152 | Mermaid SVG sanitize 後も `foreignObject` + ノードラベル残存 | ❌ Red — `DOMPurify.sanitize(svg)` 既定が `foreignObject` 除去（`fix-mermaid-dark-visibility`） |
@@ -725,7 +725,7 @@ P0 + P1 の机上トレース（実装前）。
 | 日付 | 変更内容 |
 |------|---------|
 | 2026-09-06 | `mermaid-readable-viewport`: TC-149 Expected のグローバル `fontSize` を `'13px'` → `'8px'` に更新 |
-| 2026-09-06 | 密度 polish: TC-149 Expected のグローバル `fontSize` を `'8px'` → `'10px'` に更新 |
+| 2026-09-06 | 密度 polish: TC-149 Expected のグローバル `fontSize` を `'8px'` → `'12px'` に更新 |
 | 2026-09-06 | TC-149 Expected に全 kind `themeVariables.fontSize === '13px'`（`var(--vscode-...)` なし）を追加（`mermaid-display-density`） |
 | 2026-09-06 | TC-145/149 Expected を redux kind マップへ更新（light→`redux`、dark/HC→`redux-dark`）。関連 [testspec-mermaid-redux-elk-fidelity.md](testspec-mermaid-redux-elk-fidelity.md) | `mermaid-redux-elk-fidelity` — テストコード未変更（design only） |
 | 2026-09-06 | TC-149 Expected 明確化（標準 kind マップ維持・島ライト撤回）。関連 [testspec-fix-mermaid-edge-styles.md](testspec-fix-mermaid-edge-styles.md) | `fix-mermaid-edge-styles` — テストコード未変更（design only） |
@@ -750,3 +750,4 @@ P0 + P1 の机上トレース（実装前）。
 | 2026-08-31 | TC-104–106 追加；TC-087・TC-096 Expected 更新 | 回帰: GFM セル内改行 ↔ Raw `<br />` 往復（serialize 落ち / htmlBlock 二重改行）。Behavioral fix: TC-096 はブロックリッチのみ制限、TC-087 flatten は改行保持（`gfm-table-linebreak-fix`） |
 | 2026-08-31 | TC-104–106 Result / Spec Gaps を Green に同期 | ユニット Pass 確認後、Red 表記を解除（Expected 本文は不変） |
 | 2026-08-31 | TC-107–123 追加；TC-010 / TC-012 Expected 拡張；TC-014 脚注 Out を明確化 | GFM 書式ツールバー（§2 / §8 / §9）。P0: strike `~~`、H3–H6、inlineCode vs codeBlock、blockquote 子保持、task list 往復+排他、HR `---`。P1: RO/Preview/Raw ガード、`1. [ ]` 正規化、`<del>`/`<s>`→`~~`、複合 mark、sanitize `del`/`s`（`mark` 非許可）、`aria-pressed`。既存三点モード・表 TC は不変（`gfm-format-toolbar`） |
+| 2026-09-06 | ノード寸法 polish（choice B）: Expected のグローバル `fontSize` を `'10px'` → `'12px'` に更新 |

@@ -18,10 +18,13 @@ import { buildMermaidRenderSource } from '../src/utils/mermaid-render';
 import {
   buildMermaidThemeConfig,
   handleThemeUpdated,
+  MERMAID_DENSITY_FONT_SIZE,
   registerMermaidThemeRuntime,
   type MermaidThemeConfig,
 } from '../src/utils/mermaid-theme';
 import type { ThemeKind } from '../src/utils/theme-sync';
+
+const MERMAID_MEASURE_FONT_STYLE_ID = 'mermaid-density-measure-font';
 
 /** AD-004: Strike 既定 Mod-Shift-s は Save All と衝突するため無効化。 */
 const StrikeWithoutShortcut = Strike.extend({
@@ -76,6 +79,29 @@ let elkLayoutRegisterPromise: Promise<void> | undefined;
 
 function getHostCspNonce(): string {
   return document.body?.getAttribute('data-csp-nonce') ?? '';
+}
+
+/**
+ * Host-nonce CSS so mermaid.render measures labels at density fontSize (CSP).
+ * Without this, HTML labels inherit ~13px during measure while paint uses reinjected theme fontSize.
+ * Prefer Host nonce stylesheet; never loosen CSP for inline styles.
+ */
+function ensureMermaidMeasureFontCss(): void {
+  let styleEl = document.getElementById(MERMAID_MEASURE_FONT_STYLE_ID) as HTMLStyleElement | null;
+  if (!styleEl) {
+    styleEl = document.createElement('style');
+    styleEl.id = MERMAID_MEASURE_FONT_STYLE_ID;
+    const nonce = getHostCspNonce();
+    if (nonce) {
+      styleEl.setAttribute('nonce', nonce);
+    }
+    document.head.appendChild(styleEl);
+  }
+  styleEl.textContent = [
+    `.nodeLabel, .edgeLabel, .label, .labelBkg, foreignObject div, foreignObject span {`,
+    `  font-size: ${MERMAID_DENSITY_FONT_SIZE};`,
+    `}`,
+  ].join('\n');
 }
 
 function sourceRequestsElkLayout(source: string): boolean {
@@ -182,12 +208,18 @@ function initializeMermaidTheme(kind: ThemeKind): void {
       theme: config.theme as any,
       themeVariables: config.themeVariables,
       securityLevel: 'strict',
+      // Default-like hug→wrap (stock Mermaid defaults; explicit for contract)
+      flowchart: {
+        wrappingWidth: config.flowchart.wrappingWidth,
+        padding: config.flowchart.padding,
+      },
     });
   } catch (err) {
     console.error('Mermaid initialization failed:', err);
   }
 }
 
+ensureMermaidMeasureFontCss();
 initializeMermaidTheme('dark');
 
 function scheduleMermaidThemeRerender(): void {
@@ -209,6 +241,10 @@ registerMermaidThemeRuntime({
         theme: config.theme as any,
         themeVariables: config.themeVariables,
         securityLevel: 'strict',
+        flowchart: {
+          wrappingWidth: config.flowchart.wrappingWidth,
+          padding: config.flowchart.padding,
+        },
       });
     } catch (err) {
       console.error('Mermaid runtime initialization failed:', err);
@@ -393,6 +429,8 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
             try {
               const renderSource = buildMermaidRenderSource(source);
               await ensureElkLayoutRegistered(renderSource);
+              // Measure at density fontSize before render (CSP Host-nonce CSS)
+              ensureMermaidMeasureFontCss();
               const { svg: renderedSvg } = await mermaid.render(
                 `${viewId}-svg`,
                 renderSource || ' ',
