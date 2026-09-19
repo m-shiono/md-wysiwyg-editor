@@ -13,7 +13,7 @@ suite('Extension integration tests', () => {
   vscode.window.showInformationMessage('Start vsc-md-editor tests.');
 
   test('TC-001: extension activates and commands register', async () => {
-    const ext = vscode.extensions.getExtension('vsc-md-editor.vsc-md-editor');
+    const ext = vscode.extensions.getExtension('m-shiono.vsc-md-editor');
     assert.ok(ext);
     await ext.activate();
     const commands = await vscode.commands.getCommands(true);
@@ -24,7 +24,7 @@ suite('Extension integration tests', () => {
   });
 
   test('TC-025/TC-026: readonly toggle via workspaceState', async () => {
-    const ext = vscode.extensions.getExtension('vsc-md-editor.vsc-md-editor');
+    const ext = vscode.extensions.getExtension('m-shiono.vsc-md-editor');
     assert.ok(ext);
     await ext.activate();
 
@@ -58,7 +58,7 @@ suite('Extension integration tests', () => {
   });
 
   test('TC-062: output channel exists with correct name', async () => {
-    const ext = vscode.extensions.getExtension('vsc-md-editor.vsc-md-editor');
+    const ext = vscode.extensions.getExtension('m-shiono.vsc-md-editor');
     assert.ok(ext);
     await ext.activate();
     const channel = getOutputChannel();

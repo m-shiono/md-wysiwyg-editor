@@ -16,7 +16,7 @@ function tipTapDocJson(paragraphText: string): string {
 
 suite('Three-mode integration (AD-016)', () => {
   test('TC-080/082 integration: Preview RO, Markdown/Raw edit, Document sync', async () => {
-    const ext = vscode.extensions.getExtension('vsc-md-editor.vsc-md-editor');
+    const ext = vscode.extensions.getExtension('m-shiono.vsc-md-editor');
     assert.ok(ext);
     await ext.activate();
 
