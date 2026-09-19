@@ -42,7 +42,7 @@ MVP（Phase 1）スコープ外の機能・改善項目。正本の振る舞い�
 
 | ID | 項目 | 概要 | 参照 |
 |----|------|------|------|
-| BL-015 | Marketplace 公開 | VSIX 署名・ストア掲載 | deployment.md |
+| BL-015 | Marketplace 公開 | VSIX 署名・ストア掲載。手順書は [deployment.md](./deployment.md) 作成済 — 初回 `vsce publish` / ストア掲載は未完 | deployment.md |
 | BL-016 | CHANGELOG 自動化 | Mermaid/Marp 依存更新の影響記載 | RK-007 |
 
 ---
@@ -52,3 +52,4 @@ MVP（Phase 1）スコープ外の機能・改善項目。正本の振る舞い�
 | 日付 | 変更 |
 |------|------|
 | 2026-08-29 | BL-011 を resolved に更新（表ソフト上限確定） |
+| 2026-09-19 | BL-015: deployment.md 作成を反映（手順書は済、初回公開は未完） |

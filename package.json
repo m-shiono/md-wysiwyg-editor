@@ -3,8 +3,8 @@
   "displayName": "MD WYSIWYG Editor",
   "description": "WYSIWYG Markdown editor with tables, Mermaid, Marp preview, and image paste",
   "version": "0.1.0",
-  "publisher": "m-shiono",
-  "author": "m-shiono",
+  "publisher": "mshiono",
+  "author": "mshiono",
   "icon": "media/icon.png",
   "license": "MIT",
   "repository": {

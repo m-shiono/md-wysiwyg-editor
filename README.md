@@ -59,6 +59,7 @@ IDE タイトルバーの Preview / Markdown 切替でビルトインへ移っ�
 
 - [doc/systemspec.md](doc/systemspec.md) — 機能仕様
 - [doc/development.md](doc/development.md) — 開発・Cursor フロー
+- [doc/deployment.md](doc/deployment.md) — Marketplace 公開手順
 - [doc/stack.md](doc/stack.md) — TypeScript / VS Code Extension スタック
 - [AGENTS.md](AGENTS.md) — AI エージェント索引
 
@@ -66,6 +67,7 @@ IDE タイトルバーの Preview / Markdown 切替でビルトインへ移っ�
 
 | 日付 | 変更 |
 |------|------|
+| 2026-09-19 | Docs に Marketplace 公開手順（doc/deployment.md）へのリンクを追加 |
 | 2026-08-29 | テンプレート README から vsc-md-editor 製品説明へ更新 |
 | 2026-08-29 | 三点モード・Marp 区別を機能表に追記。`workbench.editorAssociations` の viewType を `vsc-md-editor.wysiwyg` に修正 |
 | 2026-08-30 | Pattern A（ビルトイン切替検知・WYSIWYG 復帰案内）と `autoRestoreOnBuiltinSwitch` 設定を追記 |

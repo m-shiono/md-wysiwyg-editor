@@ -892,7 +892,7 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 ### Non-Goals
 
 - IDE タイトルバーの Preview / Markdown トグル自体の非表示・上書き（VS Code / Cursor API 非提供）
-- Marketplace 公開手順の詳細（`vscode-extension-publish` スキル / deployment.md で扱う）
+- Marketplace 公開手順の詳細（[deployment.md](deployment.md) を正本とする）
 - Default Preview 用 editor/title アイコンの追加（本タスク）
 - 標準 Preview の Custom Editor Webview 埋め込み、および 4 つ目の `editorMode`（§1 Non-Goals）
 - Default Preview 失敗時の `markdown.showPreviewToSide` フォールバック（§1 Non-Goals）
@@ -1039,3 +1039,4 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | 2026-09-06 | 概要, AD-007, §5, Related Tests, 改訂履歴 | Mermaid 密度・タイトル可視 polish: グローバル `fontSize` を `'8px'` → `'10px'`。表示層 `ensureTitleVisible` で `getComputedTextLength`＋`text-anchor` を考慮し viewBox 左右パッドを拡大（左欠け解消）。ビューポート CSS overflow/padding 追随。redux / fit／ズーム／パン契約は不変 |
 | 2026-09-06 | §5 正常系 7b, 改訂履歴 | Mermaid タイトル左揃え polish: 表示層でタイトルが図コンテンツ左端より左にはみ出す場合は位置を右へシフト（title left ≥ diagram left）。viewBox 再計算。fontSize 10px / ズーム・パン契約は不変 |
 | 2026-09-06 | 概要, AD-007, §5, Related Tests, 改訂履歴 | Mermaid ノード寸法 polish（product choice B）: グローバル `fontSize` を `'10px'` → `'12px'`。flowchart `wrappingWidth: 200`・`padding: 15`（Default 風 hug→wrap）。CSP 下で `mermaid.render` 測定前に Host 同一 nonce の密度 CSS を適用。redux / ビューポート / nonce 再注入 / ELK / strict / HIP は不変 |
+| 2026-09-19 | §10 Non-Goals | Marketplace 公開手順の正本を [deployment.md](deployment.md) へ誘導する文言に更新（`marketplace-publish-doc`） |
