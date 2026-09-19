@@ -344,25 +344,24 @@ suite('fix-mermaid-edge-styles', () => {
   });
 
   test('TC-014: related suites Expected align with redux kind map and no island', () => {
-    const contrast = readRepoFile('doc/testspec-mermaid-contrast-readable.md');
-    const snap = readRepoFile('doc/testspec-mermaid-snap-style-with-source.md');
-    const wysiwyg = readRepoFile('doc/testspec-vsc-md-wysiwyg.md');
-    const reduxFidelity = readRepoFile('doc/testspec-mermaid-redux-elk-fidelity.md');
+    // Mermaid suites share merged canonical testspec after doc-reorg (AD-006/009)
+    const mermaidSpec = readRepoFile('doc/test/mermaid/testspec-mermaid.md');
+    const wysiwyg = readRepoFile('doc/test/testspec-vsc-md-wysiwyg.md');
 
     assert.ok(
-      /島ライト.*撤回|島ライト強制.*なし|no-island-light/i.test(contrast),
+      /島ライト.*撤回|島ライト強制.*なし|no-island-light/i.test(mermaidSpec),
       'contrast-readable must withdraw island-light-required Expected',
     );
     assert.ok(
-      /redux-dark|theme:\s*'redux'|→\s*`redux`/i.test(contrast),
+      /redux-dark|theme:\s*'redux'|→\s*`redux`/i.test(mermaidSpec),
       'contrast-readable must expect dark/HC → redux-dark',
     );
     assert.ok(
-      /redux|kind-theme-redux|→\s*`redux`/i.test(snap),
+      /redux|kind-theme-redux|→\s*`redux`/i.test(mermaidSpec),
       'snap-style must expect redux kind map',
     );
     assert.ok(
-      /島ライト.*撤回|島ライト強制.*なし|no-island-light/i.test(snap),
+      /島ライト.*撤回|島ライト強制.*なし|no-island-light/i.test(mermaidSpec),
       'snap-style must withdraw island-light-required Expected',
     );
     assert.ok(
@@ -370,7 +369,7 @@ suite('fix-mermaid-edge-styles', () => {
       'wysiwyg TC-149 must expect light→redux / dark|HC→redux-dark',
     );
     assert.ok(
-      /nonce|redux-dark|layout-elk/i.test(reduxFidelity),
+      /nonce|redux-dark|layout-elk/i.test(mermaidSpec),
       'redux-elk-fidelity testspec must remain the presentation/ELK canonical suite',
     );
 

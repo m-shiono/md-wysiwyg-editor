@@ -452,17 +452,16 @@ suite('mermaid-redux-elk-fidelity', () => {
   });
 
   test('TC-018: related suites Expected align with redux map and no mandatory vscode-foreground stroke', () => {
-    const edge = readRepoFile('doc/testspec-fix-mermaid-edge-styles.md');
-    const contrast = readRepoFile('doc/testspec-mermaid-contrast-readable.md');
-    const snap = readRepoFile('doc/testspec-mermaid-snap-style-with-source.md');
-    const wysiwyg = readRepoFile('doc/testspec-vsc-md-wysiwyg.md');
+    // Mermaid suites share merged canonical testspec after doc-reorg (AD-006/009)
+    const mermaidSpec = readRepoFile('doc/test/mermaid/testspec-mermaid.md');
+    const wysiwyg = readRepoFile('doc/test/testspec-vsc-md-wysiwyg.md');
 
     assert.ok(
-      /redux-dark|theme:\s*'redux'|→\s*`redux`/i.test(contrast),
+      /redux-dark|theme:\s*'redux'|→\s*`redux`/i.test(mermaidSpec),
       'contrast-readable must expect redux kind map',
     );
     assert.ok(
-      /redux-dark|kind-theme-redux|→\s*`redux`/i.test(snap),
+      /redux-dark|kind-theme-redux|→\s*`redux`/i.test(mermaidSpec),
       'snap-style must expect redux kind map',
     );
     assert.ok(
@@ -470,7 +469,7 @@ suite('mermaid-redux-elk-fidelity', () => {
       'wysiwyg TC-149 must expect light→redux / dark|HC→redux-dark',
     );
     assert.ok(
-      /永続必須.*vscode-foreground|唯一正としない|安全網|Host CSS 縮小/i.test(edge),
+      /永続必須.*vscode-foreground|唯一正としない|安全網|Host CSS 縮小/i.test(mermaidSpec),
       'edge-styles must not treat vscode-foreground stroke as sole mandatory contract',
     );
 

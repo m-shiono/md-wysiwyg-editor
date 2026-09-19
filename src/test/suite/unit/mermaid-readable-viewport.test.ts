@@ -615,12 +615,10 @@ suite('mermaid-readable-viewport', () => {
         `${suitePath} must expect fontSize '12px'`,
       );
     }
+    // Mermaid suites share doc/test/mermaid/testspec-mermaid.md after doc-reorg merge (AD-006/009)
     const relatedSpecs = [
-      'doc/testspec-mermaid-redux-elk-fidelity.md',
-      'doc/testspec-fix-mermaid-edge-styles.md',
-      'doc/testspec-mermaid-contrast-readable.md',
-      'doc/testspec-mermaid-snap-style-with-source.md',
-      'doc/testspec-vsc-md-wysiwyg.md',
+      'doc/test/mermaid/testspec-mermaid.md',
+      'doc/test/testspec-vsc-md-wysiwyg.md',
     ];
     for (const specPath of relatedSpecs) {
       const spec = readRepoFile(specPath);

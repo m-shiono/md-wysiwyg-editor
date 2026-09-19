@@ -294,7 +294,7 @@ suite('mermaid-snap-style-with-source', () => {
   });
 
   test('TC-013: wysiwyg TC-130–132 Expected align with source-visible contract', () => {
-    const wysiwyg = readRepoFile('doc/testspec-vsc-md-wysiwyg.md');
+    const wysiwyg = readRepoFile('doc/test/testspec-vsc-md-wysiwyg.md');
     assert.ok(
       /TC-130[\s\S]*?両方が表示|TC-130[\s\S]*?source.*visible|TC-130[\s\S]*?ソース併記/i.test(
         wysiwyg,

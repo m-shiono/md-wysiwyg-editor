@@ -15,7 +15,7 @@ VS Code 向け WYSIWYG Markdown エディタ拡張。チーム技術ドキュメ
 | Marp プレビュー | スライド用サイド/パネル表示（Editor Preview とは別・AD-008） |
 | 画像貼付 | クリップボード画像を同階層 `img/image-NNNN.ext` に保存 |
 
-リッチ表現（HTML 混在・拡張記法）を Markdown 厳密互換より優先する設計。詳細は [doc/systemspec.md](doc/systemspec.md)。
+リッチ表現（HTML 混在・拡張記法）を Markdown 厳密互換より優先する設計。詳細は [doc/requirements/systemspec.md](doc/requirements/systemspec.md)。
 
 ## Quick start（開発）
 
@@ -24,7 +24,7 @@ npm install
 npm run compile
 ```
 
-VS Code で **Run Extension**（F5）を実行し Extension Development Host を起動する。手順詳細: [doc/development.md](doc/development.md#vs-code-拡張の起動)。
+VS Code で **Run Extension**（F5）を実行し Extension Development Host を起動する。手順詳細: [.cursor/development.md](.cursor/development.md#vs-code-拡張の起動)。
 
 ### デフォルトエディタにする（任意）
 
@@ -50,24 +50,28 @@ IDE タイトルバーの Preview / Markdown 切替でビルトインへ移っ�
 |------|------|
 | `src/` | 拡張本体（Extension Host） |
 | `media/` | Webview 用バンドル |
-| `doc/systemspec.md` | 振る舞い仕様（正本） |
-| `doc/stack.md` | スタック・品質コマンド |
-| `doc/backlog-vsc-md-wysiwyg.md` | MVP 外 backlog |
+| `doc/requirements/systemspec.md` | 振る舞い仕様（WHAT） |
+| `doc/design/architecture.md` | 設計（AD-* / HOW） |
+| `doc/README.md` | ドキュメント索引 |
+| `.cursor/stack.md` | スタック・品質コマンド |
+| `doc/requirements/backlog-vsc-md-wysiwyg.md` | MVP 外 backlog |
 | `.cursor/` | AI 開発ワークフロー（rules / agents / skills） |
 
 ## Docs
 
-- [doc/systemspec.md](doc/systemspec.md) — 機能仕様
-- [doc/development.md](doc/development.md) — 開発・Cursor フロー
-- [doc/deployment.md](doc/deployment.md) — Marketplace 公開手順
-- [doc/stack.md](doc/stack.md) — TypeScript / VS Code Extension スタック
+- [doc/README.md](doc/README.md) — ドキュメント索引
+- [doc/requirements/systemspec.md](doc/requirements/systemspec.md) — 機能仕様
+- [.cursor/development.md](.cursor/development.md) — 開発・Cursor フロー
+- [doc/deploy/deployment.md](doc/deploy/deployment.md) — Marketplace 公開手順
+- [.cursor/stack.md](.cursor/stack.md) — TypeScript / VS Code Extension スタック
 - [AGENTS.md](AGENTS.md) — AI エージェント索引
 
 ## 改訂履歴
 
 | 日付 | 変更 |
 |------|------|
-| 2026-09-19 | Docs に Marketplace 公開手順（doc/deployment.md）へのリンクを追加 |
+| 2026-09-19 | doc-reorg: docs を requirements/design/test/deploy/operations と `.cursor` ツール文書へ再編 |
+| 2026-09-19 | Docs に Marketplace 公開手順（doc/deploy/deployment.md）へのリンクを追加 |
 | 2026-08-29 | テンプレート README から vsc-md-editor 製品説明へ更新 |
 | 2026-08-29 | 三点モード・Marp 区別を機能表に追記。`workbench.editorAssociations` の viewType を `vsc-md-editor.wysiwyg` に修正 |
 | 2026-08-30 | Pattern A（ビルトイン切替検知・WYSIWYG 復帰案内）と `autoRestoreOnBuiltinSwitch` 設定を追記 |
