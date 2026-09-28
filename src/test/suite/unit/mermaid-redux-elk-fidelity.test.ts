@@ -162,8 +162,8 @@ suite('mermaid-redux-elk-fidelity', () => {
     assert.strictEqual(config.securityLevel, 'strict');
     assert.strictEqual(
       config.themeVariables?.fontSize,
-      '12px',
-      "themeVariables.fontSize must be '12px' (mermaid-display-density)",
+      '16px',
+      "themeVariables.fontSize must be '16px' (mermaid-display-density)",
     );
     for (const value of Object.values(config.themeVariables ?? {})) {
       assert.ok(!value.includes('var(--vscode-'), `themeVariables must not use var(--vscode-*): ${value}`);
@@ -185,8 +185,8 @@ suite('mermaid-redux-elk-fidelity', () => {
     assert.strictEqual(config.securityLevel, 'strict');
     assert.strictEqual(
       config.themeVariables?.fontSize,
-      '12px',
-      "themeVariables.fontSize must be '12px' (mermaid-display-density)",
+      '16px',
+      "themeVariables.fontSize must be '16px' (mermaid-display-density)",
     );
     for (const value of Object.values(config.themeVariables ?? {})) {
       assert.ok(!value.includes('var(--vscode-'), `themeVariables must not use var(--vscode-*): ${value}`);
@@ -208,8 +208,8 @@ suite('mermaid-redux-elk-fidelity', () => {
     assert.strictEqual(config.securityLevel, 'strict');
     assert.strictEqual(
       config.themeVariables?.fontSize,
-      '12px',
-      "themeVariables.fontSize must be '12px' (mermaid-display-density)",
+      '16px',
+      "themeVariables.fontSize must be '16px' (mermaid-display-density)",
     );
     for (const value of Object.values(config.themeVariables ?? {})) {
       assert.ok(!value.includes('var(--vscode-'), `themeVariables must not use var(--vscode-*): ${value}`);
@@ -348,8 +348,8 @@ suite('mermaid-redux-elk-fidelity', () => {
       assert.strictEqual(config.securityLevel, 'strict', `kind ${kind} must keep securityLevel strict`);
       assert.strictEqual(
         config.themeVariables?.fontSize,
-        '12px',
-        `kind ${kind}: themeVariables.fontSize must be '12px' (mermaid-display-density)`,
+        '16px',
+        `kind ${kind}: themeVariables.fontSize must be '16px' (mermaid-display-density)`,
       );
       for (const value of Object.values(config.themeVariables ?? {})) {
         assert.ok(!value.includes('var(--vscode-'), `themeVariables must not use var(--vscode-*): ${value}`);

@@ -366,6 +366,9 @@ body[data-readonly='true'] #link-input-bar {
 
 /* Frame for fit / zoom / pan — overflow scrollbars when zoomed beyond frame */
 .mermaid-viewport {
+  display: flex;
+  justify-content: center;
+  align-items: center;
   overflow: auto;
   max-height: min(70vh, 640px);
   min-height: 80px;
@@ -384,7 +387,9 @@ body[data-readonly='true'] #link-input-bar {
 
 .mermaid-viewport-canvas {
   display: inline-block;
-  transform-origin: 0 0;
+  flex-shrink: 0;
+  /* Zoom pivot = viewport/canvas center (AD-007); not top-left */
+  transform-origin: center;
   overflow: visible;
   /* Density stays fontSize; viewport zoom uses transform only */
 }
@@ -395,6 +400,21 @@ body[data-readonly='true'] #link-input-bar {
   align-items: flex-start;
   justify-content: flex-start;
   overflow: visible;
+}
+
+/*
+ * Label typography — Mermaid default family + line-height 1.
+ * !important beats Mermaid createText inline line-height: 1.5 and Preview body 1.6
+ * so measure (Host-nonce CSS) and paint stay matched (no empty band under glyphs).
+ */
+.mermaid-preview .nodeLabel,
+.mermaid-preview .edgeLabel,
+.mermaid-preview .label,
+.mermaid-preview .labelBkg,
+.mermaid-preview foreignObject div,
+.mermaid-preview foreignObject span {
+  font-family: "trebuchet ms", verdana, arial, sans-serif;
+  line-height: 1 !important;
 }
 
 /* Natural SVG size inside viewport — do not force max-width (fit uses transform) */

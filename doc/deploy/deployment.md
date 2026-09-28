@@ -13,10 +13,10 @@
 | 項目 | 値 |
 |------|-----|
 | Publisher ID（`publisher`） | `mshiono` |
-| Extension name（`name`） | `vsc-md-editor` |
-| Extension ID | `mshiono.vsc-md-editor` |
+| Extension name（`name`） | `md-wysiwyg-editor` |
+| Extension ID | `mshiono.md-wysiwyg-editor` |
 | 表示名（`displayName`） | `MD WYSIWYG Editor` |
-| Repository | https://github.com/m-shiono/vsc-md-editor.git |
+| Repository | https://github.com/m-shiono/md-wysiwyg-editor.git |
 
 補足:
 
@@ -85,33 +85,48 @@ npx @vscode/vsce login mshiono
 
 ## 6. パッケージ（VSIX）
 
-ローカルで VSIX を作る:
+ローカル検証用（バージョンは変更しない）:
+
+```bash
+./build.sh
+```
+
+同等の npm 直接呼び出し:
 
 ```bash
 npm run package:vsix
 ```
 
-同等の直接呼び出し:
-
-```bash
-npx @vscode/vsce package
-```
-
-`package:vsix` はコンパイル後に sourcemap を除いてから `vsce package` する（本リポジトリのスクリプト定義）。生成された `.vsix` を Marketplace に手動アップロードしてもよいが、通常は次節の `publish` で十分。
+`build.sh` / `package:vsix` はコンパイル後に sourcemap を除いてから `vsce package` する。実行前にリポジトリ直下の古い `*.vsix` を削除する（`build.sh`）。生成された `.vsix` を Marketplace に手動アップロードしてもよいが、通常は次節の `publish` で十分。
 
 ---
 
 ## 7. 公開
 
-初回およびバージョン更新後:
+通常の公開（推奨）:
 
 ```bash
-npx @vscode/vsce publish
+./build_publish.sh
 ```
 
-- 公開前に `package.json` の `version` を bump する（セマンティックバージョニング）。
-- 既に同じバージョンが公開済みだと失敗する。
-- 公開後、Marketplace 上で `mshiono.vsc-md-editor` として検索・インストールできるまで数分かかることがある。
+`build_publish.sh` は次を順に行う。
+
+1. リポジトリ直下の古い `*.vsix` を削除
+2. `npm version minor --no-git-tag-version` で SemVer **minor** を自動 bump（`package.json` / `package-lock.json`。git commit/tag は作らない）
+3. `npm run package:vsix` で VSIX を生成
+4. 生成された唯一の `.vsix` を `vsce publish --packagePath` で公開
+
+補足:
+
+- 既に同じバージョンが公開済みだと失敗する（自動 bump により通常は回避される）。
+- 公開成功後、`package.json` / `package-lock.json` の version 変更をユーザーが commit する。
+- 公開後、Marketplace 上で `mshiono.md-wysiwyg-editor` として検索・インストールできるまで数分かかることがある。
+
+手動で公開する場合のみ:
+
+```bash
+npx @vscode/vsce publish --packagePath <生成済み.vsix>
+```
 
 ---
 
@@ -120,9 +135,9 @@ npx @vscode/vsce publish
 - [ ] `LICENSE`（本リポジトリは MIT）がリポジトリ根にあり、`package.json` の `license` と一致
 - [ ] `icon`（`media/icon.png`）が有効で Marketplace 要件を満たす
 - [ ] `README.md` がインストール後の説明として十分（機能・使い方）
-- [ ] `version` が前回公開より新しい
+- [ ] `./build_publish.sh` 実行で version が自動 bump されること（公開後に `package.json` / `package-lock.json` を commit）
 - [ ] `engines.vscode` が意図した最小バージョン（現状 `^1.85.0`）
-- [ ] `publisher` / `name` が上記確定値と一致（Extension ID = `mshiono.vsc-md-editor`）
+- [ ] `publisher` / `name` が上記確定値と一致（Extension ID = `mshiono.md-wysiwyg-editor`）
 - [ ] repository URL が正しい
 - [ ] PAT やローカルトークンファイルがステージングされていない（`git status`）
 
@@ -144,5 +159,8 @@ Microsoft は Marketplace 向け PAT の扱いを段階的に見直しており�
 
 | 日付 | 変更 |
 |------|------|
+| 2026-09-29 | Breaking / 利用者再設定案内セクションを削除（初期製品のため migration messaging 不要）。§1 の現行 Extension ID / name / repo は維持 |
+| 2026-09-29 | 製品リネーム（`rename-md-wysiwyg`）: Extension name / ID / repository を `md-wysiwyg-editor` / `mshiono.md-wysiwyg-editor` / `https://github.com/m-shiono/md-wysiwyg-editor.git` に同期 |
 | 2026-09-19 | 初版。Marketplace 手動公開ランブック（publisher `mshiono` / Extension ID `mshiono.vsc-md-editor`）。Azure DevOps 組織と Publisher の区別、PAT 方針、Access Denied 切り分け、Open VSX・PAT 将来廃止の注記 |
 | 2026-09-19 | パス移設（`doc/deploy/`）。契約内容不変 |
+| 2026-09-29 | `./build_publish.sh` で minor 自動 bump・旧 VSIX 削除・`--packagePath` 公開に更新。`./build.sh` はローカル検証用 |

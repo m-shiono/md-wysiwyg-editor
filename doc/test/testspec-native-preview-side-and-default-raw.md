@@ -23,7 +23,7 @@
 | Document `dirty` | `boolean` | — | — | dirty 時のみ Save/Cancel ダイアログ |
 | Save / Cancel 選択 | ダイアログ | — | — | Don't Save 選択肢なし |
 | 対象 URI | `vscode.Uri` | — | — | アクティブ WYSIWYG `TabInputCustom.uri` |
-| コマンド ID（正本） | `vsc-md-editor.showNativeMarkdownPreview` | — | — | Palette + Webview。旧 `…ToSide` は同一ハンドラの互換エイリアス |
+| コマンド ID（正本） | `md-wysiwyg-editor.showNativeMarkdownPreview` | — | — | Palette + Webview。製品内別名 `md-wysiwyg-editor.showNativeMarkdownPreviewToSide` は同一ハンドラ（AD-004）。旧プレフィックス `vsc-md-editor.*` 互換ではない |
 | 同一グループ補償入力 | `viewColumn` + `activeIndex` | — | — | open 前に `tabGroups.activeTabGroup` から記録。open 後 `moveActiveEditor`（または同等の安定 API; preferred index `activeIndex+1`） |
 
 ### Outputs & Failure Returns
@@ -44,7 +44,7 @@
 
 ### Preconditions & Assumptions
 
-- Custom Editor viewType `vsc-md-editor.wysiwyg` で `.md` を開いていること
+- Custom Editor viewType `md-wysiwyg-editor.wysiwyg` で `.md` を開いていること
 - ビルトイン Markdown 拡張が `markdown.showPreview` を提供する環境（欠如時は失敗パス。Beside フォールバックなし）
 - セッション永続モードは新設しない（ハードコード既定のみ）
 - 統合テストは Extension Development Host（既存方針）
@@ -73,7 +73,7 @@
 | TC-004 | Happy | default-preview-clean | P0 | Document clean で Default Preview 押下（または同等 Host コマンド） | ダイアログなし。`markdown.showPreview` が対象 URI で 1 回実行。**`showPreviewToSide` 非実行**。現在面不変。Preview は同一 editor group（Beside 新規グループなし） | clean 即オープン + 同 group | §1 Outputs, §10 |
 | TC-005 | Happy | default-preview-dirty-save | P0 | Document dirty で Default Preview → ダイアログで **Save**（save 成功） | Save/Cancel 二択のみ（Don't Save なし）。警告文言に `to the side` を含めない。save 成功後のみ `showPreview`（+ 同一グループ補償）。dirty 解除 | 保存成功ゲート | §8 正常系 8 |
 | TC-006 | Corner | default-preview-dirty-cancel | P0 | Document dirty で Default Preview → **Cancel** | `showPreview` 非実行。`showPreviewToSide` も非実行。Document / dirty 不変。現在面不変 | Cancel で開かない | §8 |
-| TC-007 | Happy | command-registration | P0 | `activate` 後 `getCommands` と `package.json` contributes | 正本 `vsc-md-editor.showNativeMarkdownPreview` 登録。旧 `vsc-md-editor.showNativeMarkdownPreviewToSide` は同一ハンドラの互換エイリアスとして登録。Command Palette 実行可（正本 ID）。command title に Side 表現なし。Default Preview 用 editor/title アイコンは **無い** | コマンド契約 + エイリアス + Non-Goal アイコン | §10 正常系 7 |
+| TC-007 | Happy | command-registration | P0 | `activate` 後 `getCommands` と `package.json` contributes | 正本 `md-wysiwyg-editor.showNativeMarkdownPreview` 登録。製品内別名 `md-wysiwyg-editor.showNativeMarkdownPreviewToSide` は同一ハンドラとして登録（AD-004）。旧プレフィックス `vsc-md-editor.showNativeMarkdownPreview*` は **未登録**。Command Palette 実行可（正本 ID）。command title に Side 表現なし。Default Preview 用 editor/title アイコンは **無い** | コマンド契約 + 製品内別名 + 旧プレフィックス非互換 + Non-Goal アイコン | §10 正常系 7 / `rename-md-wysiwyg` |
 | TC-008 | Corner | default-preview-dialog-dismiss | P1 | Document dirty で Default Preview → ダイアログを閉じる（Esc / 閉じる） | Cancel と同様プレビュー非オープン。`showPreview` / `showPreviewToSide` 非実行。dirty 不変 | 閉じる＝開かない | §8 |
 | TC-009 | Corner | default-preview-save-fail | P1 | Document dirty → Save 選択だが save 失敗（stringify 失敗 mock） | ErrorMessage + Output（`MD WYSIWYG Editor`）。`showPreview` 非実行。dirty 維持可 | save 失敗で開かない | §1 Outputs, §8 |
 | TC-010 | Corner | default-preview-raw-parse-block | P1 | `isRawParseFailed=true` の dirty Document で Default Preview → Save | save ブロック契約を尊重しプレビュー非オープン。ErrorMessage / Output | Raw 失敗中ゲート | §1 Outputs, §8 例外系 2 |
@@ -125,7 +125,7 @@
 
 | Step | State / Action | Value |
 |------|----------------|-------|
-| Input | 保存済み `sample.md` を Custom Editor で開く | viewType `vsc-md-editor.wysiwyg` |
+| Input | 保存済み `sample.md` を Custom Editor で開く | viewType `md-wysiwyg-editor.wysiwyg` |
 | 1 | 定数 / Host 初期 mode | `DEFAULT_EDITOR_MODE === 'raw'` |
 | 2 | Webview 初期 HTML | `body[data-mode="raw"]`、Raw ボタン `active` |
 | Output | 初期面 | Edit Raw Text / mode id `raw` |
@@ -204,9 +204,9 @@
 | Step | State / Action | Value |
 |------|----------------|-------|
 | Input | `activate` | — |
-| Output | 正本 `showNativeMarkdownPreview` + 旧 `…ToSide` エイリアス | editor/title Default Preview アイコンなし |
+| Output | 正本 `md-wysiwyg-editor.showNativeMarkdownPreview` + 製品内別名 `…ToSide`（新プレフィックス）。旧 `vsc-md-editor.*` 未登録 | editor/title Default Preview アイコンなし |
 
-**Result:** ✅ Pass（2026-09-06 unit — package.json + エイリアス）
+**Result:** ✅ Pass（2026-09-29 unit）— `md-wysiwyg-editor.showNativeMarkdownPreview*` 登録・旧プレフィックス未登録。`native-preview-side-and-default-raw.test.ts` TC-007
 
 ---
 
@@ -349,7 +349,7 @@
 | AD-002 Host 同一グループ補償 | TC-004, TC-021 |
 | AD-003 同 group 必須 / 隣接 best-effort | TC-021（+ TC-004 同 group） |
 | AD-004 ToSide フォールバック禁止 | TC-017（+ 成功パス TC-004/005 で ToSide 非実行） |
-| AD-005 コマンド ID + エイリアス | TC-007 |
+| AD-005 コマンド ID + 製品内別名（新プレフィックス） | TC-007（`rename-md-wysiwyg` で ID 同期） |
 | AD-006 表示文言・Side 除去 | TC-018, TC-019 |
 | AD-007 `data-action` / `openNativePreview` | TC-003, TC-014 |
 | AD-008 非機能据え置き | TC-003, TC-005–006, TC-012–013, TC-015, TC-019 |
@@ -371,3 +371,6 @@
 | 2026-09-06 | testspec-implementation（Red）: `native-preview-side-and-default-raw.test.ts` を Expected 更新。TC-021 追加。Trace: 7 Pass / 16 Fail | `default-preview-same-tab-group` |
 | 2026-09-06 | Critical 修正: 同一グループ補償を `moveActiveEditor` に置換（非公開 `tabGroups.move` 廃止）。TC-021 mock / Trace Results 全 Pass | `default-preview-same-tab-group` |
 | 2026-09-19 | パス移設（`doc/test/`）。契約内容不変 |
+| 2026-09-29 | **BREAKING** `rename-md-wysiwyg`: 貢献 ID を `md-wysiwyg-editor.*` に同期（viewType / 正本コマンド / 製品内 `…ToSide` 別名）。旧 `vsc-md-editor.*` は未登録を Expected に明記（AD-002/004）。テストコード未変更（design only） | `rename-md-wysiwyg` |
+| 2026-09-29 | testspec-implementation（Red）: TC-007 期待を `md-wysiwyg-editor.*` + 旧プレフィックス未登録にコード化。Trace Red | `rename-md-wysiwyg` |
+| 2026-09-29 | Trace Results: TC-007 を Pass に同期（Quality Gate green 後。Expected 不変） | `rename-md-wysiwyg` |

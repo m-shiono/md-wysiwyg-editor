@@ -5,11 +5,11 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { getMarkdownEditorProvider } from '../../../utils/editor-provider-hook';
 
-const VIEW_TYPE = 'vsc-md-editor.wysiwyg';
+const VIEW_TYPE = 'md-wysiwyg-editor.wysiwyg';
 
 suite('Table HTML→GFM convert integration', () => {
   test('TC-102/103: requestConvertToGfm updates markdownText; stale HTML update is dropped', async () => {
-    const ext = vscode.extensions.getExtension('mshiono.vsc-md-editor');
+    const ext = vscode.extensions.getExtension('mshiono.md-wysiwyg-editor');
     assert.ok(ext);
     await ext.activate();
 
@@ -21,7 +21,7 @@ suite('Table HTML→GFM convert integration', () => {
       '<table><tr><th>h</th></tr><tr><td>html-cell</td></tr></table>\n\n' +
       '| b | b |\n| --- | --- |\n| c | d |\n';
 
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vsc-md-table-convert-'));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-wysiwyg-table-convert-'));
     const mdPath = path.join(tmpDir, 'table-convert.md');
     fs.writeFileSync(mdPath, md);
     const uri = vscode.Uri.file(mdPath);

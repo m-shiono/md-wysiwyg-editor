@@ -223817,11 +223817,21 @@ img.ProseMirror-separator {
   }
 
   // src/utils/mermaid-theme.ts
-  var MERMAID_DENSITY_FONT_SIZE = "12px";
+  var MERMAID_DENSITY_FONT_SIZE = "16px";
+  var MERMAID_DENSITY_FONT_FAMILY = '"trebuchet ms", verdana, arial, sans-serif';
+  var MERMAID_DENSITY_LINE_HEIGHT = "1";
   var MERMAID_FLOWCHART_LAYOUT = {
     wrappingWidth: 200,
-    padding: 15
+    padding: 2
   };
+  function densityThemeVariables() {
+    return {
+      fontSize: MERMAID_DENSITY_FONT_SIZE,
+      fontFamily: MERMAID_DENSITY_FONT_FAMILY,
+      // Mermaid paints via themeVariables; CSS measure/preview also set line-height 1.2
+      lineHeight: MERMAID_DENSITY_LINE_HEIGHT
+    };
+  }
   function buildMermaidThemeConfig(kind) {
     const flowchart = {
       wrappingWidth: MERMAID_FLOWCHART_LAYOUT.wrappingWidth,
@@ -223831,7 +223841,7 @@ img.ProseMirror-separator {
       case "light":
         return {
           theme: "redux",
-          themeVariables: { fontSize: MERMAID_DENSITY_FONT_SIZE },
+          themeVariables: densityThemeVariables(),
           securityLevel: "strict",
           flowchart
         };
@@ -223839,7 +223849,7 @@ img.ProseMirror-separator {
       case "highContrast":
         return {
           theme: "redux-dark",
-          themeVariables: { fontSize: MERMAID_DENSITY_FONT_SIZE },
+          themeVariables: densityThemeVariables(),
           securityLevel: "strict",
           flowchart
         };
@@ -223848,7 +223858,7 @@ img.ProseMirror-separator {
         void _exhaustive;
         return {
           theme: "redux",
-          themeVariables: { fontSize: MERMAID_DENSITY_FONT_SIZE },
+          themeVariables: densityThemeVariables(),
           securityLevel: "strict",
           flowchart
         };
@@ -223914,6 +223924,10 @@ img.ProseMirror-separator {
     styleEl.textContent = [
       `.nodeLabel, .edgeLabel, .label, .labelBkg, foreignObject div, foreignObject span {`,
       `  font-size: ${MERMAID_DENSITY_FONT_SIZE};`,
+      // Literals required for measure contract (TC-MRV-026); keep in sync with MERMAID_DENSITY_*
+      `  font-family: "trebuchet ms", verdana, arial, sans-serif;`,
+      // !important beats Mermaid createText inline line-height: 1.5 during measure
+      `  line-height: 1 !important;`,
       `}`
     ].join("\n");
   }
@@ -224147,9 +224161,6 @@ img.ProseMirror-separator {
         const zoomOut = () => {
           applyScale(viewportScale / MERMAID_VIEWPORT_ZOOM_STEP);
         };
-        const refit = () => {
-          viewportScale = fitToViewport(viewport2, canvas, preview);
-        };
         zoomInBtn.addEventListener("click", (event3) => {
           event3.preventDefault();
           event3.stopPropagation();
@@ -224163,7 +224174,7 @@ img.ProseMirror-separator {
         fitBtn.addEventListener("click", (event3) => {
           event3.preventDefault();
           event3.stopPropagation();
-          refit();
+          viewportScale = fitToViewport(viewport2, canvas, preview);
         });
         const renderPreview = (source3) => {
           const existing = mermaidTimers.get(viewId);
@@ -224189,7 +224200,7 @@ img.ProseMirror-separator {
                 }
                 setViewportUiEnabled(true);
                 requestAnimationFrame(() => {
-                  refit();
+                  viewportScale = fitToViewport(viewport2, canvas, preview);
                 });
               } catch (err) {
                 preview.innerHTML = `<div class="mermaid-error">${escapeHtml(String(err))}</div>`;
@@ -224510,10 +224521,17 @@ img.ProseMirror-separator {
   function applyViewportZoom(canvas, scale3) {
     canvas.style.transform = `scale(${scale3})`;
   }
+  function centerOnSmallerAxes(viewport2) {
+    const frameW = Math.max(1, viewport2.clientWidth);
+    const frameH = Math.max(1, viewport2.clientHeight);
+    viewport2.scrollLeft = Math.max(0, (viewport2.scrollWidth - frameW) / 2);
+    viewport2.scrollTop = Math.max(0, (viewport2.scrollHeight - frameH) / 2);
+  }
   function fitToViewport(viewport2, canvas, preview) {
     const svg2 = preview.querySelector("svg");
     if (!svg2) {
       applyViewportZoom(canvas, 1);
+      centerOnSmallerAxes(viewport2);
       return 1;
     }
     applyViewportZoom(canvas, 1);
@@ -224522,11 +224540,10 @@ img.ProseMirror-separator {
     const naturalW = svg2.width?.baseVal?.value || svg2.getBoundingClientRect().width || 1;
     const naturalH = svg2.height?.baseVal?.value || svg2.getBoundingClientRect().height || 1;
     const scale3 = clampMermaidViewportScale(
-      Math.min(1, frameW / Math.max(1, naturalW), frameH / Math.max(1, naturalH))
+      Math.min(frameW / Math.max(1, naturalW), frameH / Math.max(1, naturalH))
     );
     applyViewportZoom(canvas, scale3);
-    viewport2.scrollLeft = 0;
-    viewport2.scrollTop = 0;
+    centerOnSmallerAxes(viewport2);
     return scale3;
   }
   function createMermaidViewportToolbar() {
@@ -225453,4 +225470,3 @@ mermaid/dist/mermaid.core.mjs:
    * Wait for document loaded before starting the execution
    *)
 */
-//# sourceMappingURL=editor.js.map

@@ -191,8 +191,8 @@ suite('fix-mermaid-edge-styles', () => {
     assert.strictEqual(config.securityLevel, 'strict');
     assert.strictEqual(
       config.themeVariables?.fontSize,
-      '12px',
-      "themeVariables.fontSize must be '12px' (mermaid-display-density)",
+      '16px',
+      "themeVariables.fontSize must be '16px' (mermaid-display-density)",
     );
     for (const value of Object.values(config.themeVariables ?? {})) {
       assert.ok(!value.includes('var(--vscode-'), `themeVariables must not use var(--vscode-*): ${value}`);
@@ -214,8 +214,8 @@ suite('fix-mermaid-edge-styles', () => {
     assert.strictEqual(config.securityLevel, 'strict');
     assert.strictEqual(
       config.themeVariables?.fontSize,
-      '12px',
-      "themeVariables.fontSize must be '12px' (mermaid-display-density)",
+      '16px',
+      "themeVariables.fontSize must be '16px' (mermaid-display-density)",
     );
     for (const value of Object.values(config.themeVariables ?? {})) {
       assert.ok(!value.includes('var(--vscode-'), `themeVariables must not use var(--vscode-*): ${value}`);
@@ -237,8 +237,8 @@ suite('fix-mermaid-edge-styles', () => {
     assert.strictEqual(config.securityLevel, 'strict');
     assert.strictEqual(
       config.themeVariables?.fontSize,
-      '12px',
-      "themeVariables.fontSize must be '12px' (mermaid-display-density)",
+      '16px',
+      "themeVariables.fontSize must be '16px' (mermaid-display-density)",
     );
     for (const value of Object.values(config.themeVariables ?? {})) {
       assert.ok(!value.includes('var(--vscode-'), `themeVariables must not use var(--vscode-*): ${value}`);

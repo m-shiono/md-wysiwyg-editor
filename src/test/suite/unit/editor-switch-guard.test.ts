@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { isBuiltinSwitchToSameMdFile } from '../../../utils/editor-switch-guard';
 
-const WYSIWYG_VIEW_TYPE = 'vsc-md-editor.wysiwyg';
+const WYSIWYG_VIEW_TYPE = 'md-wysiwyg-editor.wysiwyg';
 
 type MockTab = { input: unknown };
 
@@ -69,20 +69,20 @@ suite('Editor switch guard (Pattern A)', () => {
     };
 
     const commands = pkg.contributes.commands.map((c) => c.command);
-    assert.ok(commands.includes('vsc-md-editor.openWithWysiwyg'));
-    assert.ok(commands.includes('vsc-md-editor.reloadExtension'));
+    assert.ok(commands.includes('md-wysiwyg-editor.openWithWysiwyg'));
+    assert.ok(commands.includes('md-wysiwyg-editor.reloadExtension'));
 
     assert.ok(
-      pkg.contributes.configuration.properties['vsc-md-editor.autoRestoreOnBuiltinSwitch'],
+      pkg.contributes.configuration.properties['md-wysiwyg-editor.autoRestoreOnBuiltinSwitch'],
     );
 
     const titleMenu = pkg.contributes.menus['editor/title'];
-    const openMenu = titleMenu.find((m) => m.command === 'vsc-md-editor.openWithWysiwyg');
+    const openMenu = titleMenu.find((m) => m.command === 'md-wysiwyg-editor.openWithWysiwyg');
     assert.ok(openMenu);
     assert.ok(openMenu.when.includes('resourceExtname == .md'));
-    assert.ok(openMenu.when.includes('activeCustomEditorId != vsc-md-editor.wysiwyg'));
+    assert.ok(openMenu.when.includes('activeCustomEditorId != md-wysiwyg-editor.wysiwyg'));
 
-    const reloadMenu = titleMenu.find((m) => m.command === 'vsc-md-editor.reloadExtension');
+    const reloadMenu = titleMenu.find((m) => m.command === 'md-wysiwyg-editor.reloadExtension');
     assert.ok(reloadMenu);
     assert.ok(reloadMenu.when.includes('resourceExtname == .md'));
     assert.strictEqual(reloadMenu.group, 'navigation@0');

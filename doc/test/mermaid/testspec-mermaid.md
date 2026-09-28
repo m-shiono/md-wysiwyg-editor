@@ -96,6 +96,10 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 | `testspec-mermaid-readable-viewport.md#TC-021` | `TC-MRV-021` | `readable-viewport` |
 | `testspec-mermaid-readable-viewport.md#TC-022` | `TC-MRV-022` | `readable-viewport` |
 | `testspec-mermaid-readable-viewport.md#TC-023` | `TC-MRV-023` | `readable-viewport` |
+| `testspec-mermaid-readable-viewport.md#TC-024` | `TC-MRV-024` | `readable-viewport`（`mermaid-default-preview-parity`） |
+| `testspec-mermaid-readable-viewport.md#TC-025` | `TC-MRV-025` | `readable-viewport`（`mermaid-default-preview-parity`） |
+| `testspec-mermaid-readable-viewport.md#TC-026` | `TC-MRV-026` | `readable-viewport`（`mermaid-default-preview-parity`） |
+| `testspec-mermaid-readable-viewport.md#TC-027` | `TC-MRV-027` | `readable-viewport`（`mermaid-default-preview-parity`） |
 
 
 ---
@@ -145,7 +149,7 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 |------|-------------------|---------|
 | sanitize 成功（安全ラベル付き SVG） | `foreignObject` シェル＋内部ラベル HTML / テキスト残存。必要なら style/presentation も最小保持 | §5 正常系 10、§9 正常系 3 |
 | sanitize + 危険要素混入 | `<script>` / `on*` 除去。ラベル用安全 HTML は残す | §5 例外系 1、§9、AD-001 |
-| kind `dark` / `highContrast` | Mermaid `theme: 'redux-dark'`。`themeVariables.fontSize === '12px'`。`themeVariables` に `var(--vscode-...)` なし。`securityLevel: 'strict'` | §5 正常系 7 / 7a、`mermaid-display-density` |
+| kind `dark` / `highContrast` | Mermaid `theme: 'redux-dark'`。`themeVariables.fontSize === '16px'`。`themeVariables` に `var(--vscode-...)` なし。`securityLevel: 'strict'` | §5 正常系 7 / 7a、`mermaid-display-density` |
 | VS Code `light` | `theme: 'redux'` | §5 正常系 7、`mermaid-redux-elk-fidelity` AD-004 |
 | 島ライト | `.mermaid-preview` / `.mermaid-block` に明るい固定サーフェス強制（例: `background-color: white`）を**置かない** | §5 正常系 11、`fix-mermaid-edge-styles` AD-005 |
 | ダーク時の広い面 | `#editor`（および広い Preview 面）の背景はダークのまま（明るい固定背景を新設しない） | §5 Non-Goals |
@@ -180,14 +184,14 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 | TC-MCR-001 | Happy | hip-label-html-survive | P0 | flowchart 相当 SVG fixture（`<foreignObject><div xmlns=…>Cause A</div></foreignObject>`）を NodeView の sanitize 経路（`sanitizeMermaidSvg` または同等の実行可能関数）に通す | sanitize **実行後**の HTML に `foreignObject` があり、その**内部**にラベル文字列 `Cause A`（および `div` または同等ラベル要素）が残る。空シェル `<foreignObject></foreignObject>` のみは Fail | P0 HIP: `ADD_TAGS` だけでは子 HTML が落ちる（repro / TC-MCR-152 ギャップ） | §5 正常系 10、§9 正常系 3、AD-002/008 |
 | TC-MCR-002 | Structural | hip-option-required | P0 | `media/editor.ts`（または sanitize 実装モジュール）の DOMPurify 呼び出し options を検査 | `HTML_INTEGRATION_POINTS` に `foreignobject: true`（または同等の HIP 有効化）が含まれる。`ADD_TAGS:['foreignObject']` のみでは本 TC Fail | HIP 欠落の静的検知 | §5 正常系 10、repro digest P0 |
 | TC-MCR-003 | Corner | xss-script-on-removed | P0 | ラベル付き SVG に `<script>alert(1)</script>` および `onclick="…"`（または `onerror=`）を混入して sanitize | 出力に `script` タグなし、`on*` イベント属性なし。一方で安全な `foreignObject` ラベル文字列は残る | セキュリティ不変（AD-001） | §5 例外系 1、§9、AD-001 |
-| TC-MCR-004 | Happy | dark-kind-theme-redux-dark | P0 | VS Code kind `dark`（および `highContrast`）の Mermaid グローバルテーマ設定 | `theme: 'redux-dark'`。`themeVariables.fontSize === '12px'`。`themeVariables` に `var(--vscode-...)` なし。`securityLevel: 'strict'` 維持。classic `'dark'` / 全 kind 強制 `'default'` は Fail | redux kind マップ＋密度 | §5 正常系 7 / 7a、`mermaid-display-density` |
+| TC-MCR-004 | Happy | dark-kind-theme-redux-dark | P0 | VS Code kind `dark`（および `highContrast`）の Mermaid グローバルテーマ設定 | `theme: 'redux-dark'`。`themeVariables.fontSize === '16px'`。`themeVariables` に `var(--vscode-...)` なし。`securityLevel: 'strict'` 維持。classic `'dark'` / 全 kind 強制 `'default'` は Fail | redux kind マップ＋密度 | §5 正常系 7 / 7a、`mermaid-display-density` |
 | TC-MCR-005 | Structural | no-island-light-forced | P0 | `.mermaid-preview` または `.mermaid-block` の CSS（`media/editor.css` 等）を検査 | 明るい固定サーフェス強制（例: `background-color: white`）が**存在しない**。エッジ可視は `mermaid-redux-elk-fidelity`（nonce 再注入優先）／`fix-mermaid-edge-styles` TC-MCR-001 | 島ライト撤回（AD-005） | §5 正常系 11 |
 | TC-MCR-006 | Structural | editor-wide-bg-unchanged | P0 | `#editor`（および広い Preview 面用セレクタ）の背景ルールをダーク文脈で検査 | `#editor` / 広い面に明るい固定背景を新設していない。ダーク時の広い面はダークのまま | 全体背景変更の禁止 | §5 Non-Goals、§1 |
-| TC-MCR-007 | Happy | light-theme-redux | P1 | kind `light` のテーママップ | `theme: 'redux'`。`themeVariables.fontSize === '12px'`。`var(--vscode-...)` なし | redux＋密度 | §5 正常系 7 / 7a、`mermaid-display-density` |
+| TC-MCR-007 | Happy | light-theme-redux | P1 | kind `light` のテーママップ | `theme: 'redux'`。`themeVariables.fontSize === '16px'`。`var(--vscode-...)` なし | redux＋密度 | §5 正常系 7 / 7a、`mermaid-display-density` |
 | TC-MCR-008 | Boundary | empty-foreignobject-shell | P1 | 子なし `<foreignObject></foreignObject>` のみの SVG を sanitize | クラッシュせず。空シェルは許容（ラベル無し入力）。HIP 有無で落ちないこと | 空入力境界 | §5 Inputs |
 | TC-MCR-009 | Corner | tc152-regression-still-green | P1 | 既存 suite `fix-mermaid-dark-visibility`（TC-MCR-152）を実行 | Pass を維持（bare sanitize 禁止 + foreignObject 許可経路） | 既存回帰の維持 | TC-MCR-152、AD-008 |
 | TC-MCR-010 | Structural | document-untouched | P1 | 表示層変更（sanitize / CSS / theme）が serialize / dirty / `docJson` 経路に触れないことをソースまたは契約検査 | Mermaid 表示層ファイルに限定。Document 正本 API を変更しない | AD-003 | §1 Preview 表示層、AD-003 |
-| TC-MCR-011 | Happy | high-contrast-maps-to-redux-dark | P1 | kind `highContrast` | `theme: 'redux-dark'`（TC-MCR-004 と同マップ）。`themeVariables.fontSize === '12px'`。専用 HC パレットは不要 | redux-dark＋密度 | §5 正常系 7 / 7a、`mermaid-display-density` |
+| TC-MCR-011 | Happy | high-contrast-maps-to-redux-dark | P1 | kind `highContrast` | `theme: 'redux-dark'`（TC-MCR-004 と同マップ）。`themeVariables.fontSize === '16px'`。専用 HC パレットは不要 | redux-dark＋密度 | §5 正常系 7 / 7a、`mermaid-display-density` |
 | TC-MCR-012 | Corner | text-node-label-also-kept | P1 | `foreignObject` 外の `<text>Simple Approach</text>` を含む fixture を sanitize | SVG `<text>` ラベル文字列も残る（flowchart 以外／併存） | シェル以外のラベル経路 | §5 正常系 10、AD-002 |
 
 ### Category Coverage
@@ -412,6 +416,7 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 
 | 日付 | 変更内容 |
 |------|---------|
+| 2026-09-26 | `mermaid-default-preview-parity`: TC-MCR-004/007/011 および Spec Digest Outputs のグローバル `fontSize` Expected を `'12px'` → `'16px'` に更新 |
 | 2026-09-06 | `mermaid-readable-viewport`: TC-MCR-004/007/011 および Spec Digest Outputs のグローバル `fontSize` を `'13px'` → `'8px'` に更新 |
 | 2026-09-06 | 密度 polish: Expected のグローバル `fontSize` を `'8px'` → `'12px'` に更新 |
 | 2026-09-06 | `mermaid-display-density`: TC-MCR-004/007/011 Expected に `themeVariables.fontSize === '13px'`（`var(--vscode-...)` なし）を追加 |
@@ -507,7 +512,7 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 | TC-MSS-002 | Structural | preview-hide-css-removed | P0 | `media/editor.css`（または同等）を検査 | `body[data-mode='preview'] .mermaid-source { display: none }`（および同等の Preview 専用ソース非表示ルール）が**存在しない** | CSS 撤廃の静的検知（AD-003） | §5 正常系 4、AD-003 |
 | TC-MSS-003 | Structural | source-below-preview-order | P0 | Mermaid NodeView のブロック内 DOM（Preview または Markdown） | `.mermaid-preview` が `.mermaid-source` より**先**（図の下にソース） | Snap 風上下併記・DOM 再発明禁止（AD-002） | §5 正常系 4、AD-002 |
 | TC-MSS-004 | Happy | markdown-source-visible | P0 | Markdown モードで同一 Mermaid ブロック | `.mermaid-preview` と `.mermaid-source` の両方が表示。DOM 順は preview → source | Markdown 併記維持・強化（TC-MSS-131 整合） | §5 正常系 5、AD-002 |
-| TC-MSS-005 | Happy | kind-theme-redux-map | P0 | kind `light` / `dark` / `highContrast` それぞれで `buildMermaidThemeConfig`（または同等） | light→`redux`、dark→`redux-dark`、highContrast→`redux-dark`。全 kind で `themeVariables.fontSize === '12px'`。`themeVariables` に `var(--vscode-...)` なし。`securityLevel: 'strict'`。classic `default`/`dark` マップは Fail | redux kind マップ＋表示密度 | §5 正常系 7 / 7a、`mermaid-display-density` |
+| TC-MSS-005 | Happy | kind-theme-redux-map | P0 | kind `light` / `dark` / `highContrast` それぞれで `buildMermaidThemeConfig`（または同等） | light→`redux`、dark→`redux-dark`、highContrast→`redux-dark`。全 kind で `themeVariables.fontSize === '16px'`。`themeVariables` に `var(--vscode-...)` なし。`securityLevel: 'strict'`。classic `default`/`dark` マップは Fail | redux kind マップ＋表示密度 | §5 正常系 7 / 7a、`mermaid-display-density` |
 | TC-MSS-006 | Structural | no-island-light-forced | P0 | `.mermaid-preview` / `.mermaid-block` の CSS | 明るい固定サーフェス強制（例: `background-color: white`）が**存在しない** | 島ライト撤回。エッジ可視は `mermaid-redux-elk-fidelity` | §5 正常系 11、AD-005 |
 | TC-MSS-007 | Corner | preview-error-source-still-visible | P0 | Preview で不正 Mermaid 構文 | preview 領域に `.mermaid-error`（または同等）。`.mermaid-source` は**表示のまま**。Document ソース保持 | エラー時も非表示に戻さない（AD-010）。TC-MSS-132 新契約 | §5 Outputs、AD-010 |
 | TC-MSS-008 | Corner | preview-source-readonly | P0 | Preview 表示中にソース領域へ編集イベント相当を送る / contenteditable 検査 | Document へ編集が反映されない。ソースは RO（`contenteditable=false` またはイベント非送出） | Preview 厳密 RO 維持（AD-004） | §1、§5 正常系 5、AD-004 |
@@ -643,6 +648,7 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 
 | 日付 | 変更内容 |
 |------|---------|
+| 2026-09-26 | `mermaid-default-preview-parity`: TC-MSS-005 Expected のグローバル `fontSize` を `'12px'` → `'16px'` に更新 |
 | 2026-09-06 | `mermaid-readable-viewport`: TC-MSS-005 Expected のグローバル `fontSize` を `'13px'` → `'8px'` に更新 |
 | 2026-09-06 | 密度 polish: Expected のグローバル `fontSize` を `'8px'` → `'12px'` に更新 |
 | 2026-09-06 | `mermaid-display-density`: TC-MSS-005 Expected に全 kind `themeVariables.fontSize === '13px'`（`var(--vscode-...)` なし）を追加 |
@@ -737,9 +743,9 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 |----|----------|------------|----------|-------|----------|-----------|----------|
 | TC-FME-001 | Happy | edge-visible-via-presentation-or-safety-net | P0 | Host HTML / `media/editor.css`／（実装後は）nonce 再注入経路を検査 | flowchart エッジが黒塗りブロブにならない契約。**優先:** presentation nonce 再注入（[redux-elk-fidelity](#suite-redux-elk-fidelity) TC-FME-004/006）。静的 Host CSS は欠落時の最小安全網に限定可。永続必須の全面 `stroke: var(--vscode-foreground)` を唯一正としない。ユーザー／ソース由来の任意 CSS 注入経路はない | CSP 下のエッジ可視（Host CSS 縮小後） | §5 正常系 11、`mermaid-redux-elk-fidelity` AD-002/003 |
 | TC-FME-002 | Structural | csp-no-unsafe-inline | P0 | Custom Editor Webview CSP 生成（`markdown-editor-provider` 等） | `style-src` に `'unsafe-inline'` **なし**。`nonce-` 付き許可あり。Marp パネル CSP は本 TC 対象外 | セキュリティ不変（AD-001） | §9、AD-001 |
-| TC-FME-003 | Happy | theme-light-redux | P0 | `buildMermaidThemeConfig('light')` | `theme: 'redux'`、`securityLevel: 'strict'`、`themeVariables.fontSize === '12px'`、`themeVariables` に `var(--vscode-...)` なし | redux マップ light＋密度 | §5 正常系 7 / 7a、`mermaid-display-density` |
-| TC-FME-004 | Happy | theme-dark-redux-dark | P0 | `buildMermaidThemeConfig('dark')` | `theme: 'redux-dark'`（classic `'dark'` / `'default'` 強制ではない）。strict。`themeVariables.fontSize === '12px'`。`var(--vscode-...)` なし | redux-dark マップ＋密度 | §5 正常系 7 / 7a、`mermaid-display-density` |
-| TC-FME-005 | Happy | theme-hc-redux-dark | P0 | `buildMermaidThemeConfig('highContrast')` | `theme: 'redux-dark'`。専用 HC パレット不要。strict。`themeVariables.fontSize === '12px'`。`var(--vscode-...)` なし | HC 同マップ＋密度 | §5 正常系 7 / 7a、`mermaid-display-density` |
+| TC-FME-003 | Happy | theme-light-redux | P0 | `buildMermaidThemeConfig('light')` | `theme: 'redux'`、`securityLevel: 'strict'`、`themeVariables.fontSize === '16px'`、`themeVariables` に `var(--vscode-...)` なし | redux マップ light＋密度 | §5 正常系 7 / 7a、`mermaid-display-density` |
+| TC-FME-004 | Happy | theme-dark-redux-dark | P0 | `buildMermaidThemeConfig('dark')` | `theme: 'redux-dark'`（classic `'dark'` / `'default'` 強制ではない）。strict。`themeVariables.fontSize === '16px'`。`var(--vscode-...)` なし | redux-dark マップ＋密度 | §5 正常系 7 / 7a、`mermaid-display-density` |
+| TC-FME-005 | Happy | theme-hc-redux-dark | P0 | `buildMermaidThemeConfig('highContrast')` | `theme: 'redux-dark'`。専用 HC パレット不要。strict。`themeVariables.fontSize === '16px'`。`var(--vscode-...)` なし | HC 同マップ＋密度 | §5 正常系 7 / 7a、`mermaid-display-density` |
 | TC-FME-006 | Structural | no-island-light-forced | P0 | `.mermaid-preview` / `.mermaid-block` の CSS | 明るい固定サーフェス強制（例: `background-color: white` / 同等の島ライト強制）が**存在しない** | 島ライト撤回（AD-005） | §5 正常系 11、AD-005 |
 | TC-FME-007 | Corner | hip-regression | P0 | sanitize options（または contrast-readable TC-FME-001/002 相当） | `HTML_INTEGRATION_POINTS: { foreignobject: true }`（または同等）。ラベル HTML 残存契約は contrast-readable と整合 | セキュリティ／可読性不変（AD-006） | §5 正常系 10、AD-006 |
 | TC-FME-008 | Structural | security-level-strict | P0 | `buildMermaidThemeConfig` 全 kind および initialize 経路 | いずれも `securityLevel: 'strict'` | strict 不変 | §5 正常系 7、AD-006 |
@@ -901,6 +907,7 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 
 | 日付 | 変更内容 |
 |------|---------|
+| 2026-09-26 | `mermaid-default-preview-parity`: TC-FME-003–005 Expected のグローバル `fontSize` を `'12px'` → `'16px'` に更新 |
 | 2026-09-06 | `mermaid-readable-viewport`: TC-FME-003–005 Expected のグローバル `fontSize` を `'13px'` → `'8px'` に更新 |
 | 2026-09-06 | 密度 polish: Expected のグローバル `fontSize` を `'8px'` → `'12px'` に更新 |
 | 2026-09-06 | `mermaid-display-density`: TC-FME-003–005 Expected に `themeVariables.fontSize === '13px'`（`var(--vscode-...)` なし）を追加 |
@@ -956,8 +963,8 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 
 | 条件 | 戻り値 / 期待状態 | 仕様根拠 |
 |------|-------------------|---------|
-| kind `light` | Mermaid `theme: 'redux'` + `securityLevel: 'strict'`。`themeVariables.fontSize === '12px'`。`themeVariables` に `var(--vscode-...)` なし | §5 正常系 7 / 7a、AD-004、`mermaid-display-density` |
-| kind `dark` / `highContrast` | Mermaid `theme: 'redux-dark'` + strict。`themeVariables.fontSize === '12px'`。classic `default`/`dark` マップ禁止。`var(--vscode-...)` なし | §5 正常系 7 / 7a、AD-004、`mermaid-display-density` |
+| kind `light` | Mermaid `theme: 'redux'` + `securityLevel: 'strict'`。`themeVariables.fontSize === '16px'`。`themeVariables` に `var(--vscode-...)` なし | §5 正常系 7 / 7a、AD-004、`mermaid-display-density` |
+| kind `dark` / `highContrast` | Mermaid `theme: 'redux-dark'` + strict。`themeVariables.fontSize === '16px'`。classic `default`/`dark` マップ禁止。`var(--vscode-...)` なし | §5 正常系 7 / 7a、AD-004、`mermaid-display-density` |
 | nonce 再注入 | render 由来 presentation `<style>` が Host 同一 nonce 付きで Webview に存在。セレクタは `.mermaid-preview` / 図スコープに閉じる。ユーザー／ソース由来の任意 CSS 素通しなし | §5 正常系 11、AD-002 |
 | CSP | `style-src` に `'unsafe-inline'` **なし** | §9、AD-001 |
 | flowchart エッジ可視 | CSP＋sanitize＋再注入後、エッジが黒塗りブロブにならず stroke が可視（DOM/CSS 契約で近似） | §5 受け入れ (b) |
@@ -994,9 +1001,9 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 
 | ID | Category | Domain Tag | Priority | Input | Expected | Rationale | Spec Ref |
 |----|----------|------------|----------|-------|----------|-----------|----------|
-| TC-MRE-001 | Happy | theme-light-redux | P0 | `buildMermaidThemeConfig('light')`（または同等） | `theme: 'redux'`、`securityLevel: 'strict'`、`themeVariables.fontSize === '12px'`、`themeVariables` に `var(--vscode-...)` なし。classic `'default'` マップは Fail | kind→redux＋表示密度（AD-004 / `mermaid-display-density`） | §5 正常系 7 / 7a |
-| TC-MRE-002 | Happy | theme-dark-redux-dark | P0 | `buildMermaidThemeConfig('dark')` | `theme: 'redux-dark'`（`'dark'` classic / `'default'` 強制ではない）。strict。`themeVariables.fontSize === '12px'`。`var(--vscode-...)` なし | dark→redux-dark＋密度 | §5 正常系 7 / 7a |
-| TC-MRE-003 | Happy | theme-hc-redux-dark | P0 | `buildMermaidThemeConfig('highContrast')` | `theme: 'redux-dark'`。専用 HC パレット不要。strict。`themeVariables.fontSize === '12px'`。`var(--vscode-...)` なし | HC 同マップ＋密度（AD-004） | §5 正常系 7 / 7a |
+| TC-MRE-001 | Happy | theme-light-redux | P0 | `buildMermaidThemeConfig('light')`（または同等） | `theme: 'redux'`、`securityLevel: 'strict'`、`themeVariables.fontSize === '16px'`、`themeVariables` に `var(--vscode-...)` なし。classic `'default'` マップは Fail | kind→redux＋表示密度（AD-004 / `mermaid-display-density`） | §5 正常系 7 / 7a |
+| TC-MRE-002 | Happy | theme-dark-redux-dark | P0 | `buildMermaidThemeConfig('dark')` | `theme: 'redux-dark'`（`'dark'` classic / `'default'` 強制ではない）。strict。`themeVariables.fontSize === '16px'`。`var(--vscode-...)` なし | dark→redux-dark＋密度 | §5 正常系 7 / 7a |
+| TC-MRE-003 | Happy | theme-hc-redux-dark | P0 | `buildMermaidThemeConfig('highContrast')` | `theme: 'redux-dark'`。専用 HC パレット不要。strict。`themeVariables.fontSize === '16px'`。`var(--vscode-...)` なし | HC 同マップ＋密度（AD-004） | §5 正常系 7 / 7a |
 | TC-MRE-004 | Happy | nonce-presentation-reinject | P0 | Mermaid `render` 結果に presentation `<style>` を含む fixture／経路を検査（または再注入ヘルパの契約） | Host 発行と**同一 nonce** 付き `<style>` が Webview に再注入される（セレクタは `.mermaid-preview` / 当該図スコープ）。ユーザー／Mermaid ソース由来の任意 CSS 素通し経路なし。同等の CSP 安全手段でも可（`'unsafe-inline'` は不可） | CSP 下で本物 presentation を効かせる（AD-002） | §5 正常系 11 |
 | TC-MRE-005 | Structural | csp-no-unsafe-inline | P0 | Custom Editor Webview CSP 生成 | `style-src` に `'unsafe-inline'` **なし**。`nonce-` 付き許可あり。Marp パネル CSP は本 TC 対象外 | セキュリティ不変（AD-001） | §9 |
 | TC-MRE-006 | Happy | flowchart-edge-visible-after-reinject | P0 | CSP＋HIP sanitize＋nonce 再注入後の flowchart エッジ契約（静的 CSS／再注入 style の共起、またはヘルパ出力） | エッジ／パスが黒塗りブロブにならない契約（`fill: none` 相当が presentation 再注入側、または欠落時のみ最小安全網）。永続必須の全面 `stroke: var(--vscode-foreground)` 上書きを**唯一の正**としない | 受け入れ (b) | §5 正常系 11、受け入れ |
@@ -1004,7 +1011,7 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 | TC-MRE-008 | Structural | no-global-forced-elk | P0 | グローバル `mermaid.initialize`／`buildMermaidThemeConfig`（または同等）を検査 | `layout: 'elk'`（または同等の全図 ELK 強制）が**含まれない**。`layout` 未指定ソースは dagre 系既定のまま | オプトインのみ（AD-006） | §5 正常系 12、Non-Goals |
 | TC-MRE-009 | Structural | host-css-edge-fallback-shrunk | P0 | `media/editor.css`（または Host nonce 静的エッジ CSS）を検査 | 永続必須の `stroke: var(--vscode-foreground)` 等による redux 配色上書きを**要求しない**。残存する場合はコメント／範囲が「本物 CSS 欠落時の安全網」に限定され、島ライト強制は不在 | Host CSS 縮小（AD-003） | §5 正常系 11 |
 | TC-MRE-010 | Corner | hip-regression | P0 | sanitize options（または contrast-readable TC-MRE-001/002 相当） | `HTML_INTEGRATION_POINTS: { foreignobject: true }`（または同等）。ラベル HTML 残存契約は contrast-readable と整合 | HIP 不変（AD-008） | §5 正常系 10 |
-| TC-MRE-011 | Structural | security-level-strict | P0 | `buildMermaidThemeConfig` 全 kind および initialize 経路 | いずれも `securityLevel: 'strict'`。全 kind で `themeVariables.fontSize === '12px'`（`var(--vscode-...)` なし） | strict 不変＋グローバル密度 | §5 正常系 7 / 7a、AD-008、`mermaid-display-density` |
+| TC-MRE-011 | Structural | security-level-strict | P0 | `buildMermaidThemeConfig` 全 kind および initialize 経路 | いずれも `securityLevel: 'strict'`。全 kind で `themeVariables.fontSize === '16px'`（`var(--vscode-...)` なし） | strict 不変＋グローバル密度 | §5 正常系 7 / 7a、AD-008、`mermaid-display-density` |
 | TC-MRE-012 | Structural | source-below-diagram | P0 | Mermaid NodeView DOM 構築順 | `.mermaid-preview` が `.mermaid-source` より先（図の下にソース） | ソース併記回帰 | §5 正常系 4 |
 | TC-MRE-013 | Corner | preview-source-readonly | P0 | Preview 表示中のソース領域 | 編集イベントを Document へ送らない（`contenteditable=false` またはイベント非送出） | Preview 厳密 RO | §1、§5 正常系 5 |
 | TC-MRE-014 | Structural | elk-lazy-register | P1 | `@mermaid-js/layout-elk` の import／`registerLayoutLoaders` 呼び出し箇所 | 動的 import／コード分割、または初回 ELK 要求時登録のいずれか。初期バンドルへの不用意な静的肥大化を避ける契約 | 遅延ロード（AD-007） | §5 正常系 12 |
@@ -1154,6 +1161,7 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 
 | 日付 | 変更内容 |
 |------|---------|
+| 2026-09-26 | `mermaid-default-preview-parity`: TC-MRE-001–003 / TC-MRE-011 および Spec Digest Outputs のグローバル `fontSize` Expected を `'12px'` → `'16px'` に更新 |
 | 2026-09-06 | `mermaid-readable-viewport`: TC-MRE-001–003 / TC-MRE-011 および Spec Digest Outputs のグローバル `fontSize` を `'13px'` → `'8px'` に更新 |
 | 2026-09-06 | 密度 polish: Expected のグローバル `fontSize` を `'8px'` → `'12px'` に更新 |
 | 2026-09-06 | `mermaid-display-density`: TC-MRE-001–003 / TC-MRE-011 Expected にグローバル `themeVariables.fontSize === '13px'`（`var(--vscode-...)` なし）を追加。Spec Digest Outputs 追随 |
@@ -1167,26 +1175,26 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 
 ## 概要
 
-- **対象:** Mermaid 可読ビューポート — (1) グローバル `themeVariables.fontSize: '12px'`（旧 `'8px'` / `'13px'` 置換）(2) タイトル全文可視（表示層契約）(3) Editor Preview / Rich Editor のみの初期 fit・ズームイン／アウト・パン／スクロール・再 render 時 re-fit・a11y `aria-label` (4) 密度（fontSize）と閲覧用ビューポート変換の分離 (5) Preview RO（ビューポート操作は Document 非編集）(6) Default Preview 非対象 (7) redux / HIP / strict / nonce / ELK オプトイン回帰
+- **対象:** Mermaid 可読ビューポート — (1) グローバル `themeVariables.fontSize: '16px'`＋測定用 Host nonce CSS `font-size: 16px`・**`font-family: "trebuchet ms", verdana, arial, sans-serif`**・**`line-height: 1.2`**（測定と描画の一致 — `mermaid-label-metrics`）(2) タイトル全文可視（表示層契約）(3) Editor Preview / Rich Editor のみ: **初期・再 render・テーマ切替は scale 1（自然サイズ・自動 contain なし）**・はみ出しはスクロール・**Fit ボタン押下時のみ contain**・**小さい軸は中央寄せ**・**ズーム原点＝ビューポート中央**・ズームイン／アウト・パン／スクロール・a11y `aria-label` (4) 密度（fontSize）と閲覧用ビューポート変換の分離 (5) Preview RO（ビューポート操作は Document 非編集）(6) Default Preview 非対象 (7) redux / HIP / strict / nonce / ELK オプトイン／ソース併記回帰。**ピクセル完全一致は Non-Goal**
 - **対応仕様:** [doc/requirements/systemspec.md](../../requirements/systemspec.md) §5（正常系 7a–7c / 9 / 13、Spec Gaps）、§1（Preview RO）、§9（CSP / sanitize）
-- **Requirements Brief:** `temporary/requirements-brief-mermaid-readable-viewport.md`（AD-001–AD-013）
-- **関連 testspec（本タスクで Expected 更新 — `8px`→`12px`）:**
-  - [testspec-mermaid-redux-elk-fidelity.md](#suite-redux-elk-fidelity) — TC-MRV-001–003 / TC-MRV-011
-  - [testspec-fix-mermaid-edge-styles.md](#suite-fix-mermaid-edge-styles) — TC-MRV-003–005
-  - [testspec-mermaid-contrast-readable.md](#suite-contrast-readable) — TC-MRV-004 / 007 / 011
-  - [testspec-mermaid-snap-style-with-source.md](#suite-snap-style-with-source) — TC-MRV-005
-  - [testspec-vsc-md-wysiwyg.md](../testspec-vsc-md-wysiwyg.md) — TC-MRV-149
-- **テストコード:** `src/test/suite/unit/mermaid-readable-viewport.test.ts`（実装済 — 意図的 Red まで build-agent）
+- **Requirements Brief:** `mermaid-label-metrics`（継承 `mermaid-default-preview-parity` AD-001–AD-015 / `mermaid-readable-viewport`）
+- **関連 testspec:**
+  - [testspec-mermaid-redux-elk-fidelity.md](#suite-redux-elk-fidelity) — TC-MRE-001–003 / TC-MRE-011
+  - [testspec-fix-mermaid-edge-styles.md](#suite-fix-mermaid-edge-styles) — TC-FME-003–005
+  - [testspec-mermaid-contrast-readable.md](#suite-contrast-readable) — TC-MCR-004 / 007 / 011
+  - [testspec-mermaid-snap-style-with-source.md](#suite-snap-style-with-source) — TC-MSS-005
+  - [testspec-vsc-md-wysiwyg.md](../testspec-vsc-md-wysiwyg.md) — TC-149
+- **テストコード:** `src/test/suite/unit/mermaid-readable-viewport.test.ts`（TC-MRV-001–027。Expected scale 1／Fit のみ contain／ラベルタイポ — 意図的 Red 待ち Green）
 - **作成日:** 2026-09-06
 
 ### 既存 suite との関係（必須明示）
 
 | 項目 | redux-elk / edge / contrast / snap / wysiwyg | 本 testspec |
 |------|-----------------------------------------------|-------------|
-| 所在 | 各 `doc/testspec-mermaid-*.md` / TC-MRV-149 | 本ファイル |
-| 旧契約 | グローバル `fontSize === '8px'` | — |
-| 新契約 | Expected を **`'12px'`** へ更新（deprecate しない） | **密度 12px＋タイトル可視＋ビューポート UX の正本** |
-| 扱い | Expected **更新** | **差分 TC**（設計のみ） |
+| 所在 | 各 suite / TC-149 | 本ファイル |
+| 旧契約 | グローバル `fontSize === '16px'`。初期 fit（自動 contain）・re-fit | — |
+| 新契約 | `fontSize: '16px'` 維持。ラベル `font-family` / `line-height: 1.2`。初期・再 render・テーマ切替は **scale 1**（Fit のみ contain） | **密度 16px＋ラベルタイポ＋自然サイズ／Fit のみ contain＋中央寄せ＋ズーム原点中央の正本** |
+| 扱い | Expected **維持／追随** | **差分更新**（`mermaid-label-metrics`） |
 
 ---
 
@@ -1197,8 +1205,10 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 | 引数 / 入力 | 型 | 最小 | 最大 | 備考 |
 |------------|-----|------|------|------|
 | VS Code `themeUpdated.kind` | `'light' \| 'dark' \| 'highContrast'` | — | — | §1。`buildMermaidThemeConfig` 入力 |
-| `themeVariables.fontSize`（グローバル） | `string`（固定 px） | — | — | プロジェクト既定 **`'12px'`**。`var(--vscode-...)` 禁止 |
-| `mermaidSource` | `string` | 0 文字 | — | フェンス全文。タイトル付き図・大型図の fixture 可 |
+| `themeVariables.fontSize`（グローバル） | `string`（固定 px） | — | — | プロジェクト既定 **`'16px'`**。`var(--vscode-...)` 禁止 |
+| ラベル `font-family` / `line-height` | CSS | — | — | Mermaid default 相当 **`"trebuchet ms", verdana, arial, sans-serif`**・**`line-height: 1.2`**（エディタ本文 1.6 非継承） |
+| 測定用 Host nonce CSS | `font-size` / `font-family` / `line-height` | — | — | `mermaid.render` **前**にラベル測定コンテキストへ **`font-size: 16px`**・同一 `font-family`・**`line-height: 1.2`**（Host 同一 nonce。`'unsafe-inline'` なし） |
+| `mermaidSource` | `string` | 0 文字 | — | フェンス全文。タイトル付き図・小型／大型図の fixture 可 |
 | `editorMode` | `"preview" \| "markdown" \| "raw"` | — | — | ビューポート UX は `preview` / `markdown` の Mermaid NodeView のみ |
 | ビューポート操作 | UI（ローカル DOM） | 描画成功時 | — | Zoom in / Zoom out / Fit（キーボード到達・`aria-label`）。パン／ドラッグ・縦横スクロール。セッション永続なし |
 | Default Preview 経路 | `native-preview` | — | — | ビューポート UI 埋め込み **なし**（Non-Goal） |
@@ -1207,24 +1217,30 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 
 | 条件 | 戻り値 / 期待状態 | 仕様根拠 |
 |------|-------------------|---------|
-| グローバル密度 | 全 kind で `themeVariables.fontSize === '12px'`。`var(--vscode-...)` なし。密度主手段に CSS `scale`/`zoom` を使わない | §5 正常系 7a、AD-001 |
-| タイトル全文可視 | 図タイトルが枠外クリップ／欠落なく可視。タイトルが図左端より左にはみ出さないよう表示層で align／shift（viewBox / overflow / padding 含む） | §5 正常系 7b、AD-003 |
-| 初期 fit | 描画成功後、図全体が枠内に収まる（contain / fit-to-viewport） | §5 正常系 7c、AD-004 |
-| ズーム | 虫眼鏡または同等 UI でイン／アウト。ビューポート変換（CSS transform 等）で 12px 図を拡大して読める。密度契約とは別 | §5 正常系 7c、AD-005 |
-| パン／スクロール | 枠内パン／ドラッグが可能（**特定修飾キー／中ボタンを必須ロックしない** — Spec Gap RK-004）。必要時に縦横スクロールバー | §5 正常系 7c / Spec Gaps、AD-006 |
-| re-fit | ソース変更・再 render（debounce）および `themeUpdated` 一括再描画後に当該ブロックを再 fit | §5 正常系 7c / 9、AD-007 |
-| a11y | ズーム／Fit コントロールがキーボード到達可能。`aria-label`（例: Zoom in / Zoom out / Fit）あり | §5 正常系 7c、AD-011 |
-| Preview RO | ズーム／パンは閲覧操作のみ。Document 編集イベントを送らない | §1、§5 正常系 7c、AD-009 |
-| Default Preview | `native-preview` 経路に Mermaid ビューポート UI なし | §5 Non-Goals、AD-002 |
+| グローバル密度 | 全 kind で `themeVariables.fontSize === '16px'`。`var(--vscode-...)` なし。密度主手段に CSS `scale`/`zoom` を使わない | §5 正常系 7a、`mermaid-label-metrics` |
+| ラベルタイポ | ラベル `font-family` が Mermaid default 相当。`line-height: 1.2`（エディタ 1.6 非継承） | §5 正常系 7a |
+| 測定＝描画 | Host nonce 測定 CSS も `font-size: 16px`・同一 `font-family`・`line-height: 1.2`。測定と presentation 再注入後が食い違わない | §5 正常系 7a |
+| タイトル全文可視 | 図タイトルが枠外クリップ／欠落なく可視。タイトルが図左端より左にはみ出さないよう表示層で align／shift（viewBox / overflow / padding 含む）。中央寄せ実装がタイトル可視を悪化させない | §5 正常系 7b |
+| 自然サイズ（scale 1） | 初期描画成功・再 render・テーマ切替後は **scale 1**。**自動 contain（fit-to-viewport）なし**。はみ出し軸は縮小せず縦横スクロール | §5 正常系 7c |
+| Fit のみ contain | ユーザーが Fit を押したときだけ枠内 contain / fit-to-viewport | §5 正常系 7c |
+| 中央寄せ | 初期／再 render／テーマ切替（scale 1）および Fit 後、図の描画境界がビューポートより**小さい軸**で中央寄せ（水平・垂直とも。片軸のみ小さい場合は当該軸のみ） | §5 正常系 7c |
+| ズーム | 虫眼鏡または同等 UI でイン／アウト。ビューポート変換（CSS transform 等）で 16px 図を拡大して読める。密度契約とは別。ピボット／`transform-origin`（または同等）は **ビューポート中央** | §5 正常系 7c |
+| パン／スクロール | 枠内パン／ドラッグが可能（**特定修飾キー／中ボタンを必須ロックしない** — Spec Gap）。必要時に縦横スクロールバー。パン後ずれは **次の Fit** で中央寄せに戻る（再 render／テーマ切替は Fit ではなく **scale 1**） | §5 正常系 7c / Spec Gaps |
+| scale 1 リセット | ソース変更・再 render（debounce）および `themeUpdated` 一括再描画後に当該ブロックを **scale 1（自然サイズ・中央寄せ含む。自動 contain なし）** に戻す | §5 正常系 7c / 9 |
+| a11y | ズーム／Fit コントロールがキーボード到達可能。`aria-label`（例: Zoom in / Zoom out / Fit）あり | §5 正常系 7c |
+| Preview RO | ズーム／パンは閲覧操作のみ。Document 編集イベントを送らない | §1、§5 正常系 7c |
+| Default Preview | `native-preview` 経路に Mermaid ビューポート UI なし | §5 Non-Goals |
 | 構文エラー | `.mermaid-error`。ビューポート UI は隠すか無効化 | §5 Outputs |
-| 回帰 | redux kind マップ・HIP・`securityLevel: 'strict'`・nonce 再注入・ELK オプトイン（グローバル強制なし）・ソース併記 | §5 受け入れ (a)–(e)、AD-008/009 |
+| 回帰 | redux kind マップ・HIP・`securityLevel: 'strict'`・nonce 再注入・ELK オプトイン（グローバル強制なし）・ソース併記・ズーム／パン／Fit／`aria-label`・`wrappingWidth: 200`／`padding: 15` 維持 | §5 受け入れ (a)–(e)(n) |
+| Non-Goal | VS Code Default Preview / Snap / Chart との**ピクセル完全一致**は要求しない。初期・再 render・テーマ切替後の自動 contain は要求しない | §5 Non-Goals |
 
 ### Preconditions & Assumptions
 
-- Webview Mermaid: `mermaid.render` →（presentation 抽出／nonce 再注入）→ DOMPurify（HIP）→ `.mermaid-preview` 注入 → ビューポート枠に fit
+- Webview Mermaid: 測定 nonce CSS（font-size / font-family / line-height）→ `mermaid.render` →（presentation 抽出／nonce 再注入）→ DOMPurify（HIP）→ `.mermaid-preview` 注入 → **scale 1＋小さい軸中央寄せ**（Fit 時のみ contain）
 - ユニットはテーマ helper・NodeView DOM／ハンドラ契約・CSS／静的検査で足りる。ピクセル完全一致・Chart／Snap 一致は Non-Goal
 - パン開始ジェスチャの具体（中ボタン／修飾キー／専用ハンドル）は **Spec Gap** — TC は「枠内パン可能」まで。特定修飾を必須期待にしない
 - 密度＝`fontSize`、閲覧＝ビューポート変換。後者の CSS transform は許容（Non-Goal の「密度主手段としての scale」とは別）
+- 中央寄せの検証は transform／translate／layout 契約で近似（ピクセル完全一致不要）
 
 ### Complexity Budget
 
@@ -1233,8 +1249,8 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 
 ### Spec Gaps
 
-- ⚠️ パン開始条件の具体ジェスチャは実装時確定（§5 Spec Gaps / RK-004）。本 testspec は「枠内パン／ドラッグが可能」まで — **特定 modifier を Expected に固定しない**
-- それ以外（`12px`・タイトル可視・fit／ズーム／パン／スクロール・re-fit・a11y・Default Preview 非対象・密度≠ビューポート）は AD-001–AD-013 で確定
+- ⚠️ パン開始条件の具体ジェスチャは実装時確定（§5 Spec Gaps）。本 testspec は「枠内パン／ドラッグが可能」まで — **特定 modifier を Expected に固定しない**
+- それ以外（`16px`・ラベル `font-family` / `line-height: 1.2`・測定 nonce 同値・タイトル可視・自然サイズ／Fit のみ contain／中央寄せ／ズーム原点中央／パン／スクロール・scale 1 リセット・a11y・Default Preview 非対象・密度≠ビューポート）は `mermaid-label-metrics` で確定
 
 ---
 
@@ -1242,38 +1258,42 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 
 | ID | Category | Domain Tag | Priority | Input | Expected | Rationale | Spec Ref |
 |----|----------|------------|----------|-------|----------|-----------|----------|
-| TC-MRV-001 | Happy | fontsize-12px-all-kinds | P0 | `buildMermaidThemeConfig` 全 kind（`light` / `dark` / `highContrast`） | いずれも `themeVariables.fontSize === '12px'`。`'8px'` / `'13px'` は Fail | グローバル密度 12px（AD-001） | §5 正常系 7a |
+| TC-MRV-001 | Happy | fontsize-16px-all-kinds | P0 | `buildMermaidThemeConfig` 全 kind（`light` / `dark` / `highContrast`） | いずれも `themeVariables.fontSize === '16px'`。`'12px'` / `'8px'` / `'13px'` は Fail | グローバル密度 16px | §5 正常系 7a |
 | TC-MRV-002 | Structural | no-vscode-var-in-theme-variables | P0 | 同上 theme config | `themeVariables` に `var(--vscode-...)` **なし** | CSS 変数禁止維持 | §5 正常系 7 / 7a |
-| TC-MRV-003 | Structural | density-not-css-scale | P0 | `.mermaid-preview` / 密度関連 CSS・ヘルパ | 密度の主手段として `transform: scale(...)` / `zoom` による見た目縮小を**要求しない**（ビューポート変換用 transform とは別契約） | 密度≠scale（AD-001） | §5 正常系 7a、Non-Goals |
-| TC-MRV-004 | Happy | title-not-clipped | P0 | タイトル付き Mermaid 図の render／NodeView 表示層契約（viewBox / overflow / padding／title align・shift 等） | タイトル文字列が枠外クリップや欠落なく全文可視。タイトル左端が図コンテンツ左端より左にはみ出さない（align／shift）。`docJson` / `markdownText` / serialize 不変 | タイトル全文可視（AD-003） | §5 正常系 7b |
-| TC-MRV-005 | Happy | initial-fit | P0 | 描画成功後の Mermaid NodeView（大きめ図 fixture 可） | 初期ビューポートが全体 fit（contain / fit-to-viewport）。枠内に図全体が収まる契約 | 初期 fit（AD-004） | §5 正常系 7c |
-| TC-MRV-006 | Happy | zoom-in-out | P0 | Zoom in / Zoom out コントロール操作（または同等 API） | ズームインでビューポート拡大（transform 等）。ズームアウトで縮小。密度 `fontSize` は `'12px'` のまま | ズームで 12px 図を読める（AD-005） | §5 正常系 7c |
-| TC-MRV-007 | Happy | zoom-a11y | P0 | ズーム／Fit UI | キーボード到達可能。各コントロールに `aria-label`（例: Zoom in / Zoom out / Fit）。コントラストは `--vscode-*` 系 | a11y 最低限（AD-011） | §5 正常系 7c |
-| TC-MRV-008 | Happy | pan-within-frame | P0 | ズームイン後の枠内パン／ドラッグ | **枠内でパン可能**。特定修飾キー／中ボタン／専用ハンドルを**必須ロックしない**（実装が選んだジェスチャで可）。Document 編集イベントなし | パン契約＋Spec Gap（AD-006 / RK-004） | §5 正常系 7c、Spec Gaps |
-| TC-MRV-009 | Happy | scrollbars-when-needed | P0 | ズームイン後に枠外細部がある状態 | 必要時に縦横スクロールバー（または同等 overflow スクロール）で細部到達可 | スクロール（AD-006） | §5 正常系 7c |
-| TC-MRV-010 | Happy | refit-on-rerender | P0 | 図ソース変更→ debounce 再 render。事前にズーム／パン済みでも可 | 再 render 後に当該ブロックのビューポートが **再 fit** | re-fit（AD-007） | §5 正常系 7c |
-| TC-MRV-011 | Happy | refit-on-theme-updated | P0 | `themeUpdated` 後の一括再描画 | 再描画後に当該ブロックが再 fit | テーマ切替 re-fit | §5 正常系 9 |
-| TC-MRV-012 | Corner | viewport-ops-preview-ro | P0 | Preview モードでズーム／パン操作 | Document へ編集イベントを送らない（dirty / `docJson` / `markdownText` 不変）。閲覧操作のみ | Preview 厳密 RO（AD-009） | §1、§5 正常系 7c |
-| TC-MRV-013 | Structural | no-default-preview-viewport | P0 | Default Preview（`native-preview`）経路・寄与コマンド／HTML | Mermaid ビューポート UI（ズーム／パン／Fit）の埋め込み・別 Webview 化が**ない** | Default Preview 非対象（AD-002） | §5 Non-Goals |
-| TC-MRV-014 | Happy | redux-kind-map-regression | P0 | `buildMermaidThemeConfig` 全 kind | light→`redux`、dark/HC→`redux-dark`。`securityLevel: 'strict'`。classic `default`/`dark` マップは Fail | redux 回帰（AD-009） | §5 正常系 7 |
-| TC-MRV-015 | Corner | hip-strict-regression | P0 | sanitize options および theme config | `HTML_INTEGRATION_POINTS: { foreignobject: true }`（または同等）。全 kind `securityLevel: 'strict'` | HIP / strict 回帰（AD-008） | §5 正常系 10、§9 |
-| TC-MRV-016 | Structural | nonce-elk-optin-regression | P0 | nonce 再注入経路＋ ELK initialize／`layout: elk` 経路 | Host 同一 nonce 再注入契約維持（`'unsafe-inline'` なし）。グローバル `layout: 'elk'` 強制なし。`layout: elk` 指定はオプトイン成功経路 | nonce / ELK 回帰（AD-008/009） | §5 正常系 11–12 |
+| TC-MRV-003 | Structural | density-not-css-scale | P0 | `.mermaid-preview` / 密度関連 CSS・ヘルパ | 密度の主手段として `transform: scale(...)` / `zoom` による見た目縮小を**要求しない**（ビューポート変換用 transform とは別契約） | 密度≠scale | §5 正常系 7a、Non-Goals |
+| TC-MRV-004 | Happy | title-not-clipped | P0 | タイトル付き Mermaid 図の render／NodeView 表示層契約（viewBox / overflow / padding／title align・shift 等） | タイトル文字列が枠外クリップや欠落なく全文可視。タイトル左端が図コンテンツ左端より左にはみ出さない（align／shift）。`docJson` / `markdownText` / serialize 不変 | タイトル全文可視 | §5 正常系 7b |
+| TC-MRV-005 | Happy | initial-natural-scale | P0 | 描画成功後の Mermaid NodeView（大きめ図 fixture 可） | 初期ビューポートは **scale 1（自然サイズ）**。自動 contain / fit-to-viewport **なし**。はみ出しはスクロールで到達 | 自然サイズ既定 | §5 正常系 7c |
+| TC-MRV-006 | Happy | zoom-in-out | P0 | Zoom in / Zoom out コントロール操作（または同等 API） | ズームインでビューポート拡大（transform 等）。ズームアウトで縮小。密度 `fontSize` は `'16px'` のまま | ズームで 16px 図を読める（回帰維持） | §5 正常系 7c |
+| TC-MRV-007 | Happy | zoom-a11y | P0 | ズーム／Fit UI | キーボード到達可能。各コントロールに `aria-label`（例: Zoom in / Zoom out / Fit）。コントラストは `--vscode-*` 系。Fit 操作が利用可能（押下時のみ contain） | a11y＋Fit 回帰 | §5 正常系 7c |
+| TC-MRV-008 | Happy | pan-within-frame | P0 | ズームイン後の枠内パン／ドラッグ | **枠内でパン可能**。特定修飾キー／中ボタン／専用ハンドルを**必須ロックしない**（実装が選んだジェスチャで可）。Document 編集イベントなし | パン契約＋Spec Gap | §5 正常系 7c、Spec Gaps |
+| TC-MRV-009 | Happy | scrollbars-when-needed | P0 | ズームイン後／自然サイズではみ出しがある状態 | 必要時に縦横スクロールバー（または同等 overflow スクロール）で細部到達可 | スクロール回帰 | §5 正常系 7c |
+| TC-MRV-010 | Happy | scale-one-on-rerender | P0 | 図ソース変更→ debounce 再 render。事前にズーム／パン済みでも可 | 再 render 後に当該ブロックのビューポートが **scale 1（自然サイズ・中央寄せ含む。自動 contain なし — TC-MRV-024）** | scale 1 リセット | §5 正常系 7c |
+| TC-MRV-011 | Happy | scale-one-on-theme-updated | P0 | `themeUpdated` 後の一括再描画 | 再描画後に当該ブロックが **scale 1（自然サイズ・中央寄せ含む。自動 contain なし — TC-MRV-024）** | テーマ切替 scale 1 | §5 正常系 9 |
+| TC-MRV-012 | Corner | viewport-ops-preview-ro | P0 | Preview モードでズーム／パン操作 | Document へ編集イベントを送らない（dirty / `docJson` / `markdownText` 不変）。閲覧操作のみ | Preview 厳密 RO | §1、§5 正常系 7c |
+| TC-MRV-013 | Structural | no-default-preview-viewport | P0 | Default Preview（`native-preview`）経路・寄与コマンド／HTML | Mermaid ビューポート UI（ズーム／パン／Fit）の埋め込み・別 Webview 化が**ない** | Default Preview 非対象 | §5 Non-Goals |
+| TC-MRV-014 | Happy | redux-kind-map-regression | P0 | `buildMermaidThemeConfig` 全 kind | light→`redux`、dark/HC→`redux-dark`。`securityLevel: 'strict'`。classic `default`/`dark` マップは Fail | redux 回帰 | §5 正常系 7 |
+| TC-MRV-015 | Corner | hip-strict-regression | P0 | sanitize options および theme config | `HTML_INTEGRATION_POINTS: { foreignobject: true }`（または同等）。全 kind `securityLevel: 'strict'` | HIP / strict 回帰 | §5 正常系 10、§9 |
+| TC-MRV-016 | Structural | nonce-elk-optin-regression | P0 | nonce 再注入経路＋ ELK initialize／`layout: elk` 経路 | Host 同一 nonce 再注入契約維持（`'unsafe-inline'` なし）。グローバル `layout: 'elk'` 強制なし。`layout: elk` 指定はオプトイン成功経路 | nonce / ELK 回帰 | §5 正常系 11–12 |
 | TC-MRV-017 | Corner | syntax-error-hides-viewport | P1 | 構文不正 Mermaid ソース | `.mermaid-error` 表示。ビューポート UI は隠すか無効化。ソースは Document に保持 | エラー時 UI | §5 Outputs |
-| TC-MRV-018 | Structural | viewport-in-preview-and-markdown | P1 | `editorMode` `preview` および `markdown` | 両モードの Mermaid NodeView にビューポート UX あり。`raw` は本 TC 対象外（島は Markdown/Preview 面） | 適用範囲（AD-002） | §5 Inputs |
-| TC-MRV-019 | Boundary | per-diagram-fontsize-override | P1 | frontmatter / `%%{init}%%` で `themeVariables.fontSize` 上書き | 当該図のみ上書き可（グローバル `'12px'` を壊さない）。ネイティブ優先 | 図単位上書き許容 | §5 正常系 6 / 7a |
-| TC-MRV-020 | Structural | related-suites-12px-aligned | P1 | redux-elk / edge / contrast / snap / wysiwyg TC-MRV-149 の Expected | いずれもグローバル `fontSize === '12px'`。`'13px'` 必須期待が残っていない | RK 防止・整合 | AD-001 |
+| TC-MRV-018 | Structural | viewport-in-preview-and-markdown | P1 | `editorMode` `preview` および `markdown` | 両モードの Mermaid NodeView にビューポート UX あり。`raw` は本 TC 対象外（島は Markdown/Preview 面） | 適用範囲 | §5 Inputs |
+| TC-MRV-019 | Boundary | per-diagram-fontsize-override | P1 | frontmatter / `%%{init}%%` で `themeVariables.fontSize` 上書き | 当該図のみ上書き可（グローバル `'16px'` を壊さない）。ネイティブ優先 | 図単位上書き許容 | §5 正常系 6 / 7a |
+| TC-MRV-020 | Structural | related-suites-16px-aligned | P1 | redux-elk / edge / contrast / snap / wysiwyg TC-149 の Expected | いずれもグローバル `fontSize === '16px'`。`'12px'` / `'13px'` 必須期待が残っていない | RK 防止・整合 | §5 正常系 7a |
 | TC-MRV-021 | Structural | source-below-diagram | P1 | Mermaid NodeView DOM 順 | `.mermaid-preview` → `.mermaid-source`（図の下にソース） | ソース併記回帰 | §5 正常系 4 |
-| TC-MRV-022 | Structural | no-viewport-session-persist | P1 | ビューポート状態の保存経路（設定 / workspaceState / 永続ストア） | セッション永続・設定保存を**要求しない**（MVP） | 永続 Out（AD-007） | §5 Non-Goals |
-| TC-MRV-023 | Structural | document-untouched | P1 | 変更対象パス（theme / NodeView ビューポート / CSS） | `docJson` / `markdownText` / serialize / dirty / Marp / 画像 rewrite に触れない | 表示層限定（AD-009） | §5 受け入れ 13 |
+| TC-MRV-022 | Structural | no-viewport-session-persist | P1 | ビューポート状態の保存経路（設定 / workspaceState / 永続ストア） | セッション永続・設定保存を**要求しない**（MVP） | 永続 Out | §5 Non-Goals |
+| TC-MRV-023 | Structural | document-untouched | P1 | 変更対象パス（theme / NodeView ビューポート / CSS） | `docJson` / `markdownText` / serialize / dirty / Marp / 画像 rewrite に触れない | 表示層限定 | §5 受け入れ 13 |
+| TC-MRV-024 | Happy | center-natural-and-fit | P0 | 図の描画境界がビューポートより小さい軸がある fixture。初期 scale 1・Fit 操作・再 render／`themeUpdated`（scale 1）の各後 | **小さい軸のみ**中央寄せ（水平・垂直とも）。初期／再 render／テーマ切替は scale 1（自動 contain なし）。**Fit 押下時のみ contain**。大きい軸のはみ出しはスクロール。ピクセル完全一致は不要 | 中央寄せ＋自然サイズ／Fit | §5 正常系 7c、受け入れ (h)(i) |
+| TC-MRV-025 | Happy | zoom-origin-viewport-center | P0 | Zoom in／Zoom out（または同等 API）。`transform-origin`／ピボット（または同等）を検査 | ズームのピボット／`transform-origin`（または同等）が **ビューポート中央**。密度 `fontSize` は `'16px'` のまま | ズーム原点中央 | §5 正常系 7c、受け入れ (j) |
+| TC-MRV-026 | Structural | measure-nonce-css-label-metrics | P0 | `mermaid.render` **前**の Host 同一 nonce 測定 CSS（ラベル測定コンテキスト）および `themeVariables.fontSize` | 測定 CSS が **`font-size: 16px`**・**`font-family` に trebuchet ms（Verdana / Arial / sans-serif 含む）**・**`line-height: 1.2`**（`themeVariables.fontSize === '16px'` と一致）。`var(--vscode-...)` なし。`style-src` に `'unsafe-inline'` なし | 測定＝描画＋ラベルタイポ | §5 正常系 7a、受け入れ (f)(f2) |
+| TC-MRV-027 | Corner | pan-then-fit-recenters | P1 | ズーム後にパンで手動オフセットを付けたのち Fit 操作 | パン後のずれは許容。**次の Fit で TC-MRV-024 の中央寄せに戻る**（再 render／テーマ切替は Fit ではなく scale 1）。ズーム／パン／Fit／`aria-label` 回帰は壊れない | パン後 Fit 中央復帰 | §5 正常系 7c、受け入れ (l) |
 
 ### Category Coverage
 
 | Category | Covered | N/A Reason |
 |----------|---------|------------|
-| Happy Path | TC-MRV-001, TC-MRV-004–011, TC-MRV-014 | — |
+| Happy Path | TC-MRV-001, TC-MRV-004–011, TC-MRV-014, TC-MRV-024–025 | — |
 | Boundary | TC-MRV-019 | 空ソースは既存 Mermaid TC |
-| Structural | TC-MRV-002–003, TC-MRV-013, TC-MRV-016, TC-MRV-018, TC-MRV-020–023 | — |
-| Corner | TC-MRV-012, TC-MRV-015, TC-MRV-017 | — |
+| Structural | TC-MRV-002–003, TC-MRV-013, TC-MRV-016, TC-MRV-018, TC-MRV-020–023, TC-MRV-026 | — |
+| Corner | TC-MRV-012, TC-MRV-015, TC-MRV-017, TC-MRV-027 | — |
 | Stress | — | 巨大 SVG＋高ズームは RK-003。専用 P2 なし（図単位閉じるは TC-MRV-023） |
 
 ### Complexity Notes
@@ -1288,117 +1308,114 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 
 | 優先度 | CI | 備考 |
 |-------|-----|------|
-| P0, P1 | `npm run test:unit`（通常 PR） | `test_single`: `npm run test:unit -- --grep 'mermaid-readable-viewport\|TC-MRV-00[1-9]\|TC-MRV-0[12][0-3]'` |
+| P0, P1 | `npm run test:unit`（通常 PR） | `test_single`: `npm run test:unit -- --grep 'mermaid-readable-viewport\|TC-MRV-00[1-9]\|TC-MRV-0[12][0-7]'` |
 | P2 | — | 本 testspec に P2 なし |
-| 回帰 | redux-elk / edge-styles / contrast / snap / TC-MRV-149 | Expected `12px` 更新後に Red→Green |
+| 回帰 | redux-elk / edge-styles / contrast / snap / TC-149 | Expected `16px` 更新後に Red→Green |
 
 想定配置: `src/test/suite/unit/mermaid-readable-viewport.test.ts`（`.cursor/stack.md` `test_file_glob`）
 
 **実装メモ（testspec-implementation）:**
 
-1. 本 suite で TC-MRV-001–023 を追加（本番コードは触らない → 意図的 Red）
-2. 関連 suite の `fontSize === '13px'` assert を `'12px'` へ更新
-3. タイトル可視・fit／ズームは DOM／transform／overflow 契約で近似（ピクセル一致不要）
-4. パン TC は「枠内パン可能なハンドラ／overflow 契約」を assert — **特定 modifier を固定しない**
-5. Default Preview 非対象は寄与／経路の静的検査で足りる
-
+1. TC-MRV-005 / 010 / 011 / 024 を「初期 fit／re-fit」→「scale 1（自然サイズ）・Fit のみ contain」へ更新（本番は現行 auto-refit のため意図的 Red 可）
+2. TC-MRV-026（および TC-003c）に測定 CSS `font-family`（trebuchet ms）／`line-height: 1.2` を追加
+3. Fit ボタン経路の contain・中央寄せ・ズーム原点中央・`aria-label`・`wrappingWidth: 200`／`padding: 15`／`fontSize: '16px'` は維持
+4. 中央寄せ・ズーム原点は DOM／transform／`transform-origin`／layout 契約で近似（**ピクセル完全一致不要**）
+5. パン TC は「枠内パン可能なハンドラ／overflow 契約」を assert — **特定 modifier を固定しない**
+6. Default Preview 非対象・redux／HIP／strict／nonce／ELK／ソース併記は既存回帰 TC を維持
 ---
 
 ## Trace Results
 
-`npm run test:unit -- --grep 'mermaid-readable-viewport'`（2026-09-06）。本番未実装のため意図的 Red。
+testspec-implementation（2026-09-26 / `mermaid-label-metrics`）。Expected を scale 1／Fit のみ contain／ラベルタイポへ更新。本番は現行 auto-`fitToViewport`／測定 CSS に `font-family`・`line-height` 未設定のため **意図的 Red**。
 
-### TC-MRV-001–003 (P0): 密度 12px・var 禁止・密度≠scale
-
-| Step | State / Action | Value |
-|------|----------------|-------|
-| Input | 全 kind theme config + 密度 CSS | — |
-| Output | `fontSize: '12px'`、`var` なし、密度主手段に scale なし | AD-001 |
-
-**Result:** ❌ Fail（本番 `fontSize` がまだ `'13px'` / viewport 未実装 — intentional Red）
-
----
-
-### TC-MRV-004–007 (P0): タイトル・fit・ズーム・a11y
+### TC-MRV-001–003 / TC-MRV-026 (P0): 密度 16px・測定 nonce・ラベルタイポ・var 禁止・密度≠scale
 
 | Step | State / Action | Value |
 |------|----------------|-------|
-| Input | タイトル付き図 + NodeView viewport UI | — |
-| Output | タイトル全文可視・初期 fit・ズーム・`aria-label` | AD-003–005 / AD-011 |
+| Input | 全 kind theme config + 測定 Host nonce CSS + 密度 CSS | — |
+| Output | `fontSize: '16px'`、測定 `font-size: 16px`・`font-family` trebuchet・`line-height: 1.2`、`var` なし、密度主手段に scale なし | §5 7a |
 
-**Result:** ❌ Fail（viewport / title 契約未実装 — intentional Red）
+**Result:** ❌ Fail（意図的 Red）— 測定 CSS に `font-family` / `line-height: 1.2` 未設定。2026-09-26
 
 ---
 
-### TC-MRV-008–011 (P0): パン／スクロール／re-fit
+### TC-MRV-004–007 (P0): タイトル・自然サイズ・ズーム・a11y／Fit
+
+**Result:** ❌/✅ 混在 — TC-MRV-005（scale 1・自動 contain なし）は現行 auto-refit のため Red。タイトル／a11y／Fit ボタン契約は既存 Green 想定
+
+---
+
+### TC-MRV-008–011 (P0): パン／スクロール／scale 1 リセット（中央寄せ含む）
+
+**Result:** ❌/✅ — パン／スクロール経路は既存。TC-MRV-010/011 は scale 1 期待のため現行 refit で Red
+
+---
+
+### TC-MRV-012–016 (P0): RO・Default Preview・redux／HIP／strict／nonce／ELK 回帰
+
+**Result:** ✅ — 回帰 TC は Green（ビューポート既定以外）
+
+---
+
+### TC-MRV-024–025 (P0): 中央寄せ・ズーム原点中央
 
 | Step | State / Action | Value |
 |------|----------------|-------|
-| Input | ズーム後パン・ソース変更・`themeUpdated` | — |
-| Output | 枠内パン可（modifier 非固定）・スクロール・再 fit | AD-006/007、Spec Gaps |
+| Input | 小図 fixture + scale 1／Fit；ズーム操作 | — |
+| Output | 小さい軸のみ中央；初期／再 render／テーマは scale 1；Fit のみ contain；`transform-origin`＝ビューポート中央 | §5 7c |
 
-**Result:** ❌ Fail（intentional Red）
-
----
-
-### TC-MRV-012–016 (P0): RO・Default Preview・回帰
-
-| Step | State / Action | Value |
-|------|----------------|-------|
-| Input | Preview 操作・native-preview・theme/sanitize/nonce/ELK | — |
-| Output | Document 非編集・viewport UI なし・redux/HIP/strict/nonce/ELK 維持 | AD-002/008/009 |
-
-**Result:** ❌ / ✅ 混在可（回帰 TC は既存 Green、viewport 依存は Red）
+**Result:** ❌ Fail（意図的 Red）— 初期／再 render が auto-`fitToViewport`。ズーム原点は別途。2026-09-26
 
 ---
 
-### TC-MRV-017–023 (P1)
+### TC-MRV-017–023 / TC-MRV-027 (P1)
 
 | ID | Result | Notes |
 |----|--------|-------|
-| TC-MRV-017 | ❌ | エラー時 UI 無効化 — intentional Red |
-| TC-MRV-018 | ❌ | preview + markdown viewport — intentional Red |
-| TC-MRV-019 | ❌/✅ | グローバルがまだ 13px なら Fail |
-| TC-MRV-020 | ✅ | 関連 suite Expected を 12px に更新済 |
-| TC-MRV-021–023 | ✅/❌ | ソース順・非永続・Document 非接触は既存契約維持可 |
+| TC-MRV-017–018 | ✅ | 既存契約維持 |
+| TC-MRV-019 | ✅ | グローバル `'16px'` |
+| TC-MRV-020 | ✅ | 関連 suite Expected／テストを `16px` に整合 |
+| TC-MRV-021–023 | ✅ | ソース順・非永続・Document 非接触 |
+| TC-MRV-027 | ❌/✅ | Fit 中央復帰経路は既存。scale 1 契約追随で Red の可能性 |
 
 ### Trace Summary
 
 | ID | Priority | Result | Notes |
 |----|----------|--------|-------|
-| TC-MRV-001–016 | P0 | ❌ Fail（意図的 Red） | テストコード実装済・本番未着手 |
-| TC-MRV-017–023 | P1 | ❌/✅ 混在 | 同上 |
+| TC-MRV-005, TC-MRV-010–011, TC-MRV-024, TC-MRV-026 | P0 | ❌ Red | 自然サイズ／ラベルタイポ未実装 |
+| TC-MRV-001–004, TC-MRV-006–009, TC-MRV-012–023, TC-MRV-025, TC-MRV-027 | P0/P1 | ✅/混在 | 既存契約＋Fit／ズーム原点 |
 
 ---
 
 ## Self-Check Report
 
 ### A. Input & Constraints
-- [x] ✅ kind 三値・fontSize 12px: TC-MRV-001–002
+- [x] ✅ kind 三値・fontSize 16px・ラベルタイポ: TC-MRV-001–002 / TC-MRV-026
 - [x] ✅ editorMode / Default Preview: TC-MRV-013 / TC-MRV-018
 - [x] N/A 整数オーバーフロー — UI 契約
 
 ### B. Structural Patterns
-- [x] ✅ 密度≠scale・nonce/ELK・ソース順・Document 非接触: TC-MRV-003 / TC-MRV-016 / TC-MRV-021 / TC-MRV-023
+- [x] ✅ 密度≠scale・測定 nonce／タイポ・nonce/ELK・ソース順・Document 非接触: TC-MRV-003 / TC-MRV-026 / TC-MRV-016 / TC-MRV-021 / TC-MRV-023
 - [x] ✅ 関連 suite 整合: TC-MRV-020
+- [x] ✅ 自然サイズ／Fit のみ contain／中央寄せ・ズーム原点: TC-MRV-005 / TC-MRV-024–025
 - [x] N/A グラフ非連結 — 該当なし
 
 ### C. Corner & Failure
 - [x] ✅ Preview RO・HIP/strict・構文エラー UI: TC-MRV-012 / TC-MRV-015 / TC-MRV-017
-- [x] ✅ パン Spec Gap（modifier 非固定）: TC-MRV-008
+- [x] ✅ パン Spec Gap（modifier 非固定）＋Fit で中央復帰: TC-MRV-008 / TC-MRV-027
 - [x] N/A API 404 — 該当なし
 
 ### D. Complexity & Resources
 - [x] ✅ ビューポート状態は図単位・非永続: TC-MRV-022 / TC-MRV-023
-- [x] N/A 最悪計算量 Stress — 専用 P2 なし（RK-003）
+- [x] N/A 最悪計算量 Stress — 専用 P2 なし
 
 ### E. API / Worker
 - [x] N/A HTTP / 認証 — ローカル VS Code 拡張
 
 ### Uncovered / Spec Gaps
 - ⚠️ パン開始ジェスチャの具体（中ボタン／修飾キー／ハンドル）— 実装時確定。TC-MRV-008 は「枠内パン可能」まで
-- ピクセル目視の「読める」— transform／overflow 契約で近似
-- ピンチ・高度な SR 図読解 — Out
+- ピクセル目視の「読める」／中央寄せの完全一致 — transform／overflow／origin 契約で近似（Non-Goal）
+- ピンチ・高度な SR 図読解・密度スライダー — Out
 
 ---
 
@@ -1406,6 +1423,9 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 
 | 日付 | 変更内容 |
 |------|---------|
+| 2026-09-26 | `mermaid-label-metrics`: 初期／再 render／テーマ切替 Expected を scale 1（自動 contain 撤回）へ。Fit のみ contain。小さい軸は中央寄せ・はみ出しはスクロール。測定 CSS に `font-family`（trebuchet ms）／`line-height: 1.2` を追加。TC-MRV-005/010/011/024/026/027 Expected 更新。改訂履歴追記 |
+| 2026-09-26 | testspec-implementation — `mermaid-readable-viewport.test.ts` を `'16px'` 追随＋TC-MRV-024–027 追加。関連 suite（redux-elk / edge / contrast / snap / preview-mode）の fontSize Expected を `'16px'` に更新。Trace を意図的 Red に更新 |
+| 2026-09-26 | `mermaid-default-preview-parity`: グローバル `fontSize` Expected `'12px'`→`'16px'`。測定 nonce `font-size: 16px`（TC-MRV-026）。中央寄せ（TC-MRV-024）・ズーム原点中央（TC-MRV-025）・パン後 Fit 復帰（TC-MRV-027）追加。ズーム／パン／Fit／aria-label／redux／strict／HIP／nonce／ELK／ソース併記回帰維持。ピクセル完全一致は Non-Goal。テストコード未変更 |
 | 2026-09-06 | 初版 — `fontSize: '8px'`・タイトル全文可視・初期 fit・ズーム／a11y・パン（modifier 非固定）／スクロール・re-fit・Preview RO・Default Preview 非対象・redux/HIP/strict/nonce/ELK 回帰（設計のみ）。関連 suite `13px`→`8px` 更新指示 |
 | 2026-09-06 | testspec-implementation — `mermaid-readable-viewport.test.ts` 追加・unit-entry 登録・関連 suite Expected `8px` 更新。Trace を意図的 Red に更新 |
 | 2026-09-06 | 密度 polish: Expected／TC のグローバル `fontSize` を `'8px'` → `'12px'`。タイトル左欠け対策（viewBox / `getComputedTextLength` / 水平パッド）を契約に追随 |
@@ -1417,4 +1437,6 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 
 | 日付 | 変更内容 |
 |------|---------|
+| 2026-09-26 | `mermaid-label-metrics`: readable-viewport Expected を自然サイズ（scale 1）／Fit のみ contain／ラベルタイポへ更新。統合改訂履歴追記 |
+| 2026-09-26 | `mermaid-default-preview-parity`: 統合 testspec の全 suite Expected を `'12px'`→`'16px'`。readable-viewport に TC-MRV-024–027（中央寄せ・ズーム原点・測定 nonce・パン後 Fit 復帰）追加。改訂履歴追記 |
 | 2026-09-19 | doc-reorg: 5 Mermaid testspec を本ファイルへ統合。パス移設／Mermaid 統合。契約内容不変 |

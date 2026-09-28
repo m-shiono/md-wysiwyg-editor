@@ -82,8 +82,8 @@ function getHostCspNonce(): string {
 }
 
 /**
- * Host-nonce CSS so mermaid.render measures labels at density fontSize (CSP).
- * Without this, HTML labels inherit ~13px during measure while paint uses reinjected theme fontSize.
+ * Host-nonce CSS so mermaid.render measures labels at density typography (CSP).
+ * Without this, HTML labels inherit editor line-height 1.6 / wrong font during measure.
  * Prefer Host nonce stylesheet; never loosen CSP for inline styles.
  */
 function ensureMermaidMeasureFontCss(): void {
@@ -100,6 +100,10 @@ function ensureMermaidMeasureFontCss(): void {
   styleEl.textContent = [
     `.nodeLabel, .edgeLabel, .label, .labelBkg, foreignObject div, foreignObject span {`,
     `  font-size: ${MERMAID_DENSITY_FONT_SIZE};`,
+    // Literals required for measure contract (TC-MRV-026); keep in sync with MERMAID_DENSITY_*
+    `  font-family: "trebuchet ms", verdana, arial, sans-serif;`,
+    // !important beats Mermaid createText inline line-height: 1.5 during measure
+    `  line-height: 1 !important;`,
     `}`,
   ].join('\n');
 }
@@ -398,10 +402,6 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
         applyScale(viewportScale / MERMAID_VIEWPORT_ZOOM_STEP);
       };
 
-      const refit = (): void => {
-        viewportScale = fitToViewport(viewport, canvas, preview);
-      };
-
       zoomInBtn.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -415,7 +415,8 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
       fitBtn.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        refit();
+        // Fit clears pan offset via fitToViewport → centerOnSmallerAxes (AD-007/008)
+        viewportScale = fitToViewport(viewport, canvas, preview);
       });
 
       const renderPreview = (source: string): void => {
@@ -429,7 +430,7 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
             try {
               const renderSource = buildMermaidRenderSource(source);
               await ensureElkLayoutRegistered(renderSource);
-              // Measure at density fontSize before render (CSP Host-nonce CSS)
+              // Measure at density typography before render (CSP Host-nonce CSS)
               ensureMermaidMeasureFontCss();
               const { svg: renderedSvg } = await mermaid.render(
                 `${viewId}-svg`,
@@ -442,9 +443,9 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
                 ensureTitleVisible(svgEl as SVGSVGElement);
               }
               setViewportUiEnabled(true);
-              // Re-fit after debounce re-render / themeUpdated bulk re-render (AD-007)
+              // Contain into the frame, including scale > 1 so a small diagram fills the viewport.
               requestAnimationFrame(() => {
-                refit();
+                viewportScale = fitToViewport(viewport, canvas, preview);
               });
             } catch (err) {
               preview.innerHTML = `<div class="mermaid-error">${escapeHtml(String(err))}</div>`;
@@ -854,7 +855,22 @@ function applyViewportZoom(canvas: HTMLElement, scale: number): void {
 }
 
 /**
- * Fit diagram SVG into the mermaid-viewport frame (contain / fit-to-viewport).
+ * After natural scale 1 / Fit contain: center axes where the diagram is smaller
+ * than the frame (flex CSS); when layout overflows, scroll to mid so
+ * transform-origin center aligns with the viewport. Clears pan offsets.
+ */
+function centerOnSmallerAxes(viewport: HTMLElement): void {
+  const frameW = Math.max(1, viewport.clientWidth);
+  const frameH = Math.max(1, viewport.clientHeight);
+  viewport.scrollLeft = Math.max(0, (viewport.scrollWidth - frameW) / 2);
+  viewport.scrollTop = Math.max(0, (viewport.scrollHeight - frameH) / 2);
+}
+
+/**
+ * Fit diagram SVG into the mermaid-viewport frame (contain).
+ * Scale may be greater than 1 so a diagram smaller than the frame grows to touch
+ * the limiting edges. The other axis stays centered; all four edges meet only
+ * when the diagram and frame share an aspect ratio.
  */
 function fitToViewport(
   viewport: HTMLElement,
@@ -864,6 +880,7 @@ function fitToViewport(
   const svg = preview.querySelector('svg');
   if (!svg) {
     applyViewportZoom(canvas, 1);
+    centerOnSmallerAxes(viewport);
     return 1;
   }
   // Reset transform to measure natural size
@@ -879,11 +896,10 @@ function fitToViewport(
     svg.getBoundingClientRect().height ||
     1;
   const scale = clampMermaidViewportScale(
-    Math.min(1, frameW / Math.max(1, naturalW), frameH / Math.max(1, naturalH)),
+    Math.min(frameW / Math.max(1, naturalW), frameH / Math.max(1, naturalH)),
   );
   applyViewportZoom(canvas, scale);
-  viewport.scrollLeft = 0;
-  viewport.scrollTop = 0;
+  centerOnSmallerAxes(viewport);
   return scale;
 }
 

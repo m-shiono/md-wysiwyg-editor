@@ -6,7 +6,7 @@ export function registerToggleReadonlyCommand(
   context: vscode.ExtensionContext,
   provider: MarkdownEditorProvider,
 ): vscode.Disposable {
-  return vscode.commands.registerCommand('vsc-md-editor.toggleReadonly', async () => {
+  return vscode.commands.registerCommand('md-wysiwyg-editor.toggleReadonly', async () => {
     const uri = provider.getActiveUri();
     if (!uri) {
       void vscode.window.showWarningMessage('No active MD WYSIWYG editor');

@@ -2,11 +2,18 @@
 
 ## 概要
 
-- **対象:** VS Code 拡張 vsc-md-editor の MVP 機能（Custom Editor、三点モード Preview/Markdown/Raw、WYSIWYG、**GFM 書式ツールバー**、表、Readonly、Mermaid、Marp、画像 paste、シリアライズ、セキュリティ、ログ・共存）
-- **対応仕様:** [doc/requirements/systemspec.md](../requirements/systemspec.md) §1–§10（AD-016 三点モード、§2/§8/§9 GFM 書式ツールバー、§1/§5/§6/§7/§9 `preview-rich-embed`、`§1 Preview 可読性 / §5 Mermaid frontmatter・テーマ` `preview-mode-quality` 含む）
+- **対象:** VS Code 拡張 **md-wysiwyg-editor** の MVP 機能（Custom Editor、三点モード Preview/Markdown/Raw、WYSIWYG、**GFM 書式ツールバー**、表、Readonly、Mermaid、Marp、画像 paste、シリアライズ、セキュリティ、ログ・共存）
+- **feature-slug / ファイル名:** `vsc-md-wysiwyg`（`testspec-vsc-md-wysiwyg.md`）— systemspec の既存 slug を維持。製品・貢献 ID は `md-wysiwyg-editor.*`（本タスクでファイル名リネームしない — 下記「ファイル名方針」）
+- **対応仕様:** [doc/requirements/systemspec.md](../requirements/systemspec.md) §1–§10（AD-016 三点モード、§2/§8/§9 GFM 書式ツールバー、§1/§5/§6/§7/§9 `preview-rich-embed`、`§1 Preview 可読性 / §5 Mermaid frontmatter・テーマ` `preview-mode-quality` 含む）。識別子正本: systemspec「Extension 識別子」/ Requirements Brief `rename-md-wysiwyg` AD-001–AD-010
 - **テストコード:** `src/test/suite/unit/**/*.test.ts`（mocha + vscode mock）、`src/test/suite/integration/**/*.test.ts`（@vscode/test-electron）
 - **作成日:** 2026-08-29
 
+### ファイル名方針（`rename-md-wysiwyg`）
+
+| 選択肢 | 判断 |
+|--------|------|
+| `testspec-vsc-md-wysiwyg.md` → `testspec-md-wysiwyg-editor.md` 等へリネーム | **しない** |
+| 理由 | systemspec 概要の **feature-slug は `vsc-md-wysiwyg`（既存 MVP testspec ファイル名）** のまま。Related Tests・履歴・スラッグ参照の連鎖コストを避け、貢献 ID / 製品名のみ本文で同期する |
 ## Spec Digest
 
 ### Inputs & Types
@@ -43,7 +50,7 @@
 
 | 条件 | 戻り値 / ステータス | 仕様根拠 |
 |------|-------------------|---------|
-| Custom Editor オープン成功 | タブ表示、Webview ロード完了、初期モード **Raw**（Edit Raw Text）、viewType `vsc-md-editor.wysiwyg` | §1, AD-002, AD-016 |
+| Custom Editor オープン成功 | タブ表示、Webview ロード完了、初期モード **Raw**（Edit Raw Text）、viewType `md-wysiwyg-editor.wysiwyg` | §1, AD-002, AD-016 |
 | モード切替成功 | 対象面表示、Document 維持、ディスク未書込、内容不変なら dirty 不変 | §1 |
 | 保存成功 | ディスク `.md` 更新、`dirty` 解除 | §1, §8 |
 | シリアライズ失敗 | 保存拒否、`dirty` 維持、通知 + Output | §1, §8 |
@@ -177,21 +184,21 @@
 | TC-067 | Corner | regression-edit-display-break | P0 | Webview 起点の `updateFromJson(..., { syncWebview: false })` | `onDidContentChange` は発火しない（echo 抑止）。`onDidChange` は発火（dirty 維持） | Regression: 編集後に setContent echo で表示破壊 | §1 Behavior 2 |
 | TC-068 | Corner | regression-edit-display-break | P0 | 既定の `updateDoc` / undo による Document 変更 | `onDidContentChange` が発火し、docUpdated 用リスナーが通知される | Regression: 外部同期（undo/revert）が途切れないこと | §1 Behavior 4 |
 | TC-069 | Corner | regression-edit-display-break | P0 | Mermaid フェンス付き doc で段落テキストのみ変更後 serialize | ` ```mermaid ` フェンスとソースが残る | Regression: 通常編集で Mermaid が消えないこと | §5 正常系 2 |
-| TC-070 | Happy | editor-mode-init | P0 | Custom Editor（viewType `vsc-md-editor.wysiwyg`）で `.md` を開く | 初期 `editorMode === "raw"`（`DEFAULT_EDITOR_MODE`）、タブ viewType が `vsc-md-editor.wysiwyg`。詳細・Side Preview は [testspec-native-preview-side-and-default-raw.md](testspec-native-preview-side-and-default-raw.md) TC-001 | AD-016 初期 Raw + AD-002 viewType | §1 Inputs, 正常系 1 |
+| TC-070 | Happy | editor-mode-init | P0 | Custom Editor（viewType `md-wysiwyg-editor.wysiwyg`）で `.md` を開く | 初期 `editorMode === "raw"`（`DEFAULT_EDITOR_MODE`）、タブ viewType が `md-wysiwyg-editor.wysiwyg`。詳細・Side Preview は [testspec-native-preview-side-and-default-raw.md](testspec-native-preview-side-and-default-raw.md) TC-001 | AD-016 初期 Raw + AD-002 viewType | §1 Inputs, 正常系 1 |
 | TC-071 | Happy | preview-one-way | P0 | Preview モード表示中に描画面からの編集イベントを送ろうとする / Document のみ更新 | Preview は RO 描画のみ。編集イベントは Document へ送られない。Document 更新時は描画が追随 | Document→一方表示契約 | §1 三点モード定義, 正常系 3 |
 | TC-072 | Happy | markdown-raw-sync | P0 | Markdown 面で段落編集 → Raw 投影；続けて Raw 相当のソースを Document に反映 | 正本は `MarkdownDocument`。一方の変更が他方面へ Document 経由で反映され、`markdownText` / `doc` が一致 | Markdown↔Raw 相互リアルタイム同期 | §1 正常系 2, §8 |
 | TC-073 | Corner | mode-switch-no-io | P0 | dirty=false の Document で Preview↔Markdown↔Raw を切替のみ（内容変更なし） | ディスクへの `writeFile` なし、`onDidChange`（dirty）非発火、Document 内容不変 | モード切替 alone は表示のみ | §1 正常系 4, AD-016 |
 | TC-074 | Happy | edit-dirty-save | P0 | Markdown または Raw 相当の内容変更 → `save` / `saveAs` | 変更で dirty（`onDidChange`）、save 後ディスク更新・シリアライズ反映 | 通常編集の dirty/save 契約 | §1 正常系 5, §8 |
 | TC-075 | Happy | file-ro-locks-editors | P0 | ファイル RO ON 後に Markdown / Raw 編集を試行 | 両編集面とも編集不可（`editable: false`）。三点 Preview（描画 RO）とは別概念（RO フラグ独立） | AD-006 全編集面ロック | §4 正常系 1, 3 |
 | TC-076 | Happy | ro-allows-viewing | P0 | ファイル RO ON のまま三点モード切替・Preview 表示・Marp Preview 起動 | モード切替可、Preview / Marp 閲覧可。編集は不可のまま | RO 中も閲覧系は可 | §4 正常系 4–5, §6 |
-| TC-077 | Structural | marp-vs-preview | P0 | 三点 Preview（mode id `preview`）と Marp Preview **パネル**（`vsc-md-editor.marpPreview` / `showMarpPreview`）を比較 | **別 UI インスタンス**・別 viewType/コマンドは維持。三点 Preview は Marp 検出時に同一 Webview 内 `#preview-marp-root` でスライド RO 表示可（非 Marp は TipTap RO）。パネル自動オープンなし | AD-008 責務分離 + Preview 内 Marp 兼用（RK-017） | §1, §6 |
+| TC-077 | Structural | marp-vs-preview | P0 | 三点 Preview（mode id `preview`）と Marp Preview **パネル**（`md-wysiwyg-editor.marpPreview` / `md-wysiwyg-editor.showMarpPreview`）を比較 | **別 UI インスタンス**・別 viewType/コマンドは維持。三点 Preview は Marp 検出時に同一 Webview 内 `#preview-marp-root` でスライド RO 表示可（非 Marp は TipTap RO）。パネル自動オープンなし | AD-008 責務分離 + Preview 内 Marp 兼用（RK-017） | §1, §6 |
 | TC-078 | Corner | raw-parse-fail | P0 | Raw ソースをパース不能な文字列に変更して Document へ適用試行 | Document（直前の有効内容）非破壊、通知 + Output、`isRawParseFailed=true`、`save` ブロック | Raw 失敗時データ保全 | §1 例外系 2, §8 |
 | TC-079 | Happy | raw-parse-recover | P0 | TC-078 状態から有効な Raw ソースに修正して再適用 → `save` | `isRawParseFailed=false`、Document 更新、save 成功 | パース回復後の save 再開 | §1, §8 |
 | TC-080 | Happy | preview-mode-refresh | P0 | Preview または Markdown へモード切替 | Host が Document 最新を再投影（Raw 離脱 flush 後を含む）。**非 Marp Preview:** rewrite 済み `docJson`。**Marp 検出 Preview:** `previewMarpHtml` で `#preview-marp-root` 更新。表示層のみで Document / serialize 不変 | Preview 厳密 RO・切替時 refresh | §1 三者同期, 正常系 3–4 |
 | TC-081 | Happy | raw-mode-text-projection | P0 | Raw へモード切替 | Host が `markdownText` のみ投影（docJson なし）。Marp 分岐・画像 rewrite は Raw 面に適用しない | Raw 面の Document 追随 | §1 三者同期 |
 | TC-082 | Happy | triple-sync-document | P0 | Markdown 編集 → Document；続けて Raw 編集 → Document；Preview 投影中に画像 rewrite / Marp HTML / Mermaid CSS が適用 | 正本 `MarkdownDocument` が唯一の真実。`docJson` / `markdownText` は同一 Document から導出。表示層（画像 URI rewrite・`previewMarpHtml`・Mermaid ソース併記 CSS）は Document / serialize を変更しない | Raw↔Markdown↔Preview 三者同期 + 表示層非変更 | §1 三者同期, AD-008 |
 | TC-083 | Happy | builtin-switch-detect | P1 | dispose 後アクティブタブが同一 `.md` の `TabInputText` または非 wysiwyg `TabInputCustom` | `isBuiltinSwitchToSameMdFile` が true。タブ閉鎖・別 URI・wysiwyg タブは false | Pattern A 検知 | §10 正常系 4 |
-| TC-084 | Happy | open-with-wysiwyg-cmd | P1 | `activate` 後に `getCommands` | `vsc-md-editor.openWithWysiwyg` が登録。`package.json` に command・configuration・editor/title menu が存在 | Pattern A 復帰コマンド | §10 正常系 5 |
+| TC-084 | Happy | open-with-wysiwyg-cmd | P1 | `activate` 後に `getCommands` | `md-wysiwyg-editor.openWithWysiwyg` が登録。`package.json` に command・`md-wysiwyg-editor.autoRestoreOnBuiltinSwitch` configuration・editor/title menu が存在 | Pattern A 復帰コマンド | §10 正常系 5 |
 | TC-085 | Happy | table-row-col-ops | P0 | `tableFormat:'gfm'` の表内で Add row above/below、Delete row、Add column left/right、Delete column を順に実行 | 行/列が増減し UI 反映。`tableFormat` 不変。save で GFM パイプ表 | メニュー行/列操作 | §3 正常系 1, Table UI #2 |
 | TC-086 | Happy | table-convert-gfm-to-html | P0 | `tableFormat:'gfm'` の表で Convert to HTML table を実行（確認なし） | 即時 `tableFormat:'html'`。save で HTML `<table>` 出力。Undo 1 段で復元可 | GFM→HTML 明示変換 | §3 Outputs, 正常系 6 |
 | TC-087 | Happy | table-convert-html-to-gfm | P0 | リッチ内容（改行・リスト・チェックボックス）を含む `tableFormat:'html'` の表で Convert to GFM pipe table → 確認ダイアログで OK | 確認後 `tableFormat:'gfm'`。リスト・チェックボックス等のブロックリッチはプレーンテキストへ flatten。**セル内改行は `<br />`（または同等）として保持**し単一改行へ正規化。save で GFM パイプ表 | **Updated:** flatten はブロックリッチ除去；改行は GFM `<br />` 契約で保持 | §3 Outputs, 正常系 6, AD-006 |
@@ -252,10 +259,14 @@
 | TC-146 | Happy | preview-line-height-readability | P1 | 非 Marp doc を Preview モード（`body[data-mode='preview']`）で表示 | Preview スコープ CSS で本文 `line-height: 1.6`（目安）。Markdown モードの line-height は変更しない | Preview 可読性 — 行間 | §1 Preview 可読性, AD-006 |
 | TC-147 | Happy | preview-prosemirror-opacity-contrast | P1 | Preview モードで TipTap RO（`.ProseMirror[contenteditable='false']`）を表示 | `body[data-mode='preview']` スコープで `opacity: 1`。ハードコード色なし（`--vscode-*` 継続）。Markdown モードの opacity ルールは Preview 用変更の対象外 | Preview 可読性 — コントラスト | §1 Preview 可読性, AD-006 |
 | TC-148 | Structural | preview-css-scoped-only | P1 | `editor.css`（または同等）の Preview / Markdown / Raw ルールを検査 | line-height・opacity 改善は `body[data-mode='preview']` 配下のみ。Markdown / Raw の同等プロパティに Preview 専用上書きを波及させない | Preview スコープ限定（AD-006） | §1 Preview 可読性, AD-006 |
-| TC-149 | Structural | mermaid-theme-built-in | P1 | Webview 内 Mermaid グローバル initialize 設定を検査 | VS Code kind 'dark' / 'highContrast' → `'redux-dark'`、'light' → `'redux'`。全 kind で `themeVariables.fontSize === '12px'`。`themeVariables` に `var(--vscode-...)` を含めない。`securityLevel: 'strict'` 維持。**classic `default`/`dark` マップ＋島ライトは撤回**（`mermaid-redux-elk-fidelity` / `mermaid-display-density` — 詳細 [testspec-mermaid.md](mermaid/testspec-mermaid.md#suite-redux-elk-fidelity)） | redux kind マップ＋表示密度 | §5 正常系 7 / 7a |
+| TC-149 | Structural | mermaid-theme-built-in | P1 | Webview 内 Mermaid グローバル initialize 設定を検査 | VS Code kind 'dark' / 'highContrast' → `'redux-dark'`、'light' → `'redux'`。全 kind で `themeVariables.fontSize === '16px'`。`themeVariables` に `var(--vscode-...)` を含めない。`securityLevel: 'strict'` 維持。**classic `default`/`dark` マップ＋島ライトは撤回**（`mermaid-redux-elk-fidelity` / `mermaid-default-preview-parity` — 詳細 [testspec-mermaid.md](mermaid/testspec-mermaid.md#suite-readable-viewport)） | redux kind マップ＋表示密度 16px | §5 正常系 7 / 7a |
 | TC-150 | Corner | mermaid-init-isolation | P1 | `mermaid.initialize` またはテーマ切替処理で例外を発生させる（mock） | try-catch で隔離され、Webview 全体のメッセージングや描画が停止しない。Output にエラーが記録される | 初期化・テーマ切替の隔離（mermaid-theme-crash-fix） | §5 正常系 8 |
 | TC-151 | Structural | preview-display-layer-document-unchanged | P1 | TC-145 相当（themeUpdated + Mermaid 再描画）および TC-146–147 相当（Preview CSS 適用）後に Document を inspect | `markdownText` / `docJson` / serialize 出力がテーマ・CSS・再描画前と一致。表示層のみの変更（AD-002） | 三者同期 — 表示層非変更 | §1 AD-002, TC-082 |
 | TC-152 | Corner | regression-mermaid-foreignobject-sanitize | P0 | Mermaid flowchart 相当 SVG（`foreignObject` 内にノードラベル HTML、例: `Cause A`）を NodeView の DOMPurify sanitize 経路（`media/editor.ts` `.mermaid-preview`）に通す | sanitize 後も `foreignObject` とノードラベル文字列が残る。`script` / `on*` 除去・`securityLevel: 'strict'` は不変（§9） | Regression: Dark/Edit で flowchart ノードラベルが消える（DOMPurify 既定が `foreignObject` を除去） | §5 正常系 1/4, §9 |
+| TC-153 | Happy | extension-identity | P0 | `package.json` の `name` / `publisher` / `repository.url` を検査 | `name === "md-wysiwyg-editor"`。`publisher === "mshiono"` → Extension ID `mshiono.md-wysiwyg-editor`。`repository.url` は `https://github.com/m-shiono/md-wysiwyg-editor.git`（または同等） | Marketplace / repo 識別子同期 | systemspec Extension 識別子, AD-003/005 |
+| TC-154 | Happy | contribution-viewtype-commands | P0 | `package.json` `contributes.customEditors` / `commands` / `activationEvents` / `menus` を検査 | viewType `md-wysiwyg-editor.wysiwyg`。公開コマンドは `md-wysiwyg-editor.*` プレフィックス（例: `openWithWysiwyg` / `reloadExtension` / `showNativeMarkdownPreview` / `showMarpPreview`）。`activeCustomEditorId` / when 句も新 viewType | 貢献 ID 一括同期 | §1 / §10, AD-001 |
+| TC-155 | Happy | settings-key-auto-restore | P0 | `package.json` `contributes.configuration` を検査 | 設定キー `md-wysiwyg-editor.autoRestoreOnBuiltinSwitch`（boolean、既定 `false`）が存在する。旧キー `vsc-md-editor.autoRestoreOnBuiltinSwitch` は **無い** | 設定キー同期 + 旧キー非互換 | §10 設定, AD-002/003 |
+| TC-156 | Corner | no-legacy-contribution-ids | P0 | `package.json` 全文および `getCommands`（activate 後）を旧プレフィックスで走査 | `vsc-md-editor.` を含む viewType / command / configuration / activationEvents / menus.when が **0 件**。旧 Extension ID 文字列 `mshiono.vsc-md-editor` も contributes に無い | 旧プレフィックス互換なし（方針 A） | AD-002, RK-004 |
 
 ### Fixtures — preview-mode-quality
 
@@ -283,10 +294,10 @@ flowchart TD
 
 | Category | Covered | N/A Reason |
 |----------|---------|------------|
-| Happy Path | TC-001–004, TC-010–012, TC-016–019, TC-025–027, TC-031, TC-033, TC-038–039, TC-043–044, TC-052–054, TC-057–058, TC-070–072, TC-074–076, TC-079–092, TC-101–102, TC-107–109, TC-111–113, TC-117, TC-120, TC-124–125, TC-128, TC-130–131, TC-134–136, TC-140–141, TC-143–147 | — |
+| Happy Path | TC-001–004, TC-010–012, TC-016–019, TC-025–027, TC-031, TC-033, TC-038–039, TC-043–044, TC-052–054, TC-057–058, TC-070–072, TC-074–076, TC-079–092, TC-101–102, TC-107–109, TC-111–113, TC-117, TC-120, TC-124–125, TC-128, TC-130–131, TC-134–136, TC-140–141, TC-143–147, TC-153–155 | — |
 | Boundary | TC-008, TC-021–023, TC-121 | — |
 | Structural | TC-014, TC-055, TC-077, TC-110, TC-118, TC-123, TC-133, TC-137, TC-139, TC-148–149 | — |
-| Corner | TC-005–009, TC-015, TC-020, TC-024, TC-030, TC-034–037, TC-041–042, TC-047–051, TC-056, TC-059, TC-061, TC-064, TC-067–069, TC-073, TC-078, TC-088, TC-093–096, TC-103–106, TC-114–116, TC-119, TC-122, TC-126–127, TC-129, TC-132, TC-138, TC-142, TC-150, TC-152 | — |
+| Corner | TC-005–009, TC-015, TC-020, TC-024, TC-030, TC-034–037, TC-041–042, TC-047–051, TC-056, TC-059, TC-061, TC-064, TC-067–069, TC-073, TC-078, TC-088, TC-093–096, TC-103–106, TC-114–116, TC-119, TC-122, TC-126–127, TC-129, TC-132, TC-138, TC-142, TC-150, TC-152, TC-156 | — |
 | Stress | TC-065–066 | 書式ツールバー自体の最悪計算量は N/A（既存大 doc TC でカバー） |
 
 ### Complexity Notes
@@ -324,6 +335,7 @@ flowchart TD
 | TC-134–142 | ユニット（Preview 分岐・`previewMarpHtml` handler / `#preview-marp-root` DOM）+ 統合（Custom Editor Preview Marp・パネル共存） |
 | TC-143–151 | ユニット（Mermaid NodeView full-source render / `themeUpdated` handler / `mermaid.initialize` isolation / Preview CSS スコープ）+ 統合（Host theme listener → postMessage → 再描画） |
 | TC-152 | ユニット（`media/editor.ts` Mermaid NodeView DOMPurify — `foreignObject` ラベル保持） |
+| TC-153–156 | ユニット（`package.json` name/publisher/repository/viewType/commands/configuration/activationEvents/menus + activate 後 `getCommands` 旧プレフィックス不在） |
 | TC-013, TC-144–145 | ユニット（`messages.ts` `themeUpdated` 型・Host theme listener mock）+ 統合（VS Code テーマ切替） |
 | TC-044 | ユニット（採番ロジック） |
 | TC-067–068, TC-072, TC-074 | ユニット（MarkdownDocument + vscode mock） |
@@ -364,7 +376,11 @@ P0 + P1 の机上トレース（実装前）。
 | TC-067 | Webview update → `syncWebview: false` → content-change 未発火、dirty 用 onDidChange のみ | ✅ 回帰（edit-display-break） |
 | TC-068 | 既定 update / undo → onDidContentChange 発火 | ✅ 回帰（edit-display-break） |
 | TC-069 | Mermaid + 段落編集 → serialize でフェンス保持 | ✅ 回帰（edit-display-break） |
-| TC-070 | package.json viewType = `vsc-md-editor.wysiwyg`；初期モード **Raw**（`DEFAULT_EDITOR_MODE`） | ⏳ 期待更新 — `native-preview-side-and-default-raw` 実装後 Green |
+| TC-070 | package.json viewType = `md-wysiwyg-editor.wysiwyg`；初期モード **Raw**（`DEFAULT_EDITOR_MODE`） | ✅ Pass（2026-09-29）— `editor-modes.test.ts` |
+| TC-153 | `name`/`publisher`/`repository.url` → `mshiono.md-wysiwyg-editor` | ✅ Pass（2026-09-29）— `contribution-id-rename.test.ts` |
+| TC-154 | viewType / commands / activation / menus が `md-wysiwyg-editor.*` | ✅ Pass（2026-09-29）— `contribution-id-rename.test.ts` |
+| TC-155 | 設定キー `md-wysiwyg-editor.autoRestoreOnBuiltinSwitch`（旧キー無し） | ✅ Pass（2026-09-29）— `contribution-id-rename.test.ts` |
+| TC-156 | `vsc-md-editor.` / `mshiono.vsc-md-editor` が contributes・登録コマンドに無い | ✅ Pass（2026-09-29）— `contribution-id-rename.test.ts` |
 | TC-072 | updateDoc → markdownText 更新（正本 Document）；parse → updateDoc で Raw 相当同期 | ✅ ユニット |
 | TC-074 | updateDoc → onDidChange → save → mock FS 更新 | ✅ ユニット |
 | TC-075 | setReadonly(true) → isReadonly；Preview 概念と独立 | ✅ ユニット |
@@ -381,7 +397,7 @@ P0 + P1 の机上トレース（実装前）。
 | TC-144 | init/ready + theme change → `themeUpdated` `{ kind }` のみ | ✅ 期待どおり（未実装 — Red 予定） |
 | TC-145 | `themeUpdated` → `mermaid.initialize` 更新 → NodeView 再 render、Document 不変 | ✅ 期待どおり（未実装 — Red 予定） |
 | TC-146–148 | `body[data-mode='preview']` の line-height / opacity / スコープ限定 | ✅ 期待どおり（未実装 — Red 予定） |
-| TC-149 | `theme: 'redux-dark'` (for dark/HC kind) / `'redux'` (light) + `themeVariables.fontSize === '12px'` + `themeVariables` contains NO `var(...)` | ✅ 期待どおり（未実装 — Red 予定） |
+| TC-149 | `theme: 'redux-dark'` (for dark/HC kind) / `'redux'` (light) + `themeVariables.fontSize === '16px'` + `themeVariables` contains NO `var(...)` | ✅ 期待どおり（未実装 — Red 予定） |
 | TC-150 | `mermaid.initialize` exception → try-catch isolated | ✅ 期待どおり（未実装 — Red 予定） |
 | TC-151 | テーマ/CSS/再描画後も serialize 不変 | ✅ 期待どおり（未実装 — Red 予定） |
 | TC-152 | Mermaid SVG sanitize 後も `foreignObject` + ノードラベル残存 | ❌ Red — `DOMPurify.sanitize(svg)` 既定が `foreignObject` 除去（`fix-mermaid-dark-visibility`） |
@@ -625,10 +641,20 @@ P0 + P1 の机上トレース（実装前）。
 | Step | Value |
 |------|-------|
 | Input | package.json viewType; EditorModeState; Document updateDoc/save/applyRawSource; readonly-state; Marp vs custom editor IDs |
-| Expected | viewType 一致、**初期 `editorMode === "raw"`**（AD-016 更新）、Preview 一方向、Document 正本同期、mode switch 非 I/O、dirty→save、RO キー、Raw 失敗/回復、Marp≠三点 Preview |
-| Actual | TC-071–079: Pass（既存ユニット）。**TC-070 初期モード期待は raw へ変更 — 実装前は Red 予定**（詳細: `testspec-native-preview-side-and-default-raw.md` TC-001） |
+| Expected | viewType `md-wysiwyg-editor.wysiwyg`、**初期 `editorMode === "raw"`**（AD-016）、Preview 一方向、Document 正本同期、mode switch 非 I/O、dirty→save、RO キー、Raw 失敗/回復、Marp≠三点 Preview |
+| Actual | TC-070 viewType / 初期 raw と TC-071–079: Pass（Quality Gate green 後）|
 
-**Result:** ⏳ TC-070 期待更新済み（実装待ち）。TC-071–079 ✅ Pass（既存）
+**Result:** ✅ Pass（2026-09-29）— TC-070–079（`rename-md-wysiwyg`）
+
+### TC-153–156 (P0): Contribution / Extension ID rename (unit)
+
+| Step | Value |
+|------|-------|
+| Input | `package.json` name/publisher/repository / contributes / configuration |
+| Expected | `mshiono.md-wysiwyg-editor`・`md-wysiwyg-editor.*`・旧 `vsc-md-editor.*` 不在 |
+| Actual | ✅ Pass（2026-09-29）— `contribution-id-rename.test.ts`（Quality Gate green）|
+
+**Result:** ✅ Pass（2026-09-29）
 
 ### TC-104 (P0): Regression — GFM cell multi-para serializes to `<br />`
 
@@ -687,6 +713,8 @@ P0 + P1 の机上トレース（実装前）。
 - [x] Preview 可読性 CSS スコープ（TC-146–148）、Mermaid VS Code themeVariables（TC-149）
 - [x] 表示層が Document 正本を変更しない（TC-150, TC-082）
 - [x] Mermaid flowchart `foreignObject` ラベルが DOMPurify 後も残る（TC-152）
+- [x] Extension ID / viewType / コマンド / 設定キーが `md-wysiwyg-editor.*`（TC-070, TC-084, TC-153–155）
+- [x] 旧プレフィックス `vsc-md-editor.*` 非登録（TC-156; native-preview TC-007）
 - [x] 引用の非 paragraph 子（TC-110）、複合 mark（TC-118）、ツールバー 4 群（TC-123）
 
 ### C. Corner & Failure
@@ -715,6 +743,7 @@ P0 + P1 の机上トレース（実装前）。
 - **TC-130–132:** Expected・`preview-rich-embed.test.ts` ともソース表示契約へ更新済（意図的 Red — hide CSS 撤廃は build-agent）
 - TC-143–151 は testspec 設計済み — testspec-implementation / build-agent 向け Red 予定（`preview-mode-quality`）
 - TC-152 は回帰 Red（`fix-mermaid-dark-visibility`）— build-agent が Mermaid SVG sanitize で `foreignObject` 保持するまで Fail
+- **TC-153–156 / TC-070・084（貢献 ID）:** `rename-md-wysiwyg` — Quality Gate green 後 Trace Pass（`contribution-id-rename.test.ts` / `editor-modes` / `editor-switch-guard`）
 - 空選択 strike の stored mark は仕様「でよい」のため専用 TC なし（TipTap 既定）
 - `isMarpDocument()` 偽陽性（RK-013）は既存検出ロール維持。専用 TC は TC-142 で再評価のみ
 
@@ -724,6 +753,7 @@ P0 + P1 の机上トレース（実装前）。
 
 | 日付 | 変更内容 |
 |------|---------|
+| 2026-09-26 | `mermaid-default-preview-parity`: TC-149 Expected のグローバル `fontSize` を `'12px'` → `'16px'` に更新。詳細は [testspec-mermaid.md](mermaid/testspec-mermaid.md#suite-readable-viewport) |
 | 2026-09-06 | `mermaid-readable-viewport`: TC-149 Expected のグローバル `fontSize` を `'13px'` → `'8px'` に更新 |
 | 2026-09-06 | 密度 polish: TC-149 Expected のグローバル `fontSize` を `'8px'` → `'12px'` に更新 |
 | 2026-09-06 | TC-149 Expected に全 kind `themeVariables.fontSize === '13px'`（`var(--vscode-...)` なし）を追加（`mermaid-display-density`） |
@@ -752,3 +782,6 @@ P0 + P1 の机上トレース（実装前）。
 | 2026-08-31 | TC-107–123 追加；TC-010 / TC-012 Expected 拡張；TC-014 脚注 Out を明確化 | GFM 書式ツールバー（§2 / §8 / §9）。P0: strike `~~`、H3–H6、inlineCode vs codeBlock、blockquote 子保持、task list 往復+排他、HR `---`。P1: RO/Preview/Raw ガード、`1. [ ]` 正規化、`<del>`/`<s>`→`~~`、複合 mark、sanitize `del`/`s`（`mark` 非許可）、`aria-pressed`。既存三点モード・表 TC は不変（`gfm-format-toolbar`） |
 | 2026-09-06 | ノード寸法 polish（choice B）: Expected のグローバル `fontSize` を `'10px'` → `'12px'` に更新 |
 | 2026-09-19 | パス移設（`doc/test/`）。契約内容不変 |
+| 2026-09-29 | **BREAKING** `rename-md-wysiwyg`: 貢献 ID 期待を `md-wysiwyg-editor.*` に同期（TC-070/077/084 等）。TC-153–156 追加（Extension ID / viewType・commands / 設定キー / 旧プレフィックス不在）。**ファイル名は `testspec-vsc-md-wysiwyg.md` のまま**（systemspec feature-slug 維持）。テストコード未変更（design only） |
+| 2026-09-29 | testspec-implementation（Red）: TC-153–156 `contribution-id-rename.test.ts`；TC-070/077/084/141 と統合テストの貢献 ID 期待を `md-wysiwyg-editor.*` に更新 | `rename-md-wysiwyg` |
+| 2026-09-29 | Trace Results: TC-070 / TC-153–156 を Pass に同期（Quality Gate green 後。Expected 不変） | `rename-md-wysiwyg` |

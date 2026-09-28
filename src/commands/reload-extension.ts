@@ -21,7 +21,7 @@ export async function reloadExtensionHost(): Promise<void> {
 export function registerReloadExtensionCommand(
   _context: vscode.ExtensionContext,
 ): vscode.Disposable {
-  return vscode.commands.registerCommand('vsc-md-editor.reloadExtension', () => {
+  return vscode.commands.registerCommand('md-wysiwyg-editor.reloadExtension', () => {
     void reloadExtensionHost();
   });
 }

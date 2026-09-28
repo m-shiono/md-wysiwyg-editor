@@ -9,7 +9,7 @@ doc/test/testspec-<feature-slug>.md
 doc/test/mermaid/testspec-mermaid.md   # Mermaid 統合（AD-006）
 ```
 
-例: `doc/test/testspec-vsc-md-wysiwyg.md`
+例: `doc/test/testspec-vsc-md-wysiwyg.md`（feature-slug `vsc-md-wysiwyg` — 製品名 `md-wysiwyg-editor` とは別。リネームタスクでもファイル名は維持し、本文の貢献 ID のみ同期）
 
 `<feature-slug>` は `doc/requirements/systemspec.md` の Related Tests と一致させる。
 
@@ -64,3 +64,4 @@ spec-agent (propagation) → test-agent → build-agent → review-agent
 |------|---------|
 | 2026-08-29 | 初版。testspec 配置規約と spec-test-design スキル連携を定義 |
 | 2026-09-19 | doc-reorg: `doc/test/` へ移設。Mermaid 統合パスと requirements/design 参照を更新。契約内容不変 |
+| 2026-09-29 | `rename-md-wysiwyg`: feature-slug / ファイル名 `testspec-vsc-md-wysiwyg.md` は維持し、製品・貢献 ID は本文で `md-wysiwyg-editor.*` に同期する方針を明記 |

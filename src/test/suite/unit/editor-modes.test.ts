@@ -26,9 +26,9 @@ type VscodeTestShim = typeof vscode & {
 
 const mockVscode = vscode as VscodeTestShim;
 
-const CUSTOM_EDITOR_VIEW_TYPE = 'vsc-md-editor.wysiwyg';
-const MARP_PANEL_VIEW_TYPE = 'vsc-md-editor.marpPreview';
-const MARP_COMMAND = 'vsc-md-editor.showMarpPreview';
+const CUSTOM_EDITOR_VIEW_TYPE = 'md-wysiwyg-editor.wysiwyg';
+const MARP_PANEL_VIEW_TYPE = 'md-wysiwyg-editor.marpPreview';
+const MARP_COMMAND = 'md-wysiwyg-editor.showMarpPreview';
 
 function packageJsonPath(): string {
   // unit-bundle 実行時の __dirname は out/test 固定ではないため cwd を正とする
@@ -72,7 +72,7 @@ suite('Three-mode editor contracts (AD-016)', () => {
     return doc!;
   }
 
-  test('TC-070: package.json registers Custom Editor viewType vsc-md-editor.wysiwyg', () => {
+  test('TC-070: package.json registers Custom Editor viewType md-wysiwyg-editor.wysiwyg', () => {
     const pkg = JSON.parse(fs.readFileSync(packageJsonPath(), 'utf8')) as {
       contributes: {
         customEditors: Array<{ viewType: string }>;

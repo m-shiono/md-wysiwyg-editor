@@ -1,13 +1,34 @@
 import type { ThemeKind } from './theme-sync';
 
-/** Global Mermaid density — Default Markdown Preview–like (product choice B). */
-export const MERMAID_DENSITY_FONT_SIZE = '12px';
+/** Global Mermaid density — Default Markdown Preview / Mermaid default (~16px). */
+export const MERMAID_DENSITY_FONT_SIZE = '16px';
 
-/** Stock Mermaid flowchart hug→wrap (Mermaid defaults; explicit for contract/tests). */
+/** Mermaid default theme label family (Default Preview parity). */
+export const MERMAID_DENSITY_FONT_FAMILY =
+  '"trebuchet ms", verdana, arial, sans-serif';
+
+/**
+ * Label line-height — must not inherit editor Preview body 1.6.
+ * Mermaid createText sets inline line-height 1.5; we override with !important to 1
+ * so measure and paint match and the empty band under glyphs disappears.
+ */
+export const MERMAID_DENSITY_LINE_HEIGHT = '1';
+
+/** Flowchart hug→wrap. Padding is tighter than Mermaid stock 15 so glyphs sit closer to the node border. */
 export const MERMAID_FLOWCHART_LAYOUT = {
   wrappingWidth: 200,
-  padding: 15,
+  padding: 2,
 } as const;
+
+/** Shared density themeVariables (fontSize / family / line-height). */
+function densityThemeVariables(): Record<string, string> {
+  return {
+    fontSize: MERMAID_DENSITY_FONT_SIZE,
+    fontFamily: MERMAID_DENSITY_FONT_FAMILY,
+    // Mermaid paints via themeVariables; CSS measure/preview also set line-height 1.2
+    lineHeight: MERMAID_DENSITY_LINE_HEIGHT,
+  };
+}
 
 export type MermaidThemeConfig = {
   theme: string;
@@ -29,7 +50,7 @@ export function buildMermaidThemeConfig(kind: ThemeKind): MermaidThemeConfig {
     case 'light':
       return {
         theme: 'redux',
-        themeVariables: { fontSize: MERMAID_DENSITY_FONT_SIZE },
+        themeVariables: densityThemeVariables(),
         securityLevel: 'strict',
         flowchart,
       };
@@ -37,7 +58,7 @@ export function buildMermaidThemeConfig(kind: ThemeKind): MermaidThemeConfig {
     case 'highContrast':
       return {
         theme: 'redux-dark',
-        themeVariables: { fontSize: MERMAID_DENSITY_FONT_SIZE },
+        themeVariables: densityThemeVariables(),
         securityLevel: 'strict',
         flowchart,
       };
@@ -46,7 +67,7 @@ export function buildMermaidThemeConfig(kind: ThemeKind): MermaidThemeConfig {
       void _exhaustive;
       return {
         theme: 'redux',
-        themeVariables: { fontSize: MERMAID_DENSITY_FONT_SIZE },
+        themeVariables: densityThemeVariables(),
         securityLevel: 'strict',
         flowchart,
       };

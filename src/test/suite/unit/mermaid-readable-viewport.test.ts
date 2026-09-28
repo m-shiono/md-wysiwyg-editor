@@ -1,8 +1,8 @@
 /**
- * mermaid-readable-viewport — global fontSize 12px, title visibility,
- * Editor Preview / Rich Editor viewport fit / zoom / pan / scroll / re-fit / a11y,
+ * mermaid-readable-viewport — global fontSize 16px, label typography (trebuchet / line-height 1),
+ * title visibility, natural scale 1 (Fit-only contain) / center / zoom-origin-center / pan / scroll / a11y,
  * density≠viewport, Default Preview exclusion, redux / HIP / strict / nonce / ELK regressions.
- * Intentional Red until build-agent lands production (tests-only phase).
+ * Intentional Red until build-agent lands mermaid-label-metrics (tests-only phase).
  */
 import * as assert from 'assert';
 import * as fs from 'fs';
@@ -94,13 +94,26 @@ function hasTitleVisibilityContract(editorSrc: string, css: string): boolean {
   return hasPadOrOverflow && hasAlignOrShift;
 }
 
-/** Initial fit / contain / fit-to-viewport helpers present. */
-function hasInitialFitContract(editorSrc: string, css: string): boolean {
-  const joined = `${editorSrc}\n${css}`;
+/**
+ * Initial / re-render / themeUpdated contain the diagram in the frame.
+ * Scale may exceed 1 so a small diagram grows to the limiting edges.
+ */
+function hasContainFillOnRenderContract(editorSrc: string): boolean {
+  const callsFitAfterSuccess =
+    /setViewportUiEnabled\(\s*true\s*\)[\s\S]{0,500}fitToViewport\s*\(/.test(editorSrc);
+  const canScaleUp =
+    /function\s+fitToViewport[\s\S]{0,1600}Math\.min\(\s*frameW\s*\//.test(editorSrc) &&
+    !/Math\.min\(\s*1\s*,\s*frameW/.test(editorSrc);
+  return callsFitAfterSuccess && canScaleUp;
+}
+
+/** Fit button (aria-label Fit) still performs contain / fit-to-viewport. */
+function hasFitButtonContainContract(editorSrc: string): boolean {
   return (
-    /fitToViewport|fitMermaid|fit-to-viewport|contain.*viewport|object-fit\s*:\s*contain|mermaid.*\bfit\b/i.test(
-      joined,
-    ) && /mermaid-(?:viewport|preview|block)/i.test(joined)
+    /fitBtn[\s\S]{0,250}fitToViewport/i.test(editorSrc) ||
+    /aria-label\s*=\s*['"]Fit['"][\s\S]{0,500}fitToViewport/i.test(editorSrc) ||
+    (/function\s+fitToViewport\b/.test(editorSrc) &&
+      /fitBtn\.addEventListener\(\s*['"]click['"]/.test(editorSrc))
   );
 }
 
@@ -139,19 +152,18 @@ function hasScrollbarOverflowContract(css: string, editorSrc: string): boolean {
   );
 }
 
-function hasRefitOnRerender(editorSrc: string): boolean {
+/** After debounce re-render, viewport contain-fits again (may scale above 1). */
+function hasContainOnRerender(editorSrc: string): boolean {
   return (
-    /reFit|refit|fitToViewport|fitMermaidViewport/i.test(editorSrc) &&
-    /debounce|renderMermaid|mermaid\.render/i.test(editorSrc)
+    /debounce|renderMermaid|mermaid\.render|renderPreview/i.test(editorSrc) &&
+    hasContainFillOnRenderContract(editorSrc)
   );
 }
 
-function hasRefitOnThemeUpdated(editorSrc: string, themeSrc: string): boolean {
+/** themeUpdated bulk re-render contain-fits the viewport again. */
+function hasScaleOneOnThemeUpdated(editorSrc: string, themeSrc: string): boolean {
   const joined = `${editorSrc}\n${themeSrc}`;
-  return (
-    /themeUpdated|handleThemeUpdated/i.test(joined) &&
-    /reFit|refit|fitToViewport|fitMermaidViewport/i.test(joined)
-  );
+  return /themeUpdated|handleThemeUpdated/i.test(joined) && hasContainFillOnRenderContract(editorSrc);
 }
 
 function hasViewportUiInNodeView(editorSrc: string): boolean {
@@ -196,10 +208,71 @@ function hasElkRegistration(sources: string[]): boolean {
   return /@mermaid-js\/layout-elk/.test(joined) || /registerLayoutLoaders/.test(joined);
 }
 
+/**
+ * Smaller axes are centered after natural scale 1 and after Fit contain (AD-006 / §5 7c).
+ * Fit path should still call fitToViewport; centering helper may be shared.
+ */
+function hasCenterOnSmallerAxesContract(editorSrc: string, css: string): boolean {
+  const joined = `${editorSrc}\n${css}`;
+  const hasCenterHelper =
+    /center(?:After)?Fit|centerMermaid(?:Viewport)?|centerOnSmallerAxes|centerViewportAxes/i.test(
+      joined,
+    ) ||
+    /scrollLeft\s*=\s*Math\.(?:max|floor|round)\s*\([^;]*(?:\/\s*2|-\s*frame)/i.test(editorSrc) ||
+    /scrollTop\s*=\s*Math\.(?:max|floor|round)\s*\([^;]*(?:\/\s*2|-\s*frame)/i.test(editorSrc) ||
+    /justify-content\s*:\s*center/i.test(css) ||
+    /\.mermaid-viewport(?:-canvas)?[^{]*\{[^}]*(?:margin\s*:\s*auto|place-content\s*:\s*center)/i.test(
+      css,
+    ) ||
+    /translate\(\s*[^,)]+\/\s*2/i.test(editorSrc);
+  return hasCenterHelper;
+}
+
+/** Measure Host-nonce CSS matches density typography (font-size / family / line-height). */
+function hasMeasureLabelTypographyContract(editorSrc: string): boolean {
+  const hasFontSize =
+    /font-size:\s*\$\{MERMAID_DENSITY_FONT_SIZE\}|font-size:\s*16px/.test(editorSrc);
+  const hasFontFamily =
+    /font-family:\s*[^;]*trebuchet\s*ms/i.test(editorSrc) &&
+    /font-family:\s*[^;]*verdana/i.test(editorSrc) &&
+    /font-family:\s*[^;]*arial/i.test(editorSrc) &&
+    /font-family:\s*[^;]*sans-serif/i.test(editorSrc);
+  const hasLineHeight = /line-height:\s*1(?:\.0)?\s*!important\b/.test(editorSrc);
+  return hasFontSize && hasFontFamily && hasLineHeight;
+}
+
+/** Zoom pivot / transform-origin is the viewport center, not top-left (AD-007). */
+function hasZoomOriginViewportCenter(editorSrc: string, css: string): boolean {
+  const joined = `${editorSrc}\n${css}`;
+  const hasCenterOrigin =
+    /transform-origin\s*:\s*(?:center|50%\s+50%|center\s+center)/i.test(joined) ||
+    /transformOrigin\s*=\s*['"](?:center|50%)/i.test(editorSrc) ||
+    /zoomOrigin|viewportCenter|pivot.*(?:center|viewport)/i.test(joined);
+  const canvasPinnedTopLeft = /\.mermaid-viewport-canvas[^{]*\{[^}]*transform-origin\s*:\s*0\s+0/i.test(
+    css,
+  );
+  return hasCenterOrigin && !canvasPinnedTopLeft;
+}
+
+/** Fit after pan restores the same centering path (scale-1 / Fit share centerOnSmallerAxes). */
+function hasPanThenFitRecenterContract(editorSrc: string, css: string): boolean {
+  const fitClearsPanOffset =
+    /fitToViewport[\s\S]{0,400}scroll(?:Left|Top)\s*=/i.test(editorSrc) ||
+    /fitBtn[\s\S]{0,200}fitToViewport/i.test(editorSrc) ||
+    /fitToViewport[\s\S]{0,200}centerOnSmallerAxes/i.test(editorSrc);
+  return (
+    hasPanWithinFrameContract(editorSrc) &&
+    hasFitAriaLabel(editorSrc) &&
+    fitClearsPanOffset &&
+    hasCenterOnSmallerAxesContract(editorSrc, css) &&
+    hasFitButtonContainContract(editorSrc)
+  );
+}
+
 suite('mermaid-readable-viewport', () => {
   // --- P0 ---
 
-  test('TC-001: all kinds use themeVariables.fontSize 12px (not 8px/13px)', () => {
+  test('TC-MRV-001: all kinds use themeVariables.fontSize 16px (not 12px/8px/13px)', () => {
     const buildMermaidThemeConfig = getUtilExport<(kind: string) => MermaidThemeConfig>(
       'mermaid-theme',
       'buildMermaidThemeConfig',
@@ -209,8 +282,13 @@ suite('mermaid-readable-viewport', () => {
       const config = buildMermaidThemeConfig!(kind);
       assert.strictEqual(
         config.themeVariables?.fontSize,
+        '16px',
+        `kind ${kind}: themeVariables.fontSize must be '16px' (mermaid-readable-viewport)`,
+      );
+      assert.notStrictEqual(
+        config.themeVariables?.fontSize,
         '12px',
-        `kind ${kind}: themeVariables.fontSize must be '12px' (mermaid-readable-viewport)`,
+        `kind ${kind}: legacy '12px' must not remain`,
       );
       assert.notStrictEqual(
         config.themeVariables?.fontSize,
@@ -234,8 +312,8 @@ suite('mermaid-readable-viewport', () => {
       );
       assert.strictEqual(
         config.flowchart?.padding,
-        15,
-        `kind ${kind}: flowchart.padding must be 15`,
+        2,
+        `kind ${kind}: flowchart.padding must be 2 (tight hug to glyphs)`,
       );
     }
   });
@@ -262,8 +340,8 @@ suite('mermaid-readable-viewport', () => {
     const editorSrc = readRepoFile('media/editor.ts');
     const themeSrc = readRepoFile('src/utils/mermaid-theme.ts');
     assert.ok(
-      /fontSize\s*:\s*['"]12px['"]|MERMAID_DENSITY_FONT_SIZE\s*=\s*['"]12px['"]/.test(themeSrc),
-      "density primary means must be themeVariables.fontSize '12px'",
+      /fontSize\s*:\s*['"]16px['"]|MERMAID_DENSITY_FONT_SIZE\s*=\s*['"]16px['"]/.test(themeSrc),
+      "density primary means must be themeVariables.fontSize '16px'",
     );
     assert.ok(
       !densityUsesCssScaleAsPrimary(css, editorSrc),
@@ -271,7 +349,7 @@ suite('mermaid-readable-viewport', () => {
     );
   });
 
-  test('TC-003b: flowchart initialize passes wrappingWidth 200 and padding 15', () => {
+  test('TC-003b: flowchart initialize passes wrappingWidth 200 and padding from config', () => {
     const editorSrc = readRepoFile('media/editor.ts');
     assert.ok(
       /wrappingWidth\s*:\s*config\.flowchart\.wrappingWidth|wrappingWidth\s*:\s*200/.test(editorSrc),
@@ -279,7 +357,7 @@ suite('mermaid-readable-viewport', () => {
     );
     assert.ok(
       /padding\s*:\s*config\.flowchart\.padding|padding\s*:\s*15/.test(editorSrc),
-      'both mermaid.initialize paths must pass flowchart.padding (15)',
+      'both mermaid.initialize paths must pass flowchart.padding from config',
     );
     // Both initializeMermaidTheme and registerMermaidThemeRuntime.initialize
     const initializeBlocks = editorSrc.match(/mermaid\.initialize\s*\(\s*\{[\s\S]*?\}\s*\)/g) ?? [];
@@ -295,7 +373,7 @@ suite('mermaid-readable-viewport', () => {
     }
   });
 
-  test('TC-003c: Host-nonce measure CSS applies font-size 12px before mermaid.render', () => {
+  test('TC-003c: Host-nonce measure CSS applies font-size 16px before mermaid.render', () => {
     const editorSrc = readRepoFile('media/editor.ts');
     assert.ok(
       /ensureMermaidMeasureFontCss/.test(editorSrc),
@@ -306,8 +384,17 @@ suite('mermaid-readable-viewport', () => {
       'ensureMermaidMeasureFontCss must run before mermaid.render',
     );
     assert.ok(
-      /font-size:\s*\$\{MERMAID_DENSITY_FONT_SIZE\}|font-size:\s*12px/.test(editorSrc),
-      'measure CSS must set font-size 12px on label context',
+      /font-size:\s*\$\{MERMAID_DENSITY_FONT_SIZE\}|font-size:\s*16px/.test(editorSrc),
+      'measure CSS must set font-size 16px on label context',
+    );
+    assert.ok(
+      hasMeasureLabelTypographyContract(editorSrc),
+      'measure CSS must set font-size 16px, font-family trebuchet ms/verdana/arial/sans-serif, line-height 1 !important',
+    );
+    const themeSrc = readRepoFile('src/utils/mermaid-theme.ts');
+    assert.ok(
+      /MERMAID_DENSITY_FONT_SIZE\s*=\s*['"]16px['"]/.test(themeSrc),
+      "MERMAID_DENSITY_FONT_SIZE must be '16px' so measure matches presentation",
     );
     assert.ok(
       /setAttribute\(\s*['"]nonce['"]/.test(editorSrc) &&
@@ -347,16 +434,23 @@ suite('mermaid-readable-viewport', () => {
     );
   });
 
-  test('TC-005: initial viewport fits diagram within frame', () => {
+  test('TC-005: initial viewport contain-fits the frame and may scale above 1', () => {
     const editorSrc = readRepoFile('media/editor.ts');
-    const css = readRepoFile('media/editor.css');
     assert.ok(
-      hasInitialFitContract(editorSrc, css),
-      'after successful render, Mermaid NodeView must fit-to-viewport / contain (AD-004)',
+      hasContainFillOnRenderContract(editorSrc),
+      'after successful render, Mermaid NodeView must contain-fit the frame (scale may exceed 1)',
+    );
+    assert.ok(
+      hasFitButtonContainContract(editorSrc),
+      'Fit button must still perform contain / fit-to-viewport',
+    );
+    assert.ok(
+      hasScrollbarOverflowContract(readRepoFile('media/editor.css'), editorSrc),
+      'overflow scroll must remain available when the natural-size diagram exceeds the frame',
     );
   });
 
-  test('TC-006: zoom in/out changes viewport transform while fontSize stays 12px', () => {
+  test('TC-MRV-006: zoom in/out changes viewport transform while fontSize stays 16px', () => {
     const editorSrc = readRepoFile('media/editor.ts');
     const buildMermaidThemeConfig = getUtilExport<(kind: string) => MermaidThemeConfig>(
       'mermaid-theme',
@@ -367,8 +461,8 @@ suite('mermaid-readable-viewport', () => {
     for (const kind of KINDS) {
       assert.strictEqual(
         buildMermaidThemeConfig!(kind).themeVariables?.fontSize,
-        '12px',
-        'zoom must not change density fontSize away from 12px',
+        '16px',
+        'zoom must not change density fontSize away from 16px',
       );
     }
     assert.ok(
@@ -423,20 +517,20 @@ suite('mermaid-readable-viewport', () => {
     );
   });
 
-  test('TC-010: re-fit after source change / debounce re-render', () => {
+  test('TC-010: contain-fit again after source change / debounce re-render', () => {
     const editorSrc = readRepoFile('media/editor.ts');
     assert.ok(
-      hasRefitOnRerender(editorSrc),
-      'after debounce re-render, Mermaid block viewport must re-fit (AD-007)',
+      hasContainOnRerender(editorSrc),
+      'after debounce re-render, Mermaid block viewport must contain-fit the frame again',
     );
   });
 
-  test('TC-011: re-fit after themeUpdated bulk re-render', () => {
+  test('TC-011: contain-fit again after themeUpdated bulk re-render', () => {
     const editorSrc = readRepoFile('media/editor.ts');
     const themeSrc = readRepoFile('src/utils/mermaid-theme.ts');
     assert.ok(
-      hasRefitOnThemeUpdated(editorSrc, themeSrc),
-      'themeUpdated re-render path must re-fit Mermaid viewports (§5 正常系 9)',
+      hasScaleOneOnThemeUpdated(editorSrc, themeSrc),
+      'themeUpdated re-render path must contain-fit Mermaid viewports again',
     );
   });
 
@@ -580,12 +674,12 @@ suite('mermaid-readable-viewport', () => {
     );
   });
 
-  test('TC-019: per-diagram fontSize override remains allowed without breaking global 12px', () => {
+  test('TC-MRV-019: per-diagram fontSize override remains allowed without breaking global 16px', () => {
     const themeSrc = readRepoFile('src/utils/mermaid-theme.ts');
     const editorSrc = readRepoFile('media/editor.ts');
     assert.ok(
-      /fontSize\s*:\s*['"]12px['"]|MERMAID_DENSITY_FONT_SIZE\s*=\s*['"]12px['"]/.test(themeSrc),
-      "global default remains '12px'",
+      /fontSize\s*:\s*['"]16px['"]|MERMAID_DENSITY_FONT_SIZE\s*=\s*['"]16px['"]/.test(themeSrc),
+      "global default remains '16px'",
     );
     // Mermaid native frontmatter / %%{init}%% is delegated — do not strip themeVariables
     assert.ok(
@@ -596,7 +690,7 @@ suite('mermaid-readable-viewport', () => {
     );
   });
 
-  test('TC-020: related suites Expected align with global fontSize 12px', () => {
+  test('TC-MRV-020: related suites Expected align with global fontSize 16px', () => {
     const relatedSuites = [
       'src/test/suite/unit/mermaid-redux-elk-fidelity.test.ts',
       'src/test/suite/unit/fix-mermaid-edge-styles.test.ts',
@@ -611,8 +705,12 @@ suite('mermaid-readable-viewport', () => {
         `${suitePath} must not still require fontSize '13px'`,
       );
       assert.ok(
-        /fontSize[\s\S]{0,80}'12px'|fontSize[\s\S]{0,80}"12px"/.test(src),
-        `${suitePath} must expect fontSize '12px'`,
+        !/fontSize[\s\S]{0,80}'12px'|fontSize[\s\S]{0,80}"12px"/.test(src),
+        `${suitePath} must not still require fontSize '12px'`,
+      );
+      assert.ok(
+        /fontSize[\s\S]{0,80}'16px'|fontSize[\s\S]{0,80}"16px"/.test(src),
+        `${suitePath} must expect fontSize '16px'`,
       );
     }
     // Mermaid suites share doc/test/mermaid/testspec-mermaid.md after doc-reorg merge (AD-006/009)
@@ -622,11 +720,11 @@ suite('mermaid-readable-viewport', () => {
     ];
     for (const specPath of relatedSpecs) {
       const spec = readRepoFile(specPath);
-      // TC-facing Expected should prefer 12px; allow historical changelog mentions of 8px/10px/13px
+      // TC-facing Expected should prefer 16px; allow historical changelog mentions of 8px/10px/12px/13px
       const matrixOrTc149 =
-        /fontSize[^|\n]*12px|`12px`|'12px'|"12px"/.test(spec) ||
-        /TC-149[\s\S]{0,200}12px/.test(spec);
-      assert.ok(matrixOrTc149, `${specPath} Expected should align with global fontSize 12px`);
+        /fontSize[^|\n]*16px|`16px`|'16px'|"16px"/.test(spec) ||
+        /TC-149[\s\S]{0,200}16px/.test(spec);
+      assert.ok(matrixOrTc149, `${specPath} Expected should align with global fontSize 16px`);
     }
   });
 
@@ -667,5 +765,107 @@ suite('mermaid-readable-viewport', () => {
     );
     const themeSrc = readRepoFile('src/utils/mermaid-theme.ts');
     assert.ok(/buildMermaidThemeConfig/.test(themeSrc), 'theme helper stays in display-layer utils');
+  });
+
+  // --- mermaid-label-metrics (TC-MRV-024–027) ---
+
+  test('TC-MRV-024: natural scale and Fit center on axes smaller than the viewport', () => {
+    const editorSrc = readRepoFile('media/editor.ts');
+    const css = readRepoFile('media/editor.css');
+    assert.ok(
+      hasContainFillOnRenderContract(editorSrc),
+      'initial / re-render / themeUpdated must contain-fit the frame (scale may exceed 1)',
+    );
+    assert.ok(
+      hasFitButtonContainContract(editorSrc),
+      'Fit button path must still contain / fit-to-viewport',
+    );
+    assert.ok(
+      hasCenterOnSmallerAxesContract(editorSrc, css),
+      'after natural scale 1 and Fit, only smaller axes must be centered (pixel-perfect not required)',
+    );
+    assert.ok(
+      hasContainOnRerender(editorSrc) &&
+        hasScaleOneOnThemeUpdated(editorSrc, readRepoFile('src/utils/mermaid-theme.ts')),
+      're-render / themeUpdated must share the same contain-fit + centering contract',
+    );
+  });
+
+  test('TC-MRV-025: zoom pivot is viewport center while fontSize stays 16px', () => {
+    const editorSrc = readRepoFile('media/editor.ts');
+    const css = readRepoFile('media/editor.css');
+    const buildMermaidThemeConfig = getUtilExport<(kind: string) => MermaidThemeConfig>(
+      'mermaid-theme',
+      'buildMermaidThemeConfig',
+    );
+    assert.ok(buildMermaidThemeConfig, 'buildMermaidThemeConfig export required');
+    assert.ok(hasZoomControls(editorSrc), 'Zoom in / Zoom out required');
+    assert.ok(
+      hasZoomOriginViewportCenter(editorSrc, css),
+      'zoom transform-origin / pivot must be viewport center, not top-left (AD-007)',
+    );
+    for (const kind of KINDS) {
+      assert.strictEqual(
+        buildMermaidThemeConfig!(kind).themeVariables?.fontSize,
+        '16px',
+        'zoom must leave density fontSize at 16px',
+      );
+    }
+  });
+
+  test('TC-MRV-026: Host-nonce measure CSS uses font-size 16px, trebuchet family, line-height 1', () => {
+    const editorSrc = readRepoFile('media/editor.ts');
+    const themeSrc = readRepoFile('src/utils/mermaid-theme.ts');
+    const buildMermaidThemeConfig = getUtilExport<(kind: string) => MermaidThemeConfig>(
+      'mermaid-theme',
+      'buildMermaidThemeConfig',
+    );
+    assert.ok(buildMermaidThemeConfig, 'buildMermaidThemeConfig export required');
+    for (const kind of KINDS) {
+      assert.strictEqual(
+        buildMermaidThemeConfig!(kind).themeVariables?.fontSize,
+        '16px',
+        `kind ${kind}: themeVariables.fontSize must be '16px'`,
+      );
+      for (const value of Object.values(buildMermaidThemeConfig!(kind).themeVariables ?? {})) {
+        assert.ok(!value.includes('var(--vscode-'), `kind ${kind}: no var(--vscode-*): ${value}`);
+      }
+    }
+    assert.ok(
+      /ensureMermaidMeasureFontCss/.test(editorSrc),
+      'measure font CSS helper required before mermaid.render',
+    );
+    assert.ok(
+      /ensureMermaidMeasureFontCss\s*\(\s*\)[\s\S]{0,200}mermaid\.render/.test(editorSrc),
+      'ensureMermaidMeasureFontCss must run before mermaid.render',
+    );
+    assert.ok(
+      /MERMAID_DENSITY_FONT_SIZE\s*=\s*['"]16px['"]/.test(themeSrc),
+      "MERMAID_DENSITY_FONT_SIZE must be '16px'",
+    );
+    assert.ok(
+      hasMeasureLabelTypographyContract(editorSrc),
+      'measure CSS must set font-size 16px, font-family trebuchet ms/verdana/arial/sans-serif, line-height 1 !important',
+    );
+    assert.ok(
+      /setAttribute\(\s*['"]nonce['"]/.test(editorSrc) &&
+        /MERMAID_MEASURE_FONT_STYLE_ID|mermaid-density-measure-font/.test(editorSrc),
+      'measure CSS must use Host-identical nonce (no style-src unsafe-inline)',
+    );
+    assert.ok(
+      !/style-src[^;]*unsafe-inline/.test(readRepoFile('src/providers/markdown-editor-provider.ts')),
+      "must not add style-src 'unsafe-inline'",
+    );
+  });
+
+  test('TC-MRV-027: Fit after pan restores centered layout', () => {
+    const editorSrc = readRepoFile('media/editor.ts');
+    const css = readRepoFile('media/editor.css');
+    assert.ok(
+      hasPanThenFitRecenterContract(editorSrc, css),
+      'pan offset is allowed; next Fit must restore TC-MRV-024 centering (re-render uses scale 1, not Fit)',
+    );
+    assert.ok(hasZoomControls(editorSrc), 'zoom controls must remain after pan/Fit path');
+    assert.ok(hasFitAriaLabel(editorSrc), "Fit control must keep aria-label (e.g. 'Fit')");
   });
 });

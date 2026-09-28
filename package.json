@@ -1,5 +1,5 @@
 {
-  "name": "vsc-md-editor",
+  "name": "md-wysiwyg-editor",
   "displayName": "MD WYSIWYG Editor",
   "description": "WYSIWYG Markdown editor with tables, Mermaid, Marp preview, and image paste",
   "version": "0.1.0",
@@ -9,7 +9,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/m-shiono/vsc-md-editor.git"
+    "url": "https://github.com/m-shiono/md-wysiwyg-editor.git"
   },
   "engines": {
     "vscode": "^1.85.0"
@@ -18,18 +18,18 @@
     "Other"
   ],
   "activationEvents": [
-    "onCustomEditor:vsc-md-editor.wysiwyg",
+    "onCustomEditor:md-wysiwyg-editor.wysiwyg",
     "onLanguage:markdown",
-    "onCommand:vsc-md-editor.openWithWysiwyg",
-    "onCommand:vsc-md-editor.reloadExtension",
-    "onCommand:vsc-md-editor.showNativeMarkdownPreview",
-    "onCommand:vsc-md-editor.showNativeMarkdownPreviewToSide"
+    "onCommand:md-wysiwyg-editor.openWithWysiwyg",
+    "onCommand:md-wysiwyg-editor.reloadExtension",
+    "onCommand:md-wysiwyg-editor.showNativeMarkdownPreview",
+    "onCommand:md-wysiwyg-editor.showNativeMarkdownPreviewToSide"
   ],
   "main": "./dist/extension.js",
   "contributes": {
     "customEditors": [
       {
-        "viewType": "vsc-md-editor.wysiwyg",
+        "viewType": "md-wysiwyg-editor.wysiwyg",
         "displayName": "MD WYSIWYG Editor",
         "selector": [
           {
@@ -41,34 +41,34 @@
     ],
     "commands": [
       {
-        "command": "vsc-md-editor.toggleReadonly",
+        "command": "md-wysiwyg-editor.toggleReadonly",
         "title": "Toggle Readonly Mode",
         "category": "MD WYSIWYG Editor"
       },
       {
-        "command": "vsc-md-editor.showMarpPreview",
+        "command": "md-wysiwyg-editor.showMarpPreview",
         "title": "Show Marp Preview",
         "category": "MD WYSIWYG Editor"
       },
       {
-        "command": "vsc-md-editor.openWithWysiwyg",
+        "command": "md-wysiwyg-editor.openWithWysiwyg",
         "title": "Open with WYSIWYG Editor",
         "category": "MD WYSIWYG Editor",
         "icon": "$(open-preview)"
       },
       {
-        "command": "vsc-md-editor.reloadExtension",
+        "command": "md-wysiwyg-editor.reloadExtension",
         "title": "Reload Plugin",
         "category": "MD WYSIWYG Editor",
         "icon": "$(refresh)"
       },
       {
-        "command": "vsc-md-editor.showNativeMarkdownPreview",
+        "command": "md-wysiwyg-editor.showNativeMarkdownPreview",
         "title": "Open VS Code Markdown Preview",
         "category": "MD WYSIWYG Editor"
       },
       {
-        "command": "vsc-md-editor.showNativeMarkdownPreviewToSide",
+        "command": "md-wysiwyg-editor.showNativeMarkdownPreviewToSide",
         "title": "Open VS Code Markdown Preview",
         "category": "MD WYSIWYG Editor"
       }
@@ -76,7 +76,7 @@
     "configuration": {
       "title": "MD WYSIWYG Editor",
       "properties": {
-        "vsc-md-editor.autoRestoreOnBuiltinSwitch": {
+        "md-wysiwyg-editor.autoRestoreOnBuiltinSwitch": {
           "type": "boolean",
           "default": false,
           "description": "Automatically reopen the WYSIWYG editor when switching from it to the built-in Markdown editor via the IDE title bar."
@@ -86,19 +86,19 @@
     "menus": {
       "editor/title": [
         {
-          "command": "vsc-md-editor.reloadExtension",
+          "command": "md-wysiwyg-editor.reloadExtension",
           "when": "resourceExtname == .md",
           "group": "navigation@0",
           "icon": "$(refresh)"
         },
         {
-          "command": "vsc-md-editor.toggleReadonly",
-          "when": "activeCustomEditorId == vsc-md-editor.wysiwyg",
+          "command": "md-wysiwyg-editor.toggleReadonly",
+          "when": "activeCustomEditorId == md-wysiwyg-editor.wysiwyg",
           "group": "navigation"
         },
         {
-          "command": "vsc-md-editor.openWithWysiwyg",
-          "when": "resourceExtname == .md && activeCustomEditorId != vsc-md-editor.wysiwyg",
+          "command": "md-wysiwyg-editor.openWithWysiwyg",
+          "when": "resourceExtname == .md && activeCustomEditorId != md-wysiwyg-editor.wysiwyg",
           "group": "navigation"
         }
       ]

@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { getMarkdownEditorProvider } from '../../../utils/editor-provider-hook';
 
-const VIEW_TYPE = 'vsc-md-editor.wysiwyg';
+const VIEW_TYPE = 'md-wysiwyg-editor.wysiwyg';
 
 function tipTapDocJson(paragraphText: string): string {
   return JSON.stringify({
@@ -16,14 +16,14 @@ function tipTapDocJson(paragraphText: string): string {
 
 suite('Three-mode integration (AD-016)', () => {
   test('TC-080/082 integration: Preview RO, Markdown/Raw edit, Document sync', async () => {
-    const ext = vscode.extensions.getExtension('mshiono.vsc-md-editor');
+    const ext = vscode.extensions.getExtension('mshiono.md-wysiwyg-editor');
     assert.ok(ext);
     await ext.activate();
 
     const provider = getMarkdownEditorProvider();
     assert.ok(provider, 'MarkdownEditorProvider should be registered');
 
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vsc-md-modes-'));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-wysiwyg-modes-'));
     const mdPath = path.join(tmpDir, 'modes-integration.md');
     fs.writeFileSync(mdPath, '# Title\n\nInitial body\n');
     const uri = vscode.Uri.file(mdPath);

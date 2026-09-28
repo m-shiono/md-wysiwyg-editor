@@ -22,9 +22,12 @@ type VscodeTestShim = typeof vscode & {
 
 const mockVscode = vscode as VscodeTestShim;
 
-const WYSIWYG_VIEW_TYPE = 'vsc-md-editor.wysiwyg';
-const PREVIEW_COMMAND = 'vsc-md-editor.showNativeMarkdownPreview';
-const LEGACY_PREVIEW_COMMAND = 'vsc-md-editor.showNativeMarkdownPreviewToSide';
+const WYSIWYG_VIEW_TYPE = 'md-wysiwyg-editor.wysiwyg';
+const PREVIEW_COMMAND = 'md-wysiwyg-editor.showNativeMarkdownPreview';
+/** Product-internal ToSide alias (same handler); not the retired vsc-md-editor.* prefix. */
+const LEGACY_PREVIEW_COMMAND = 'md-wysiwyg-editor.showNativeMarkdownPreviewToSide';
+const RETIRED_PREVIEW_COMMAND = 'vsc-md-editor.showNativeMarkdownPreview';
+const RETIRED_PREVIEW_ALIAS = 'vsc-md-editor.showNativeMarkdownPreviewToSide';
 const NATIVE_PREVIEW_COMMAND_MODULE = 'src/commands/native-markdown-preview.ts';
 const DEFAULT_PREVIEW_A11Y_LABEL = 'Open Default Markdown Preview';
 const DIRTY_WARNING_MESSAGE =
@@ -306,6 +309,14 @@ suite('native-preview-side-and-default-raw (TC-001–021)', () => {
       commands.includes(LEGACY_PREVIEW_COMMAND),
       `expected commands to include alias ${LEGACY_PREVIEW_COMMAND}`,
     );
+    assert.ok(
+      !commands.includes(RETIRED_PREVIEW_COMMAND),
+      `retired prefix ${RETIRED_PREVIEW_COMMAND} must not be registered`,
+    );
+    assert.ok(
+      !commands.includes(RETIRED_PREVIEW_ALIAS),
+      `retired prefix ${RETIRED_PREVIEW_ALIAS} must not be registered`,
+    );
 
     const canonical = pkg.contributes.commands.find((c) => c.command === PREVIEW_COMMAND);
     assert.ok(canonical?.title, 'canonical command title required');
@@ -338,6 +349,10 @@ suite('native-preview-side-and-default-raw (TC-001–021)', () => {
     assert.ok(
       new RegExp(LEGACY_PREVIEW_COMMAND.replace(/\./g, '\\.')).test(cmdSrc),
       'Host must keep ToSide command ID as alias',
+    );
+    assert.ok(
+      !new RegExp(RETIRED_PREVIEW_COMMAND.replace(/\./g, '\\.')).test(cmdSrc),
+      'Host must not register retired vsc-md-editor preview command',
     );
   });
 

@@ -465,7 +465,7 @@ suite('preview-rich-embed (TC-124–142)', () => {
       contributes: { commands: Array<{ command: string }> };
     };
     assert.ok(
-      pkg.contributes.commands.some((c) => c.command === 'vsc-md-editor.showMarpPreview'),
+      pkg.contributes.commands.some((c) => c.command === 'md-wysiwyg-editor.showMarpPreview'),
       'showMarpPreview command must remain for panel coexistence',
     );
 

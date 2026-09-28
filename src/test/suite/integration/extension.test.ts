@@ -10,28 +10,32 @@ import { NO_MARP_MESSAGE } from '../../../utils/marp-constants';
 import { getWebviewCspContent } from '../../../utils/csp';
 
 suite('Extension integration tests', () => {
-  vscode.window.showInformationMessage('Start vsc-md-editor tests.');
+  vscode.window.showInformationMessage('Start md-wysiwyg-editor tests.');
 
   test('TC-001: extension activates and commands register', async () => {
-    const ext = vscode.extensions.getExtension('mshiono.vsc-md-editor');
+    const ext = vscode.extensions.getExtension('mshiono.md-wysiwyg-editor');
     assert.ok(ext);
     await ext.activate();
     const commands = await vscode.commands.getCommands(true);
-    assert.ok(commands.includes('vsc-md-editor.toggleReadonly'));
-    assert.ok(commands.includes('vsc-md-editor.showMarpPreview'));
-    assert.ok(commands.includes('vsc-md-editor.openWithWysiwyg'));
-    assert.ok(commands.includes('vsc-md-editor.reloadExtension'));
+    assert.ok(commands.includes('md-wysiwyg-editor.toggleReadonly'));
+    assert.ok(commands.includes('md-wysiwyg-editor.showMarpPreview'));
+    assert.ok(commands.includes('md-wysiwyg-editor.openWithWysiwyg'));
+    assert.ok(commands.includes('md-wysiwyg-editor.reloadExtension'));
+    assert.ok(
+      !commands.some((id) => id.startsWith('vsc-md-editor.')),
+      'TC-156: retired vsc-md-editor.* commands must not be registered',
+    );
   });
 
   test('TC-025/TC-026: readonly toggle via workspaceState', async () => {
-    const ext = vscode.extensions.getExtension('mshiono.vsc-md-editor');
+    const ext = vscode.extensions.getExtension('mshiono.md-wysiwyg-editor');
     assert.ok(ext);
     await ext.activate();
 
     const context = getExtensionContext();
     assert.ok(context, 'extension context should be set after activate');
 
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vsc-md-test-'));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-wysiwyg-test-'));
     const mdPath = path.join(tmpDir, 'readonly-test.md');
     fs.writeFileSync(mdPath, '# RO Test\n');
     const uri = vscode.Uri.file(mdPath);
@@ -58,7 +62,7 @@ suite('Extension integration tests', () => {
   });
 
   test('TC-062: output channel exists with correct name', async () => {
-    const ext = vscode.extensions.getExtension('mshiono.vsc-md-editor');
+    const ext = vscode.extensions.getExtension('mshiono.md-wysiwyg-editor');
     assert.ok(ext);
     await ext.activate();
     const channel = getOutputChannel();
@@ -70,17 +74,19 @@ suite('Extension integration tests', () => {
   });
 
   test('TC-003: open custom editor with sample markdown', async () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vsc-md-open-'));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-wysiwyg-open-'));
     const mdPath = path.join(tmpDir, 'sample.md');
     fs.writeFileSync(mdPath, '# Sample\n\nParagraph.\n');
     const uri = vscode.Uri.file(mdPath);
 
-    await vscode.commands.executeCommand('vscode.openWith', uri, 'vsc-md-editor.wysiwyg');
+    await vscode.commands.executeCommand('vscode.openWith', uri, 'md-wysiwyg-editor.wysiwyg');
     await sleep(2000);
 
     const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs);
     const customTab = tabs.find(
-      (t) => t.input instanceof vscode.TabInputCustom && t.input.viewType === 'vsc-md-editor.wysiwyg',
+      (t) =>
+        t.input instanceof vscode.TabInputCustom &&
+        t.input.viewType === 'md-wysiwyg-editor.wysiwyg',
     );
     assert.ok(customTab, 'Custom editor tab should open');
 

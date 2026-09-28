@@ -2,8 +2,8 @@ import * as vscode from 'vscode';
 import { logError, logInfo } from '../utils/logger';
 import type { MarkdownEditorProvider } from '../providers/markdown-editor-provider';
 
-const PREVIEW_COMMAND = 'vsc-md-editor.showNativeMarkdownPreview';
-const LEGACY_PREVIEW_COMMAND = 'vsc-md-editor.showNativeMarkdownPreviewToSide';
+const PREVIEW_COMMAND = 'md-wysiwyg-editor.showNativeMarkdownPreview';
+const LEGACY_PREVIEW_COMMAND = 'md-wysiwyg-editor.showNativeMarkdownPreviewToSide';
 const DIRTY_WARNING =
   'Document has unsaved changes. Save before opening the Markdown Preview?';
 

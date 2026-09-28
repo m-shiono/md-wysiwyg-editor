@@ -17,7 +17,7 @@ export class MarpPreviewManager {
   async show(uri: vscode.Uri, content: string): Promise<void> {
     if (!this.panel) {
       this.panel = vscode.window.createWebviewPanel(
-        'vsc-md-editor.marpPreview',
+        'md-wysiwyg-editor.marpPreview',
         'Marp Preview',
         vscode.ViewColumn.Beside,
         {
@@ -91,7 +91,7 @@ export function registerMarpPreviewCommand(
   _context: vscode.ExtensionContext,
   manager: MarpPreviewManager,
 ): vscode.Disposable {
-  return vscode.commands.registerCommand('vsc-md-editor.showMarpPreview', async () => {
+  return vscode.commands.registerCommand('md-wysiwyg-editor.showMarpPreview', async () => {
     const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab;
     if (activeTab?.input instanceof vscode.TabInputCustom && activeTab.input.uri.path.endsWith('.md')) {
       const uri = activeTab.input.uri;

@@ -234,8 +234,8 @@ suite('preview-mode-quality (TC-013, TC-143–151)', () => {
     [darkConfig, highContrastConfig, lightConfig].forEach(config => {
       assert.strictEqual(
         config.themeVariables?.fontSize,
-        '12px',
-        "themeVariables.fontSize must be '12px' (mermaid-display-density)",
+        '16px',
+        "themeVariables.fontSize must be '16px' (mermaid-display-density)",
       );
       if (config.themeVariables) {
         Object.values(config.themeVariables).forEach(val => {

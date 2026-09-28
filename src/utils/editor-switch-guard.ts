@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
 
-export const WYSIWYG_VIEW_TYPE = 'vsc-md-editor.wysiwyg';
+export const WYSIWYG_VIEW_TYPE = 'md-wysiwyg-editor.wysiwyg';
 
 /** Delay after custom editor dispose before reading active tab (ms). */
 export const DISPOSE_CHECK_DELAY_MS = 150;
 
-const CONFIG_SECTION = 'vsc-md-editor';
+const CONFIG_SECTION = 'md-wysiwyg-editor';
 const AUTO_RESTORE_KEY = 'autoRestoreOnBuiltinSwitch';
 
 const WYSIWYG_RESTORE_MESSAGE =
@@ -113,7 +113,7 @@ export function registerEditorSwitchGuard(
   _context: vscode.ExtensionContext,
 ): vscode.Disposable {
   return vscode.commands.registerCommand(
-    'vsc-md-editor.openWithWysiwyg',
+    'md-wysiwyg-editor.openWithWysiwyg',
     async (uri?: vscode.Uri) => {
       const target = uri ?? getActiveMarkdownUri();
       if (!target) {

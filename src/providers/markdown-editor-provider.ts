@@ -36,7 +36,7 @@ import type { WebviewInboundMessage, WebviewOutboundMessage } from '../webviews/
 import { showNativeMarkdownPreview } from '../commands/native-markdown-preview';
 
 export class MarkdownEditorProvider implements vscode.CustomEditorProvider<MarkdownDocument> {
-  static readonly viewType = 'vsc-md-editor.wysiwyg';
+  static readonly viewType = 'md-wysiwyg-editor.wysiwyg';
 
   private readonly _onDidChangeCustomDocument = new vscode.EventEmitter<
     vscode.CustomDocumentEditEvent<MarkdownDocument>
