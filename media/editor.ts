@@ -98,12 +98,14 @@ function ensureMermaidMeasureFontCss(): void {
     document.head.appendChild(styleEl);
   }
   styleEl.textContent = [
-    `.nodeLabel, .edgeLabel, .label, .labelBkg, foreignObject div, foreignObject span {`,
+    `.nodeLabel, .edgeLabel, .label, .labelBkg, foreignObject div, foreignObject span, foreignObject p, .nodeLabel p {`,
     `  font-size: ${MERMAID_DENSITY_FONT_SIZE};`,
     // Literals required for measure contract (TC-MRV-026); keep in sync with MERMAID_DENSITY_*
     `  font-family: "trebuchet ms", verdana, arial, sans-serif;`,
     // !important beats Mermaid createText inline line-height: 1.5 during measure
     `  line-height: 1 !important;`,
+    `  margin: 0 !important;`,
+    `  padding: 0 !important;`,
     `}`,
   ].join('\n');
 }

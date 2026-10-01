@@ -2,7 +2,7 @@
   "name": "md-wysiwyg-editor",
   "displayName": "MD WYSIWYG Editor",
   "description": "WYSIWYG Markdown editor with tables, Mermaid, Marp preview, and image paste",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "mshiono",
   "author": "mshiono",
   "icon": "media/icon.png",

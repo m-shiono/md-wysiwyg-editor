@@ -279,4 +279,70 @@ suite('preview-mode-quality (TC-013, TC-143–151)', () => {
       'serialize after display-layer ops must keep mermaid frontmatter',
     );
   });
+
+  // --- Preview UX & Mermaid display refinements ---
+
+  test('TC-153: Preview mode allows text selection while maintaining readonly', () => {
+    const css = readRepoFile('media/editor.css');
+    assert.ok(
+      /body\[data-mode=['"]preview['"]\]\s+#editor\s*\{[^}]*user-select:\s*text/m.test(css),
+      'body[data-mode="preview"] #editor must allow user-select: text',
+    );
+    assert.ok(
+      !/body\[data-mode=['"]preview['"]\]\s+#editor\s*\{[^}]*user-select:\s*none/m.test(css),
+      'body[data-mode="preview"] #editor must not block selection with user-select: none',
+    );
+  });
+
+  test('TC-154: Mermaid viewport has expanded vertical area (min-height >= 300px)', () => {
+    const css = readRepoFile('media/editor.css');
+    const match = css.match(/\.mermaid-viewport\s*\{([^}]+)\}/);
+    assert.ok(match, '.mermaid-viewport rule must exist in editor.css');
+    const minHeightMatch = match[1].match(/min-height:\s*(\d+)px/);
+    assert.ok(minHeightMatch, '.mermaid-viewport must have min-height in px');
+    const minHeightPx = parseInt(minHeightMatch[1], 10);
+    assert.ok(
+      minHeightPx >= 300,
+      `.mermaid-viewport min-height must be >= 300px for comfortable viewing (got ${minHeightPx}px)`,
+    );
+  });
+
+  test('TC-155: Code blocks hide ProseMirror-trailingBreak to avoid empty trailing newlines', () => {
+    const css = readRepoFile('media/editor.css');
+    assert.ok(
+      /\.mermaid-source\s+\.ProseMirror-trailingBreak[\s\S]*?display:\s*none/m.test(css),
+      '.mermaid-source .ProseMirror-trailingBreak must be display: none',
+    );
+  });
+
+  test('TC-156: Mermaid node paragraph elements reset margin/padding in measure and display CSS', () => {
+    const css = readRepoFile('media/editor.css');
+    const editorSrc = readRepoFile('media/editor.ts');
+
+    // Display CSS in media/editor.css
+    assert.ok(
+      /\.mermaid-preview\s+foreignObject\s+p/.test(css),
+      'editor.css must include foreignObject p in label typography rule',
+    );
+    assert.ok(
+      /\.mermaid-preview[^{]*foreignObject\s+p[^{]*\{[^}]*margin:\s*0\s*!important/s.test(css),
+      'editor.css must reset margin to 0 !important for mermaid foreignObject p',
+    );
+    assert.ok(
+      /\.mermaid-preview[^{]*foreignObject\s+p[^{]*\{[^}]*padding:\s*0\s*!important/s.test(css),
+      'editor.css must reset padding to 0 !important for mermaid foreignObject p',
+    );
+
+    // Measure CSS in media/editor.ts
+    assert.ok(
+      /foreignObject\s+p/.test(editorSrc),
+      'editor.ts ensureMermaidMeasureFontCss must target foreignObject p',
+    );
+    assert.ok(
+      /margin:\s*0\s*!important/.test(editorSrc),
+      'editor.ts ensureMermaidMeasureFontCss must set margin: 0 !important',
+    );
+  });
 });
+
+
