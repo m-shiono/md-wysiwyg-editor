@@ -371,7 +371,7 @@ body[data-readonly='true'] #link-input-bar {
   align-items: center;
   overflow: auto;
   max-height: min(70vh, 640px);
-  min-height: 80px;
+  min-height: 360px;
   border: 1px solid var(--vscode-panel-border);
   border-radius: 2px;
   background: transparent;
@@ -412,9 +412,13 @@ body[data-readonly='true'] #link-input-bar {
 .mermaid-preview .label,
 .mermaid-preview .labelBkg,
 .mermaid-preview foreignObject div,
-.mermaid-preview foreignObject span {
+.mermaid-preview foreignObject span,
+.mermaid-preview foreignObject p,
+.mermaid-preview .nodeLabel p {
   font-family: "trebuchet ms", verdana, arial, sans-serif;
   line-height: 1 !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
 /* Natural SVG size inside viewport — do not force max-width (fit uses transform) */
@@ -454,6 +458,11 @@ body[data-readonly='true'] #link-input-bar {
   margin-top: 8px;
 }
 
+.mermaid-source .ProseMirror-trailingBreak,
+.ProseMirror pre .ProseMirror-trailingBreak {
+  display: none;
+}
+
 #preview-marp-root {
   overflow: auto;
   flex: 1;
@@ -477,10 +486,9 @@ body[data-mode='preview'] #editor .ProseMirror {
   opacity: 0.95;
 }
 
-/* Preview: strict RO — block text selection; scroll remains on #editor (overflow: auto) */
+/* Preview: strict RO — allow text selection for copying; scroll remains on #editor (overflow: auto) */
 body[data-mode='preview'] #editor {
-  user-select: none;
-  cursor: default;
+  user-select: text;
 }
 
 body[data-mode='preview'] #editor .ProseMirror {
