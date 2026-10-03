@@ -343,6 +343,45 @@ suite('preview-mode-quality (TC-013, TC-143–151)', () => {
       'editor.ts ensureMermaidMeasureFontCss must set margin: 0 !important',
     );
   });
+
+  test('TC-157: Mermaid viewport automatically fits on display/resize and guards against zero-dimensions', () => {
+    const editorSrc = readRepoFile('media/editor.ts');
+
+    // ResizeObserver observation on viewport
+    assert.ok(
+      /ResizeObserver/.test(editorSrc) &&
+        /resizeObserver\?\.observe\(\s*viewport\s*\)/.test(editorSrc),
+      'editor.ts must observe viewport using ResizeObserver for auto-fit on layout',
+    );
+
+    // Guard against zero / unlaidout dimensions in fitToViewport
+    assert.ok(
+      /if\s*\(\s*viewport\.clientWidth\s*<=\s*\d+/.test(editorSrc),
+      'fitToViewport must guard against zero or unlaidout viewport clientWidth',
+    );
+
+    // Disconnect ResizeObserver on node destruction
+    assert.ok(
+      /resizeObserver\?\.disconnect\(\)/.test(editorSrc),
+      'editor.ts must disconnect ResizeObserver when Mermaid node is destroyed',
+    );
+  });
+
+  test('TC-158: Mode switch to markdown or preview triggers Mermaid viewport auto-fit', () => {
+    const editorSrc = readRepoFile('media/editor.ts');
+
+    // mermaidFitCallbacks set for tracking active viewports
+    assert.ok(
+      /mermaidFitCallbacks\s*=\s*new Set/.test(editorSrc),
+      'editor.ts must declare mermaidFitCallbacks set',
+    );
+
+    // setModeUi dispatches fit callbacks on mode transition
+    assert.ok(
+      /setModeUi[\s\S]*?mermaidFitCallbacks/.test(editorSrc),
+      'setModeUi must trigger mermaidFitCallbacks when entering markdown or preview',
+    );
+  });
 });
 
 
