@@ -72,6 +72,7 @@ const MERMAID_TITLE_VIEWBOX_PAD = 24;
 const MERMAID_TITLE_VIEWBOX_PAD_X = 36;
 const mermaidTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const mermaidRerenderCallbacks = new Set<() => void>();
+const mermaidFitCallbacks = new Set<() => void>();
 let mermaidThemeRerenderTimer: ReturnType<typeof setTimeout> | undefined;
 /** ELK ローダは初回 layout:elk 要求時のみ動的 import（AD-007）。 */
 let elkLayoutRegisterPromise: Promise<void> | undefined;
@@ -390,6 +391,7 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
 
       const viewId = `mermaid-nv-${Math.random().toString(36).slice(2, 10)}`;
       let viewportScale = 1;
+      let userInteracted = false;
       const detachPan = attachMermaidViewportPan(viewport);
 
       const setViewportUiEnabled = (enabled: boolean): void => {
@@ -406,7 +408,35 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
         }
       };
 
+      const fit = (): void => {
+        if (viewport.clientWidth > 16 && viewport.clientHeight > 16) {
+          const svgEl = preview.querySelector("svg");
+          if (svgEl) {
+            ensureTitleVisible(svgEl as SVGSVGElement);
+          }
+          viewportScale = fitToViewport(viewport, canvas, preview);
+        }
+      };
+
+      const resizeObserver =
+        typeof ResizeObserver !== "undefined"
+          ? new ResizeObserver((entries) => {
+              for (const entry of entries) {
+                if (
+                  entry.contentRect.width > 16 &&
+                  entry.contentRect.height > 16
+                ) {
+                  if (!userInteracted) {
+                    fit();
+                  }
+                }
+              }
+            })
+          : undefined;
+      resizeObserver?.observe(viewport);
+
       const applyScale = (next: number): void => {
+        userInteracted = true;
         viewportScale = clampMermaidViewportScale(next);
         applyViewportZoom(canvas, viewportScale);
       };
@@ -432,6 +462,8 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
       fitBtn.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
+        userInteracted = false;
+        fit();
         // Fit clears pan offset via fitToViewport → centerOnSmallerAxes (AD-007/008)
         viewportScale = fitToViewport(viewport, canvas, preview);
       });
@@ -481,6 +513,7 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
       };
 
       mermaidRerenderCallbacks.add(rerenderFromDom);
+      mermaidFitCallbacks.add(fit);
       renderPreview(node.textContent);
 
       return {
@@ -497,6 +530,8 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
           return true;
         },
         destroy: () => {
+          resizeObserver?.disconnect();
+          mermaidFitCallbacks.delete(fit);
           mermaidRerenderCallbacks.delete(rerenderFromDom);
           detachPan();
           const existing = mermaidTimers.get(viewId);
@@ -922,15 +957,21 @@ function fitToViewport(
     centerOnSmallerAxes(viewport);
     return 1;
   }
+  if (viewport.clientWidth <= 16 || viewport.clientHeight <= 16) {
+    return 1;
+  }
   // Reset transform to measure natural size
   applyViewportZoom(canvas, 1);
   const frameW = Math.max(1, viewport.clientWidth - 8);
   const frameH = Math.max(1, viewport.clientHeight - 8);
+  const vb = (svg as SVGSVGElement).viewBox?.baseVal;
   const naturalW =
+    (vb && vb.width > 0 ? vb.width : 0) ||
     (svg as SVGSVGElement).width?.baseVal?.value ||
     svg.getBoundingClientRect().width ||
     1;
   const naturalH =
+    (vb && vb.height > 0 ? vb.height : 0) ||
     (svg as SVGSVGElement).height?.baseVal?.value ||
     svg.getBoundingClientRect().height ||
     1;
@@ -1255,6 +1296,17 @@ function setModeUi(mode: EditorMode): void {
   }
   if (rawEl) {
     rawEl.readOnly = !canEdit || mode !== "raw";
+  }
+
+  if (
+    mode === "markdown" ||
+    (mode === "preview" && previewSurface === "tiptap")
+  ) {
+    requestAnimationFrame(() => {
+      for (const fit of mermaidFitCallbacks) {
+        fit();
+      }
+    });
   }
 }
 
