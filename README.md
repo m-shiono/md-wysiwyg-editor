@@ -2,7 +2,7 @@
 
 VS Code 向け WYSIWYG Markdown エディタ拡張。チーム技術ドキュメントを Git 管理しながら、リッチな表・図・画像を直感的に編集する。
 
-**Extension ID:** `mshiono.md-wysiwyg-editor` · **Repository:** https://github.com/m-shiono/md-wysiwyg-editor.git
+**Extension ID:** `mshiono.vsc-md-editor` · **Repository:** https://github.com/m-shiono/md-wysiwyg-editor.git
 
 ## 機能（MVP）
 

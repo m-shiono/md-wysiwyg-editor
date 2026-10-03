@@ -14,12 +14,13 @@ VS Code 拡張 **md-wysiwyg-editor** の振る舞い仕様（WHAT）。実装詳
 
 **Custom Editor viewType:** `md-wysiwyg-editor.wysiwyg`（`package.json` `contributes.customEditors` と一致）
 
-### Extension 識別子（正本 — `rename-md-wysiwyg`）
+### Extension 識別子（正本）
 
 | 種別 | 値 |
 |------|-----|
-| Extension name（`package.json` `name`） | `md-wysiwyg-editor` |
-| Extension ID（`publisher.name`） | `mshiono.md-wysiwyg-editor` |
+| Extension name（`package.json` `name`） | `vsc-md-editor`（Marketplace 登録 ID と一致） |
+| Extension ID（`publisher.name`） | `mshiono.vsc-md-editor` |
+| 表示名（`displayName`） | `MD WYSIWYG Editor` |
 | Publisher | `mshiono` |
 | viewType | `md-wysiwyg-editor.wysiwyg` |
 | commands / configuration / activationEvents | `md-wysiwyg-editor.*` |

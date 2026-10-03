@@ -1,20 +1,25 @@
 /**
- * TC-153–156: contribution / Extension ID rename to md-wysiwyg-editor.*
- * (rename-md-wysiwyg — package.json / src use md-wysiwyg-editor.*)
+ * TC-153–156: Marketplace Extension ID (vsc-md-editor) and contribution IDs (md-wysiwyg-editor.*)
+ *
+ * NOTE: Marketplace was registered originally as `mshiono.vsc-md-editor`.
+ * VS Code Marketplace does NOT allow changing Extension IDs once created.
+ * Therefore, `package.json.name` MUST remain `vsc-md-editor` so `vsce publish` works.
+ * Internal commands, viewType, and configuration use `md-wysiwyg-editor.*`.
  */
 import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const EXTENSION_NAME = 'md-wysiwyg-editor';
+// Marketplace registration identifier (must not change, or vsce publish will fail)
+const MARKETPLACE_EXTENSION_NAME = 'vsc-md-editor';
 const EXTENSION_PUBLISHER = 'mshiono';
-const EXTENSION_ID = `${EXTENSION_PUBLISHER}.${EXTENSION_NAME}`;
+const EXTENSION_ID = `${EXTENSION_PUBLISHER}.${MARKETPLACE_EXTENSION_NAME}`;
+
 const REPOSITORY_URL = 'https://github.com/m-shiono/md-wysiwyg-editor.git';
 const VIEW_TYPE = 'md-wysiwyg-editor.wysiwyg';
 const SETTINGS_KEY = 'md-wysiwyg-editor.autoRestoreOnBuiltinSwitch';
 const LEGACY_SETTINGS_KEY = 'vsc-md-editor.autoRestoreOnBuiltinSwitch';
-const LEGACY_PREFIX = 'vsc-md-editor.';
-const LEGACY_EXTENSION_ID = 'mshiono.vsc-md-editor';
+const LEGACY_CONTRIBUTION_PREFIX = 'vsc-md-editor.';
 
 const REQUIRED_COMMANDS = [
   'md-wysiwyg-editor.openWithWysiwyg',
@@ -26,6 +31,7 @@ const REQUIRED_COMMANDS = [
 
 type PackageJson = {
   name: string;
+  displayName: string;
   publisher: string;
   repository?: { type?: string; url?: string };
   activationEvents?: string[];
@@ -72,15 +78,24 @@ function collectContributionStrings(pkg: PackageJson): string[] {
   return values;
 }
 
-suite('Contribution ID rename (md-wysiwyg-editor)', () => {
-  test('TC-153: package.json name/publisher/repository match Extension ID md-wysiwyg-editor', () => {
+suite('Contribution ID & Marketplace ID guard', () => {
+  test('TC-153: package.json name must be vsc-md-editor for Marketplace publish compatibility', () => {
     const pkg = loadPackageJson();
-    assert.strictEqual(pkg.name, EXTENSION_NAME);
+    assert.strictEqual(
+      pkg.name,
+      MARKETPLACE_EXTENSION_NAME,
+      'package.json name must be "vsc-md-editor" to match registered Visual Studio Marketplace extension ID (mshiono.vsc-md-editor). Changing this breaks CLI publishing.',
+    );
     assert.strictEqual(pkg.publisher, EXTENSION_PUBLISHER);
     assert.strictEqual(
       `${pkg.publisher}.${pkg.name}`,
       EXTENSION_ID,
-      'Extension ID must be mshiono.md-wysiwyg-editor',
+      `Extension ID must be ${EXTENSION_ID}`,
+    );
+    assert.strictEqual(
+      pkg.displayName,
+      'MD WYSIWYG Editor',
+      'displayName must present "MD WYSIWYG Editor" to users in Marketplace and VS Code UI',
     );
     assert.ok(pkg.repository?.url, 'repository.url required');
     assert.ok(
@@ -133,28 +148,17 @@ suite('Contribution ID rename (md-wysiwyg-editor)', () => {
     );
   });
 
-  test('TC-156: package.json contributes have no vsc-md-editor. or mshiono.vsc-md-editor', () => {
-    const raw = fs.readFileSync(packageJsonPath(), 'utf8');
+  test('TC-156: package.json contributes have no legacy vsc-md-editor. prefixes', () => {
     const pkg = loadPackageJson();
     const contributionStrings = collectContributionStrings(pkg);
 
-    const legacyHits = contributionStrings.filter(
-      (value) => value.includes(LEGACY_PREFIX) || value.includes(LEGACY_EXTENSION_ID),
+    const legacyHits = contributionStrings.filter((value) =>
+      value.includes(LEGACY_CONTRIBUTION_PREFIX),
     );
     assert.deepStrictEqual(
       legacyHits,
       [],
-      `legacy contribution IDs must be absent; found: ${legacyHits.join(', ')}`,
-    );
-    assert.ok(
-      !raw.includes(LEGACY_EXTENSION_ID),
-      `package.json must not contain Extension ID ${LEGACY_EXTENSION_ID}`,
-    );
-    // name/display strings may mention product history; contributes scan above is authoritative.
-    // Still require no contribution-style "vsc-md-editor." prefix anywhere in package.json text.
-    assert.ok(
-      !raw.includes(LEGACY_PREFIX),
-      `package.json must not contain contribution prefix ${LEGACY_PREFIX}`,
+      `legacy contribution IDs (vsc-md-editor.*) must be absent; found: ${legacyHits.join(', ')}`,
     );
   });
 });
