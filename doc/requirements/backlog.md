@@ -1,4 +1,4 @@
-# Backlog — vsc-md-wysiwyg（MVP 外）
+# Backlog — md-wysiwyg-editor（MVP 外）
 
 MVP（Phase 1）スコープ外の機能・改善項目。正本の振る舞い仕様は [systemspec.md](./systemspec.md)。本書は優先度未確定の積み残しリスト。
 
@@ -10,7 +10,7 @@ MVP（Phase 1）スコープ外の機能・改善項目。正本の振る舞い�
 |----|------|------|------|
 | BL-001 | Marp WYSIWYG 編集 | スライドのビジュアル編集 | UD-003, Intent Out |
 | BL-002 | Mermaid ビジュアルエディタ | ダイアグラムの GUI 編集 | UD-004, Intent Out |
-| BL-003 | ワークスペース全体 Readonly | 設定 `mdEditor.workspaceReadonly` + 開いている Editor へ一括適用 | AD-006, UD-005 |
+| BL-003 | ワークスペース全体 Readonly | 設定 `md-wysiwyg-editor.workspaceReadonly` + 開いている Editor へ一括適用 | AD-006, UD-005 |
 | BL-004 | UI i18n | メッセージ外部化・多言語 UI（MVP は英語） | Requirements Frontend |
 | BL-005 | 追加 Markdown ノード | 脚注、定義リスト、タスクリスト以外の拡張記法 WYSIWYG | §2 Non-Goals |
 
@@ -42,7 +42,6 @@ MVP（Phase 1）スコープ外の機能・改善項目。正本の振る舞い�
 
 | ID | 項目 | 概要 | 参照 |
 |----|------|------|------|
-| BL-015 | Marketplace 公開 | VSIX 署名・ストア掲載。手順書は [deployment.md](./deployment.md) 作成済 — 初回 `vsce publish` / ストア掲載は未完 | deployment.md |
 | BL-016 | CHANGELOG 自動化 | Mermaid/Marp 依存更新の影響記載 | RK-007 |
 
 ---
@@ -52,5 +51,6 @@ MVP（Phase 1）スコープ外の機能・改善項目。正本の振る舞い�
 | 日付 | 変更 |
 |------|------|
 | 2026-08-29 | BL-011 を resolved に更新（表ソフト上限確定） |
-| 2026-09-19 | BL-015: deployment.md 作成を反映（手順書は済、初回公開は未完） |
 | 2026-09-19 | パス移設（`doc/requirements/`）。内容不変 |
+| 2026-10-03 | doc 整理: `backlog.md` へリネーム、リンク・設定キーを現行製品名に同期 |
+| 2026-10-03 | doc 整理: Marketplace 関連項目（BL-015）を削除 |

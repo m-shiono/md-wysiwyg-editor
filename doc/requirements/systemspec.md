@@ -16,15 +16,19 @@ VS Code 拡張 **md-wysiwyg-editor** の振る舞い仕様（WHAT）。実装詳
 
 ### Extension 識別子（正本）
 
-| 種別 | 値 |
-|------|-----|
-| Extension name（`package.json` `name`） | `vsc-md-editor`（Marketplace 登録 ID と一致） |
-| Extension ID（`publisher.name`） | `mshiono.vsc-md-editor` |
-| 表示名（`displayName`） | `MD WYSIWYG Editor` |
-| Publisher | `mshiono` |
-| viewType | `md-wysiwyg-editor.wysiwyg` |
-| commands / configuration / activationEvents | `md-wysiwyg-editor.*` |
-| Repository | https://github.com/m-shiono/md-wysiwyg-editor.git |
+> **識別子・命名の統一方針:**
+> - `package.json` の `name`: `vsc-md-editor`（Extension ID: `mshiono.vsc-md-editor`）を採用。
+> - **その他の識別子の統一**: `package.json` の `name` 以外のすべての要素（表示名 `displayName: "MD WYSIWYG Editor"`、`viewType: "md-wysiwyg-editor.wysiwyg"`、コマンド ID `md-wysiwyg-editor.*`、設定キー `md-wysiwyg-editor.*`、リポジトリ名）は、すべて `md-wysiwyg-editor` で統一されている。
+
+| 種別 | 値 | 備考 |
+|------|-----|------|
+| Extension name（`package.json` `name`） | `vsc-md-editor` | 拡張機能識別名（`vsc-md-editor` を採用） |
+| Extension ID（`publisher.name`） | `mshiono.vsc-md-editor` | 完全修飾識別子 |
+| 表示名（`displayName`） | `MD WYSIWYG Editor` | UI 表示名 |
+| Publisher | `mshiono` | パブリッシャー |
+| viewType | `md-wysiwyg-editor.wysiwyg` | `md-wysiwyg-editor` で統一 |
+| commands / configuration / activationEvents | `md-wysiwyg-editor.*` | `md-wysiwyg-editor` で統一 |
+| Repository | `https://github.com/m-shiono/md-wysiwyg-editor.git` | `md-wysiwyg-editor` で統一 |
 
 ### アーキテクチャ方針
 
@@ -897,7 +901,6 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 ### Non-Goals
 
 - IDE タイトルバーの Preview / Markdown トグル自体の非表示・上書き（VS Code / Cursor API 非提供）
-- Marketplace 公開手順の詳細（[deployment.md](../deploy/deployment.md) を正本とする）
 - Default Preview 用 editor/title アイコンの追加（本タスク）
 - 標準 Preview の Custom Editor Webview 埋め込み、および 4 つ目の `editorMode`（§1 Non-Goals）
 - Default Preview 失敗時の `markdown.showPreviewToSide` フォールバック（§1 Non-Goals）
@@ -914,7 +917,7 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 
 | 項目 | 参照 |
 |------|------|
-| Marp WYSIWYG 編集 | Intent Out / [backlog](backlog-vsc-md-wysiwyg.md) |
+| Marp WYSIWYG 編集 | Intent Out / [backlog](backlog.md) |
 | Mermaid ビジュアルエディタ | 同上 |
 | ワークスペース全体 Readonly | UD-005 Phase 2 / backlog |
 | 画像パス自動更新（ファイル移動時） | UD-007 |
@@ -977,7 +980,7 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | [doc/test/mermaid/testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) | **作成済** — HIP 付き sanitize 回帰維持。テーマ／CSS Expected は **`mermaid-redux-elk-fidelity` で更新要**（`redux`/`redux-dark`＋nonce presentation 再注入） |
 | [doc/test/mermaid/testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) | **作成済** — ソース併記・Preview RO・HIP / strict。テーマ／CSS 前提は **`mermaid-redux-elk-fidelity` で更新要**。flowchart エッジ CSP＋nonce 再注入回帰必須；`'unsafe-inline'` なし |
 | [doc/test/mermaid/testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) | **未作成** — 後続 `spec-test-design`。kind→redux マップ、nonce 再注入、ELK オプトイン／遅延ロード、グローバル強制 ELK なし、strict / HIP / ソース併記 / Preview RO 回帰 |
-| MVP 外項目 | [doc/requirements/backlog-vsc-md-wysiwyg.md](backlog-vsc-md-wysiwyg.md) |
+| MVP 外項目 | [doc/requirements/backlog.md](backlog.md) |
 
 ---
 
@@ -1045,7 +1048,7 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | 2026-09-06 | 概要, AD-007, §5, Related Tests, 改訂履歴 | Mermaid 密度・タイトル可視 polish: グローバル `fontSize` を `'8px'` → `'10px'`。表示層 `ensureTitleVisible` で `getComputedTextLength`＋`text-anchor` を考慮し viewBox 左右パッドを拡大（左欠け解消）。ビューポート CSS overflow/padding 追随。redux / fit／ズーム／パン契約は不変 |
 | 2026-09-06 | §5 正常系 7b, 改訂履歴 | Mermaid タイトル左揃え polish: 表示層でタイトルが図コンテンツ左端より左にはみ出す場合は位置を右へシフト（title left ≥ diagram left）。viewBox 再計算。fontSize 10px / ズーム・パン契約は不変 |
 | 2026-09-06 | 概要, AD-007, §5, Related Tests, 改訂履歴 | Mermaid ノード寸法 polish（product choice B）: グローバル `fontSize` を `'10px'` → `'12px'`。flowchart `wrappingWidth: 200`・`padding: 15`（Default 風 hug→wrap）。CSP 下で `mermaid.render` 測定前に Host 同一 nonce の密度 CSS を適用。redux / ビューポート / nonce 再注入 / ELK / strict / HIP は不変 |
-| 2026-09-19 | §10 Non-Goals | Marketplace 公開手順の正本を [deployment.md](../deploy/deployment.md) へ誘導する文言に更新（`marketplace-publish-doc`） |
+| 2026-09-19 | §10 Non-Goals | 公開手順の分離対応（`marketplace-publish-doc`） |
 | 2026-09-19 | doc-reorg layout | パス移設／分割（WHAT → `doc/requirements/systemspec.md`、AD-* → `doc/design/architecture.md`）。契約内容不変 |
 | 2026-09-26 | 概要, §5, Spec Gaps, Related Tests, 改訂履歴 | Mermaid 既定 Preview 寄せ（`mermaid-default-preview-parity`）: グローバル `fontSize` を `'12px'` → `'16px'`。測定用 Host nonce CSS も `font-size: 16px`（測定と描画の食い違い防止）。flowchart hug→wrap（`wrappingWidth: 200` / `padding: 15`）維持。初期 fit／Fit／re-fit 後の中央寄せ・ズーム原点中央・パン後ずれは次 Fit／re-fit で中央復帰。密度主手段は fontSize（CSS scale 代替禁止）。ズーム／パン／Fit／a11y 維持。Default Preview 埋め込みなし。strict / HIP / nonce / ELK / ソース併記 / Preview RO / redux 不変。ピクセル完全一致・密度スライダーは Non-Goal。Requirements Brief AD-001–AD-015 |
 | 2026-09-26 | 概要, AD-007, §5, Spec Gaps, Related Tests, 改訂履歴 | Mermaid ラベル計測・自然サイズ（`mermaid-label-metrics`）: ラベル `font-family` を Mermaid default 相当（`"trebuchet ms", verdana, arial, sans-serif`）、`line-height: 1.2`（エディタ 1.6 非継承）。測定用 Host nonce CSS も `font-size` / `font-family` / `line-height` 同値。`fontSize: '16px'`・flowchart `wrappingWidth: 200` / `padding: 15` 維持。初期・再 render・テーマ切替後は scale 1（自然サイズ・自動 contain 撤回）。小さい軸は中央寄せ・はみ出しはスクロール。Fit 押下時のみ枠内 contain。ズームイン／アウト・パン・スクロール・`aria-label`・ズーム原点中央は維持。redux / strict / HIP / ELK / ソース併記 / Preview RO 不変 |
@@ -1053,3 +1056,5 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | 2026-09-29 | §5 7a, 改訂履歴 | ラベル下空き: Mermaid createText の inline `line-height: 1.5` を測定／表示とも `line-height: 1 !important` で上書き。`flowchart.padding` を `2` に。測定と描画の一致を維持 |
 | 2026-09-29 | 概要, §10, RK-020–021, 改訂履歴 | 利用者向け Breaking / 再設定案内を削除（初期製品のため migration messaging 不要）。概要の現行 ID 表は維持。RK-021 緩和を README/deployment 再設定手順参照から「正本 ID 同期・マイグレーション非実装」に更新 |
 | 2026-09-29 | 概要, §1, §10, RK-020–021, Spec Gaps, 改訂履歴 | 製品リネーム（`rename-md-wysiwyg`）: 貢献 ID プレフィックスを `md-wysiwyg-editor` に同期。viewType `md-wysiwyg-editor.wysiwyg`、コマンド／設定 `md-wysiwyg-editor.*`、Extension ID `mshiono.md-wysiwyg-editor`、repo `https://github.com/m-shiono/md-wysiwyg-editor.git`。製品内 `showNativeMarkdownPreviewToSide` は同一ハンドラ継続（AD-004）。CSP／サニタイズ境界は不変（AD-008）。Requirements Brief AD-001–AD-010 |
+| 2026-10-03 | Non-Goals, Related Tests, 改訂履歴 | doc 整理: `backlog.md` への参照リンク更新 |
+| 2026-10-03 | 概要, §10 Non-Goals, 改訂履歴 | doc 整理: Marketplace 記述全廃。識別子統一方針（package.json name のみ vsc-md-editor、他は md-wysiwyg-editor 統一）を記録 |

@@ -41,8 +41,5 @@ temporary/*
 .agents/
 templates/
 AGENTS.md
-doc/development.md
-doc/coding-conventions.md
-doc/testspec-readme.md
-doc/stack.md.example
 .github/workflows/hooks.yml
+

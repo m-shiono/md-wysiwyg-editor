@@ -29,6 +29,13 @@
 
 ---
 
+### 識別子・命名の統一方針
+
+- **`package.json` の `name`**: `vsc-md-editor`（Extension ID: `mshiono.vsc-md-editor`）を採用。
+- **その他の識別子の統一**: `package.json` の `name` 以外のすべての要素（表示名 `displayName: "MD WYSIWYG Editor"`、`viewType: "md-wysiwyg-editor.wysiwyg"`、コマンド ID `md-wysiwyg-editor.*`、設定キー `md-wysiwyg-editor.*`、リポジトリ名）は、すべて `md-wysiwyg-editor` で統一する。
+
+---
+
 ## HOW 境界・レイヤ方針
 
 | レイヤ | 責務 | 備考 |
@@ -54,3 +61,4 @@
 | 2026-09-26 | AD-007 | Mermaid ラベル計測・自然サイズ（`mermaid-label-metrics`）: ラベル `font-family`（Mermaid default 相当）・`line-height: 1.2`・測定用 Host nonce CSS 同値。初期・再 render・テーマ切替後は scale 1（自動 contain 撤回）。Fit 押下時のみ contain。小さい軸中央寄せ・はみ出しはスクロール。ズーム／パン／Fit／a11y 維持。systemspec §5 現行契約に追随 |
 | 2026-09-26 | AD-007 | Mermaid 既定 Preview 寄せ（`mermaid-default-preview-parity`）: グローバル `fontSize` / 測定用 `font-size` を `'12px'` → `'16px'`。fit／Fit／re-fit 後の中央寄せ・ズーム原点中央を明記。ズーム／パン／Fit は維持。systemspec §5 現行契約に追随 |
 | 2026-09-19 | doc-reorg layout | 旧 `doc/systemspec.md` から AD-* 要約を分割移設。契約内容不変 |
+| 2026-10-03 | 識別子・命名の統一方針 | 識別子統一方針（package.json name のみ vsc-md-editor、他は md-wysiwyg-editor 統一）を記録 |

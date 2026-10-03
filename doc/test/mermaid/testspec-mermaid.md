@@ -1,6 +1,6 @@
 # Test Specification: mermaid (merged)
 
-Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合。契約内容（現行 Expected）は不変。旧差分は `doc/test/mermaid/archive/` を参照。
+Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合。契約内容（現行 Expected）は不変。
 
 - **対応仕様:** [doc/requirements/systemspec.md](../../requirements/systemspec.md) §5 / §9、[architecture.md](../../design/architecture.md) AD-007
 - **テストコード:** `src/test/suite/unit/mermaid-*.test.ts` · `fix-mermaid-edge-styles.test.ts`（パス同期は build-agent / AD-009）
@@ -106,7 +106,7 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 
 ## Suite: contrast-readable {#suite-contrast-readable}
 
-> Former path: `doc/test/mermaid/testspec-mermaid.md` (archived under `doc/test/mermaid/archive/testspec-mermaid-contrast-readable.md`).
+> Former specification: `testspec-mermaid-contrast-readable.md`（統合前旧仕様書）
 
 ## 概要
 
@@ -429,7 +429,7 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 
 ## Suite: snap-style-with-source {#suite-snap-style-with-source}
 
-> Former path: `doc/test/mermaid/testspec-mermaid.md` (archived under `doc/test/mermaid/archive/testspec-mermaid-snap-style-with-source.md`).
+> Former specification: `testspec-mermaid-snap-style-with-source.md`（統合前旧仕様書）
 
 ## 概要
 
@@ -661,7 +661,7 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 
 ## Suite: fix-mermaid-edge-styles {#suite-fix-mermaid-edge-styles}
 
-> Former path: `doc/test/mermaid/testspec-mermaid.md` (archived under `doc/test/mermaid/archive/testspec-fix-mermaid-edge-styles.md`).
+> Former specification: `testspec-fix-mermaid-edge-styles.md`（統合前旧仕様書）
 
 ## 概要
 
@@ -918,7 +918,7 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 
 ## Suite: redux-elk-fidelity {#suite-redux-elk-fidelity}
 
-> Former path: `doc/test/mermaid/testspec-mermaid.md` (archived under `doc/test/mermaid/archive/testspec-mermaid-redux-elk-fidelity.md`).
+> Former specification: `testspec-mermaid-redux-elk-fidelity.md`（統合前旧仕様書）
 
 ## 概要
 
@@ -1171,7 +1171,7 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 
 ## Suite: readable-viewport {#suite-readable-viewport}
 
-> Former path: `doc/test/mermaid/testspec-mermaid.md` (archived under `doc/test/mermaid/archive/testspec-mermaid-readable-viewport.md`).
+> Former specification: `testspec-mermaid-readable-viewport.md`（統合前旧仕様書）
 
 ## 概要
 
@@ -1440,3 +1440,4 @@ testspec-implementation（2026-09-26 / `mermaid-label-metrics`）。Expected を
 | 2026-09-26 | `mermaid-label-metrics`: readable-viewport Expected を自然サイズ（scale 1）／Fit のみ contain／ラベルタイポへ更新。統合改訂履歴追記 |
 | 2026-09-26 | `mermaid-default-preview-parity`: 統合 testspec の全 suite Expected を `'12px'`→`'16px'`。readable-viewport に TC-MRV-024–027（中央寄せ・ズーム原点・測定 nonce・パン後 Fit 復帰）追加。改訂履歴追記 |
 | 2026-09-19 | doc-reorg: 5 Mermaid testspec を本ファイルへ統合。パス移設／Mermaid 統合。契約内容不変 |
+| 2026-10-03 | doc 整理: Mermaid 旧個別アーカイブ削除に伴う記述更新 |

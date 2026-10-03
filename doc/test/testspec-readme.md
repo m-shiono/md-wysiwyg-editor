@@ -24,8 +24,6 @@ doc/test/mermaid/testspec-mermaid.md   # Mermaid 統合（AD-006）
 | テストコード | 実行可能な自動テスト（パスは [stack.md](../../.cursor/stack.md) の `test_file_glob`） |
 | `.cursor/stack.md` | テストランナー・コマンド・パス規約 |
 
-旧フラット `doc/testspec-*.md` は互換スタブ（AD-003）。Mermaid 旧個別ファイルは `doc/test/mermaid/archive/`。
-
 ## スキルワークフロー
 
 | 段階 | スキル | Subagent |
@@ -65,3 +63,4 @@ spec-agent (propagation) → test-agent → build-agent → review-agent
 | 2026-08-29 | 初版。testspec 配置規約と spec-test-design スキル連携を定義 |
 | 2026-09-19 | doc-reorg: `doc/test/` へ移設。Mermaid 統合パスと requirements/design 参照を更新。契約内容不変 |
 | 2026-09-29 | `rename-md-wysiwyg`: feature-slug / ファイル名 `testspec-vsc-md-wysiwyg.md` は維持し、製品・貢献 ID は本文で `md-wysiwyg-editor.*` に同期する方針を明記 |
+| 2026-10-03 | doc 整理: 旧フラット互換スタブ・Mermaid 旧個別アーカイブの全廃を反映 |
