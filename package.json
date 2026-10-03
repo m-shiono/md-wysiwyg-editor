@@ -2,15 +2,11 @@
   "name": "vsc-md-editor",
   "displayName": "MD WYSIWYG Editor",
   "description": "WYSIWYG Markdown editor with tables, Mermaid, Marp preview, and image paste",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "publisher": "mshiono",
   "author": "mshiono",
   "icon": "media/icon.png",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/m-shiono/md-wysiwyg-editor.git"
-  },
   "engines": {
     "vscode": "^1.85.0"
   },

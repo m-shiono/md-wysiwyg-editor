@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 rm -f ./*.vsix
-npm version minor --no-git-tag-version
+npm version patch --no-git-tag-version
 
 npm run package:vsix
 

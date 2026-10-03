@@ -118,7 +118,7 @@ npm run package:vsix
 `build_publish.sh` は次を順に行う。
 
 1. リポジトリ直下の古い `*.vsix` を削除
-2. `npm version minor --no-git-tag-version` で SemVer **minor** を自動 bump（`package.json` / `package-lock.json`。git commit/tag は作らない）
+2. `npm version patch --no-git-tag-version` で SemVer **patch** を自動 bump（`package.json` / `package-lock.json`。git commit/tag は作らない）
 3. `npm run package:vsix` で VSIX を生成
 4. 生成された唯一の `.vsix` を `vsce publish --packagePath` で公開
 
@@ -165,6 +165,7 @@ Microsoft は Marketplace 向け PAT の扱いを段階的に見直しており�
 
 | 日付 | 変更 |
 |------|------|
+| 2026-10-03 | `./build_publish.sh` の自動 bump を minor から patch に変更 |
 | 2026-10-03 | CLI Publish 互換性のため Extension name / ID を `vsc-md-editor` / `mshiono.vsc-md-editor` に固定。`displayName`（`MD WYSIWYG Editor`）および内部貢献 ID（`md-wysiwyg-editor.*`）は維持 |
 | 2026-09-29 | Breaking / 利用者再設定案内セクションを削除（初期製品のため migration messaging 不要）。§1 の現行 Extension ID / name / repo は維持 |
 | 2026-09-29 | 製品リネーム（`rename-md-wysiwyg`）: Extension name / ID / repository を `md-wysiwyg-editor` / `mshiono.md-wysiwyg-editor` / `https://github.com/m-shiono/md-wysiwyg-editor.git` に同期 |
