@@ -390,6 +390,7 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
       dom.appendChild(pre);
 
       const viewId = `mermaid-nv-${Math.random().toString(36).slice(2, 10)}`;
+      let renderSeq = 0;
       let viewportScale = 1;
       let userInteracted = false;
       const detachPan = attachMermaidViewportPan(viewport);
@@ -481,8 +482,9 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
               await ensureElkLayoutRegistered(renderSource);
               // Measure at density typography before render (CSP Host-nonce CSS)
               ensureMermaidMeasureFontCss();
+              const renderId = `${viewId}-svg-${++renderSeq}`;
               const { svg: renderedSvg } = await mermaid.render(
-                `${viewId}-svg`,
+                renderId,
                 renderSource || " ",
               );
               const svg = applyMermaidPresentationStyle(viewId, renderedSvg);
@@ -493,8 +495,9 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
               }
               setViewportUiEnabled(true);
               // Contain into the frame, including scale > 1 so a small diagram fills the viewport.
+              viewportScale = fitToViewport(viewport, canvas, preview);
               requestAnimationFrame(() => {
-                viewportScale = fitToViewport(viewport, canvas, preview);
+                fit();
               });
             } catch (err) {
               preview.innerHTML = `<div class="mermaid-error">${escapeHtml(String(err))}</div>`;
@@ -511,6 +514,11 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
       const rerenderFromDom = (): void => {
         renderPreview(code.textContent ?? "");
       };
+
+      const onSourceInput = (): void => {
+        renderPreview(code.textContent ?? "");
+      };
+      code.addEventListener("input", onSourceInput);
 
       mermaidRerenderCallbacks.add(rerenderFromDom);
       mermaidFitCallbacks.add(fit);
@@ -530,6 +538,7 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
           return true;
         },
         destroy: () => {
+          code.removeEventListener("input", onSourceInput);
           resizeObserver?.disconnect();
           mermaidFitCallbacks.delete(fit);
           mermaidRerenderCallbacks.delete(rerenderFromDom);
@@ -1411,6 +1420,17 @@ function applyExternalDoc(doc: TipTapDoc, options?: { force?: boolean }): void {
   editor.commands.setContent(prepareDocForEditor(doc));
   suppressUpdate = false;
   updateTableMenuState();
+
+  if (
+    editorMode === "markdown" ||
+    (editorMode === "preview" && previewSurface === "tiptap")
+  ) {
+    requestAnimationFrame(() => {
+      for (const fit of mermaidFitCallbacks) {
+        fit();
+      }
+    });
+  }
 }
 
 /** Block keyboard/paste/drop edits while Preview is active (strict RO). Scroll is allowed. */
