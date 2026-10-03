@@ -382,6 +382,49 @@ suite('preview-mode-quality (TC-013, TC-143–151)', () => {
       'setModeUi must trigger mermaidFitCallbacks when entering markdown or preview',
     );
   });
+
+  test('TC-159: External doc update and render completion trigger Mermaid viewport auto-fit', () => {
+    const editorSrc = readRepoFile('media/editor.ts');
+
+    // applyExternalDoc dispatches fit callbacks on doc update
+    assert.ok(
+      /applyExternalDoc[\s\S]*?mermaidFitCallbacks/.test(editorSrc),
+      'applyExternalDoc must trigger mermaidFitCallbacks when document is re-projected',
+    );
+
+    // renderPreview dispatches fit upon successful SVG render
+    assert.ok(
+      /renderPreview[\s\S]*?fitToViewport\s*\([\s\S]*?requestAnimationFrame\(\s*\(\)\s*=>\s*\{\s*fit\(\);?\s*\}\s*\)/.test(
+        editorSrc,
+      ),
+      'renderPreview must execute fit immediately and via requestAnimationFrame upon render success',
+    );
+  });
+
+  test('TC-160: Mermaid live-edit uses unique render ID and binds code input event', () => {
+    const editorSrc = readRepoFile('media/editor.ts');
+
+    // Unique renderId with renderSeq to prevent Mermaid from removing existing SVG
+    assert.ok(
+      /let\s+renderSeq\s*=\s*0/.test(editorSrc),
+      'NodeView must track renderSeq for unique render IDs',
+    );
+    assert.ok(
+      /renderId\s*=\s*`\$\{viewId\}-svg-\$\{\+\+renderSeq\}`/.test(editorSrc),
+      'mermaid.render must use unique renderId per render to avoid DOM collision and removal',
+    );
+
+    // Bind and unbind input event on code contentDOM for live editing
+    assert.ok(
+      /code\.addEventListener\(\s*['"]input['"]\s*,\s*onSourceInput\s*\)/.test(editorSrc),
+      'NodeView must bind input event on code element for live preview updates',
+    );
+    assert.ok(
+      /code\.removeEventListener\(\s*['"]input['"]\s*,\s*onSourceInput\s*\)/.test(editorSrc),
+      'NodeView destroy must remove input event listener on code element',
+    );
+  });
 });
+
 
 

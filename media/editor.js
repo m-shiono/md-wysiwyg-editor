@@ -227784,6 +227784,7 @@ ${prefix}
         pre.appendChild(code);
         dom.appendChild(pre);
         const viewId = `mermaid-nv-${Math.random().toString(36).slice(2, 10)}`;
+        let renderSeq = 0;
         let viewportScale = 1;
         let userInteracted = false;
         const detachPan = attachMermaidViewportPan(viewport2);
@@ -227858,8 +227859,9 @@ ${prefix}
                 const renderSource = buildMermaidRenderSource(source2);
                 await ensureElkLayoutRegistered(renderSource);
                 ensureMermaidMeasureFontCss();
+                const renderId = `${viewId}-svg-${++renderSeq}`;
                 const { svg: renderedSvg } = await mermaid_default.render(
-                  `${viewId}-svg`,
+                  renderId,
                   renderSource || " "
                 );
                 const svg2 = applyMermaidPresentationStyle(viewId, renderedSvg);
@@ -227869,8 +227871,9 @@ ${prefix}
                   ensureTitleVisible(svgEl);
                 }
                 setViewportUiEnabled(true);
+                viewportScale = fitToViewport(viewport2, canvas, preview);
                 requestAnimationFrame(() => {
-                  viewportScale = fitToViewport(viewport2, canvas, preview);
+                  fit2();
                 });
               } catch (err) {
                 preview.innerHTML = `<div class="mermaid-error">${escapeHtml(String(err))}</div>`;
@@ -227885,6 +227888,10 @@ ${prefix}
         const rerenderFromDom = () => {
           renderPreview(code.textContent ?? "");
         };
+        const onSourceInput = () => {
+          renderPreview(code.textContent ?? "");
+        };
+        code.addEventListener("input", onSourceInput);
         mermaidRerenderCallbacks.add(rerenderFromDom);
         mermaidFitCallbacks.add(fit2);
         renderPreview(node2.textContent);
@@ -227902,6 +227909,7 @@ ${prefix}
             return true;
           },
           destroy: () => {
+            code.removeEventListener("input", onSourceInput);
             resizeObserver?.disconnect();
             mermaidFitCallbacks.delete(fit2);
             mermaidRerenderCallbacks.delete(rerenderFromDom);
@@ -228587,6 +228595,13 @@ ${prefix}
     editor.commands.setContent(prepareDocForEditor(doc3));
     suppressUpdate = false;
     updateTableMenuState();
+    if (editorMode === "markdown" || editorMode === "preview" && previewSurface === "tiptap") {
+      requestAnimationFrame(() => {
+        for (const fit2 of mermaidFitCallbacks) {
+          fit2();
+        }
+      });
+    }
   }
   function attachPreviewGuard() {
     const editorEl = getEditorRoot();
@@ -229179,4 +229194,3 @@ mermaid/dist/mermaid.core.mjs:
    * Wait for document loaded before starting the execution
    *)
 */
-//# sourceMappingURL=editor.js.map
