@@ -368,10 +368,12 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
 
       const { toolbar, zoomInBtn, zoomOutBtn, fitBtn } =
         createMermaidViewportToolbar();
+      toolbar.setAttribute("contenteditable", "false");
       dom.appendChild(toolbar);
 
       const viewport = document.createElement("div");
       viewport.classList.add("mermaid-viewport");
+      viewport.setAttribute("contenteditable", "false");
 
       const canvas = document.createElement("div");
       canvas.classList.add("mermaid-viewport-canvas");
@@ -479,13 +481,18 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
           setTimeout(async () => {
             try {
               const renderSource = buildMermaidRenderSource(source);
+              if (!renderSource.trim()) {
+                preview.innerHTML = "";
+                setViewportUiEnabled(false);
+                return;
+              }
               await ensureElkLayoutRegistered(renderSource);
               // Measure at density typography before render (CSP Host-nonce CSS)
               ensureMermaidMeasureFontCss();
               const renderId = `${viewId}-svg-${++renderSeq}`;
               const { svg: renderedSvg } = await mermaid.render(
                 renderId,
-                renderSource || " ",
+                renderSource,
               );
               const svg = applyMermaidPresentationStyle(viewId, renderedSvg);
               preview.innerHTML = sanitizeMermaidSvg(svg);
@@ -536,6 +543,13 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
           }
           renderPreview(updatedNode.textContent);
           return true;
+        },
+        ignoreMutation: (mutation) => {
+          return !code.contains(mutation.target);
+        },
+        stopEvent: (event) => {
+          const target = event.target as Node | null;
+          return !target || !code.contains(target);
         },
         destroy: () => {
           code.removeEventListener("input", onSourceInput);
@@ -1000,6 +1014,7 @@ function createMermaidViewportToolbar(): {
 } {
   const toolbar = document.createElement("div");
   toolbar.classList.add("mermaid-viewport-toolbar");
+  toolbar.setAttribute("contenteditable", "false");
   // Native <button aria-label="…"> for keyboard reachability (AD-011 / TC-007)
   toolbar.innerHTML = [
     '<button type="button" aria-label="Zoom out">−</button>',

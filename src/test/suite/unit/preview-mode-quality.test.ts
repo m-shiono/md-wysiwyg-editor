@@ -423,6 +423,43 @@ suite('preview-mode-quality (TC-013, TC-143–151)', () => {
       /code\.removeEventListener\(\s*['"]input['"]\s*,\s*onSourceInput\s*\)/.test(editorSrc),
       'NodeView destroy must remove input event listener on code element',
     );
+
+    // NodeView update dispatches renderPreview
+    assert.ok(
+      /update:\s*\(updatedNode\)\s*=>\s*\{[\s\S]*?renderPreview\(updatedNode\.textContent\)/.test(
+        editorSrc,
+      ),
+      'NodeView update must render preview on node content change',
+    );
+  });
+
+  test('TC-161: Mermaid NodeView isolates UI from ProseMirror mutations and selection', () => {
+    const editorSrc = readRepoFile('media/editor.ts');
+
+    // Toolbar and viewport are non-editable
+    assert.ok(
+      /toolbar\.setAttribute\(\s*['"]contenteditable['"]\s*,\s*['"]false['"]\s*\)/.test(editorSrc),
+      'toolbar must set contenteditable false',
+    );
+    assert.ok(
+      /viewport\.setAttribute\(\s*['"]contenteditable['"]\s*,\s*['"]false['"]\s*\)/.test(editorSrc),
+      'viewport must set contenteditable false',
+    );
+
+    // ignoreMutation preserves preview SVG during rich editing
+    assert.ok(
+      /ignoreMutation:\s*\(mutation\)\s*=>\s*\{?[\s\S]*?!code\.contains\(mutation\.target\)/.test(
+        editorSrc,
+      ),
+      'NodeView must ignore DOM mutations outside contentDOM',
+    );
+
+    // stopEvent isolates toolbar and viewport interactions from ProseMirror selection
+    assert.ok(
+      /stopEvent:\s*\(event\)\s*=>/.test(editorSrc) &&
+        /!code\.contains/.test(editorSrc),
+      'NodeView must stop events outside contentDOM',
+    );
   });
 });
 

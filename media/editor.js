@@ -227767,9 +227767,11 @@ ${prefix}
         dom.classList.add("mermaid-block");
         dom.setAttribute("data-mermaid-node", "true");
         const { toolbar, zoomInBtn, zoomOutBtn, fitBtn } = createMermaidViewportToolbar();
+        toolbar.setAttribute("contenteditable", "false");
         dom.appendChild(toolbar);
         const viewport2 = document.createElement("div");
         viewport2.classList.add("mermaid-viewport");
+        viewport2.setAttribute("contenteditable", "false");
         const canvas = document.createElement("div");
         canvas.classList.add("mermaid-viewport-canvas");
         const preview = document.createElement("div");
@@ -227857,12 +227859,17 @@ ${prefix}
             setTimeout(async () => {
               try {
                 const renderSource = buildMermaidRenderSource(source2);
+                if (!renderSource.trim()) {
+                  preview.innerHTML = "";
+                  setViewportUiEnabled(false);
+                  return;
+                }
                 await ensureElkLayoutRegistered(renderSource);
                 ensureMermaidMeasureFontCss();
                 const renderId = `${viewId}-svg-${++renderSeq}`;
                 const { svg: renderedSvg } = await mermaid_default.render(
                   renderId,
-                  renderSource || " "
+                  renderSource
                 );
                 const svg2 = applyMermaidPresentationStyle(viewId, renderedSvg);
                 preview.innerHTML = sanitizeMermaidSvg(svg2);
@@ -227907,6 +227914,13 @@ ${prefix}
             }
             renderPreview(updatedNode.textContent);
             return true;
+          },
+          ignoreMutation: (mutation) => {
+            return !code.contains(mutation.target);
+          },
+          stopEvent: (event3) => {
+            const target = event3.target;
+            return !target || !code.contains(target);
           },
           destroy: () => {
             code.removeEventListener("input", onSourceInput);
@@ -228236,6 +228250,7 @@ ${prefix}
   function createMermaidViewportToolbar() {
     const toolbar = document.createElement("div");
     toolbar.classList.add("mermaid-viewport-toolbar");
+    toolbar.setAttribute("contenteditable", "false");
     toolbar.innerHTML = [
       '<button type="button" aria-label="Zoom out">\u2212</button>',
       '<button type="button" aria-label="Zoom in">+</button>',
