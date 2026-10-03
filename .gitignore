@@ -39,6 +39,7 @@ temporary/*
 .triage/*
 .cursor/skills-local/
 .cursor/*
+.agents/
 templates/
 AGENTS.md
 doc/development.md
