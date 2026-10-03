@@ -1,5 +1,5 @@
 {
-  "name": "md-wysiwyg-editor",
+  "name": "vsc-md-editor",
   "displayName": "MD WYSIWYG Editor",
   "description": "WYSIWYG Markdown editor with tables, Mermaid, Marp preview, and image paste",
   "version": "0.2.0",

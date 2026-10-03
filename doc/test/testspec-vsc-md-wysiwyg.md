@@ -263,10 +263,10 @@
 | TC-150 | Corner | mermaid-init-isolation | P1 | `mermaid.initialize` またはテーマ切替処理で例外を発生させる（mock） | try-catch で隔離され、Webview 全体のメッセージングや描画が停止しない。Output にエラーが記録される | 初期化・テーマ切替の隔離（mermaid-theme-crash-fix） | §5 正常系 8 |
 | TC-151 | Structural | preview-display-layer-document-unchanged | P1 | TC-145 相当（themeUpdated + Mermaid 再描画）および TC-146–147 相当（Preview CSS 適用）後に Document を inspect | `markdownText` / `docJson` / serialize 出力がテーマ・CSS・再描画前と一致。表示層のみの変更（AD-002） | 三者同期 — 表示層非変更 | §1 AD-002, TC-082 |
 | TC-152 | Corner | regression-mermaid-foreignobject-sanitize | P0 | Mermaid flowchart 相当 SVG（`foreignObject` 内にノードラベル HTML、例: `Cause A`）を NodeView の DOMPurify sanitize 経路（`media/editor.ts` `.mermaid-preview`）に通す | sanitize 後も `foreignObject` とノードラベル文字列が残る。`script` / `on*` 除去・`securityLevel: 'strict'` は不変（§9） | Regression: Dark/Edit で flowchart ノードラベルが消える（DOMPurify 既定が `foreignObject` を除去） | §5 正常系 1/4, §9 |
-| TC-153 | Happy | extension-identity | P0 | `package.json` の `name` / `publisher` / `repository.url` を検査 | `name === "md-wysiwyg-editor"`。`publisher === "mshiono"` → Extension ID `mshiono.md-wysiwyg-editor`。`repository.url` は `https://github.com/m-shiono/md-wysiwyg-editor.git`（または同等） | Marketplace / repo 識別子同期 | systemspec Extension 識別子, AD-003/005 |
+| TC-153 | Happy | extension-identity | P0 | `package.json` の `name` / `publisher` / `repository.url` を検査 | `name === "vsc-md-editor"`。`publisher === "mshiono"` → Extension ID `mshiono.vsc-md-editor`（Marketplace 公開互換性維持）。`repository.url` は `https://github.com/m-shiono/md-wysiwyg-editor.git`（または同等） | Marketplace CLI 公開互換性担保 | systemspec Extension 識別子, AD-003/005 |
 | TC-154 | Happy | contribution-viewtype-commands | P0 | `package.json` `contributes.customEditors` / `commands` / `activationEvents` / `menus` を検査 | viewType `md-wysiwyg-editor.wysiwyg`。公開コマンドは `md-wysiwyg-editor.*` プレフィックス（例: `openWithWysiwyg` / `reloadExtension` / `showNativeMarkdownPreview` / `showMarpPreview`）。`activeCustomEditorId` / when 句も新 viewType | 貢献 ID 一括同期 | §1 / §10, AD-001 |
 | TC-155 | Happy | settings-key-auto-restore | P0 | `package.json` `contributes.configuration` を検査 | 設定キー `md-wysiwyg-editor.autoRestoreOnBuiltinSwitch`（boolean、既定 `false`）が存在する。旧キー `vsc-md-editor.autoRestoreOnBuiltinSwitch` は **無い** | 設定キー同期 + 旧キー非互換 | §10 設定, AD-002/003 |
-| TC-156 | Corner | no-legacy-contribution-ids | P0 | `package.json` 全文および `getCommands`（activate 後）を旧プレフィックスで走査 | `vsc-md-editor.` を含む viewType / command / configuration / activationEvents / menus.when が **0 件**。旧 Extension ID 文字列 `mshiono.vsc-md-editor` も contributes に無い | 旧プレフィックス互換なし（方針 A） | AD-002, RK-004 |
+| TC-156 | Corner | no-legacy-contribution-ids | P0 | `package.json` contributes を走査 | viewType / command / configuration / activationEvents / menus.when 内に旧プレフィックス `vsc-md-editor.` を含む項目が **0 件** | 旧プレフィックス互換なし（内部コードは md-wysiwyg-editor.* に統一） | AD-002, RK-004 |
 
 ### Fixtures — preview-mode-quality
 
@@ -377,10 +377,10 @@ P0 + P1 の机上トレース（実装前）。
 | TC-068 | 既定 update / undo → onDidContentChange 発火 | ✅ 回帰（edit-display-break） |
 | TC-069 | Mermaid + 段落編集 → serialize でフェンス保持 | ✅ 回帰（edit-display-break） |
 | TC-070 | package.json viewType = `md-wysiwyg-editor.wysiwyg`；初期モード **Raw**（`DEFAULT_EDITOR_MODE`） | ✅ Pass（2026-09-29）— `editor-modes.test.ts` |
-| TC-153 | `name`/`publisher`/`repository.url` → `mshiono.md-wysiwyg-editor` | ✅ Pass（2026-09-29）— `contribution-id-rename.test.ts` |
+| TC-153 | `name`/`publisher`/`repository.url` → `mshiono.vsc-md-editor`（Marketplace CLI 公開保護） | ✅ Pass（2026-10-03）— `contribution-id-rename.test.ts` |
 | TC-154 | viewType / commands / activation / menus が `md-wysiwyg-editor.*` | ✅ Pass（2026-09-29）— `contribution-id-rename.test.ts` |
 | TC-155 | 設定キー `md-wysiwyg-editor.autoRestoreOnBuiltinSwitch`（旧キー無し） | ✅ Pass（2026-09-29）— `contribution-id-rename.test.ts` |
-| TC-156 | `vsc-md-editor.` / `mshiono.vsc-md-editor` が contributes・登録コマンドに無い | ✅ Pass（2026-09-29）— `contribution-id-rename.test.ts` |
+| TC-156 | contributes 内に `vsc-md-editor.` が無い | ✅ Pass（2026-10-03）— `contribution-id-rename.test.ts` |
 | TC-072 | updateDoc → markdownText 更新（正本 Document）；parse → updateDoc で Raw 相当同期 | ✅ ユニット |
 | TC-074 | updateDoc → onDidChange → save → mock FS 更新 | ✅ ユニット |
 | TC-075 | setReadonly(true) → isReadonly；Preview 概念と独立 | ✅ ユニット |

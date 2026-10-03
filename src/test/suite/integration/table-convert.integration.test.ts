@@ -9,7 +9,7 @@ const VIEW_TYPE = 'md-wysiwyg-editor.wysiwyg';
 
 suite('Table HTML→GFM convert integration', () => {
   test('TC-102/103: requestConvertToGfm updates markdownText; stale HTML update is dropped', async () => {
-    const ext = vscode.extensions.getExtension('mshiono.md-wysiwyg-editor');
+    const ext = vscode.extensions.getExtension('mshiono.vsc-md-editor');
     assert.ok(ext);
     await ext.activate();
 

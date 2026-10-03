@@ -13,10 +13,16 @@
 | 項目 | 値 |
 |------|-----|
 | Publisher ID（`publisher`） | `mshiono` |
-| Extension name（`name`） | `md-wysiwyg-editor` |
-| Extension ID | `mshiono.md-wysiwyg-editor` |
+| Extension name（`name`） | `vsc-md-editor` |
+| Extension ID | `mshiono.vsc-md-editor` |
 | 表示名（`displayName`） | `MD WYSIWYG Editor` |
 | Repository | https://github.com/m-shiono/md-wysiwyg-editor.git |
+
+> [!IMPORTANT]
+> **Extension ID (`vsc-md-editor`) と表示名・内部コードの分離について**
+> Marketplace に初版登録した際の Extension ID は `mshiono.vsc-md-editor` です。VS Code Marketplace の仕様上、一度登録された Extension ID（`name`）は変更できません。
+> `package.json` の `name` を書き換えると `vsce publish` 時に別拡張機能扱いとなり CLI 公開に失敗します。そのため、**`package.json` の `name` は必ず `vsc-md-editor` を維持してください**。
+> なお、ユーザーに見える拡張機能の表示名は `displayName`（`MD WYSIWYG Editor`）で制御されるため外見上の問題はありません。また、内部コード（viewType やコマンド ID、設定キー `md-wysiwyg-editor.*`）は `name` と独立して動作します。
 
 補足:
 
@@ -137,7 +143,7 @@ npx @vscode/vsce publish --packagePath <生成済み.vsix>
 - [ ] `README.md` がインストール後の説明として十分（機能・使い方）
 - [ ] `./build_publish.sh` 実行で version が自動 bump されること（公開後に `package.json` / `package-lock.json` を commit）
 - [ ] `engines.vscode` が意図した最小バージョン（現状 `^1.85.0`）
-- [ ] `publisher` / `name` が上記確定値と一致（Extension ID = `mshiono.md-wysiwyg-editor`）
+- [ ] `publisher` / `name` が上記確定値と一致（Extension ID = `mshiono.vsc-md-editor`）
 - [ ] repository URL が正しい
 - [ ] PAT やローカルトークンファイルがステージングされていない（`git status`）
 
@@ -159,6 +165,7 @@ Microsoft は Marketplace 向け PAT の扱いを段階的に見直しており�
 
 | 日付 | 変更 |
 |------|------|
+| 2026-10-03 | CLI Publish 互換性のため Extension name / ID を `vsc-md-editor` / `mshiono.vsc-md-editor` に固定。`displayName`（`MD WYSIWYG Editor`）および内部貢献 ID（`md-wysiwyg-editor.*`）は維持 |
 | 2026-09-29 | Breaking / 利用者再設定案内セクションを削除（初期製品のため migration messaging 不要）。§1 の現行 Extension ID / name / repo は維持 |
 | 2026-09-29 | 製品リネーム（`rename-md-wysiwyg`）: Extension name / ID / repository を `md-wysiwyg-editor` / `mshiono.md-wysiwyg-editor` / `https://github.com/m-shiono/md-wysiwyg-editor.git` に同期 |
 | 2026-09-19 | 初版。Marketplace 手動公開ランブック（publisher `mshiono` / Extension ID `mshiono.vsc-md-editor`）。Azure DevOps 組織と Publisher の区別、PAT 方針、Access Denied 切り分け、Open VSX・PAT 将来廃止の注記 |

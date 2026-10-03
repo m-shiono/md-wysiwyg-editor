@@ -26,7 +26,7 @@
 - **誰が:** 拡張作者（Publisher）
 - **いつ:** バージョン bump・リリース準備ができたとき
 - **手順の正本:** [deploy/deployment.md](../deploy/deployment.md)（本ファイルに全文は複製しない）
-- **Extension ID:** `mshiono.md-wysiwyg-editor`
+- **Extension ID:** `mshiono.vsc-md-editor`
 
 ## ログ確認
 

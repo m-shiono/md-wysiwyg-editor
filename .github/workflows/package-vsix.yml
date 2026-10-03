@@ -55,12 +55,12 @@ jobs:
         run: |
           npm run compile
           rm -f dist/*.map media/*.map
-          npx vsce package --out "md-wysiwyg-editor-${{ github.sha }}.vsix"
+          npx vsce package --out "vsc-md-editor-${{ github.sha }}.vsix"
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v4
         with:
-          name: md-wysiwyg-editor-vsix
+          name: vsc-md-editor-vsix
           path: '*.vsix'
           if-no-files-found: error
           retention-days: 30
@@ -75,10 +75,10 @@ jobs:
             echo "- **Note:** ${{ inputs.ref_note || '(none)' }}"
             echo "- **Checks:** lint, typecheck, unit, integration (xvfb), vsce package"
             echo ""
-            echo "Download the artifact **md-wysiwyg-editor-vsix** from this run page."
+            echo "Download the artifact **vsc-md-editor-vsix** from this run page."
             echo ""
             echo "Install locally:"
             echo '```bash'
-            echo "code --install-extension md-wysiwyg-editor-*.vsix"
+            echo "code --install-extension vsc-md-editor-*.vsix"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
