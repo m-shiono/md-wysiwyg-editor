@@ -37,8 +37,7 @@ temporary/*
 
 # skills and agents prompts templates
 .triage/*
-.cursor/skills-local/
-.cursor/*
+.cursor/
 .agents/
 templates/
 AGENTS.md
