@@ -1,30 +1,30 @@
-import { Editor, Extension, Node, type JSONContent } from '@tiptap/core';
-import StarterKit from '@tiptap/starter-kit';
-import Link from '@tiptap/extension-link';
-import Table from '@tiptap/extension-table';
-import TableRow from '@tiptap/extension-table-row';
-import TableCell from '@tiptap/extension-table-cell';
-import TableHeader from '@tiptap/extension-table-header';
-import TaskList from '@tiptap/extension-task-list';
-import TaskItem from '@tiptap/extension-task-item';
-import Strike from '@tiptap/extension-strike';
-import Blockquote from '@tiptap/extension-blockquote';
-import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
-import Image from '@tiptap/extension-image';
-import { common, createLowlight } from 'lowlight';
-import mermaid from 'mermaid';
-import DOMPurify from 'dompurify';
-import { buildMermaidRenderSource } from '../src/utils/mermaid-render';
+import { Editor, Extension, Node, type JSONContent } from "@tiptap/core";
+import StarterKit from "@tiptap/starter-kit";
+import Link from "@tiptap/extension-link";
+import { Table } from "@tiptap/extension-table";
+import TableRow from "@tiptap/extension-table-row";
+import TableCell from "@tiptap/extension-table-cell";
+import TableHeader from "@tiptap/extension-table-header";
+import TaskList from "@tiptap/extension-task-list";
+import TaskItem from "@tiptap/extension-task-item";
+import Strike from "@tiptap/extension-strike";
+import Blockquote from "@tiptap/extension-blockquote";
+import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
+import Image from "@tiptap/extension-image";
+import { common, createLowlight } from "lowlight";
+import mermaid from "mermaid";
+import DOMPurify from "dompurify";
+import { buildMermaidRenderSource } from "../src/utils/mermaid-render";
 import {
   buildMermaidThemeConfig,
   handleThemeUpdated,
   MERMAID_DENSITY_FONT_SIZE,
   registerMermaidThemeRuntime,
   type MermaidThemeConfig,
-} from '../src/utils/mermaid-theme';
-import type { ThemeKind } from '../src/utils/theme-sync';
+} from "../src/utils/mermaid-theme";
+import type { ThemeKind } from "../src/utils/theme-sync";
 
-const MERMAID_MEASURE_FONT_STYLE_ID = 'mermaid-density-measure-font';
+const MERMAID_MEASURE_FONT_STYLE_ID = "mermaid-density-measure-font";
 
 /** AD-004: Strike 既定 Mod-Shift-s は Save All と衝突するため無効化。 */
 const StrikeWithoutShortcut = Strike.extend({
@@ -46,15 +46,14 @@ declare function acquireVsCodeApi(): {
   setState(state: unknown): void;
 };
 
-type EditorMode = 'preview' | 'markdown' | 'raw';
-type TableFormat = 'gfm' | 'html';
+type EditorMode = "preview" | "markdown" | "raw";
+type TableFormat = "gfm" | "html";
 
 type TableContext = {
   inTable: boolean;
   tableIndex: number;
   tableFormat: TableFormat | null;
 };
-
 
 const vscode = acquireVsCodeApi();
 const lowlight = createLowlight(common);
@@ -78,7 +77,7 @@ let mermaidThemeRerenderTimer: ReturnType<typeof setTimeout> | undefined;
 let elkLayoutRegisterPromise: Promise<void> | undefined;
 
 function getHostCspNonce(): string {
-  return document.body?.getAttribute('data-csp-nonce') ?? '';
+  return document.body?.getAttribute("data-csp-nonce") ?? "";
 }
 
 /**
@@ -87,13 +86,15 @@ function getHostCspNonce(): string {
  * Prefer Host nonce stylesheet; never loosen CSP for inline styles.
  */
 function ensureMermaidMeasureFontCss(): void {
-  let styleEl = document.getElementById(MERMAID_MEASURE_FONT_STYLE_ID) as HTMLStyleElement | null;
+  let styleEl = document.getElementById(
+    MERMAID_MEASURE_FONT_STYLE_ID,
+  ) as HTMLStyleElement | null;
   if (!styleEl) {
-    styleEl = document.createElement('style');
+    styleEl = document.createElement("style");
     styleEl.id = MERMAID_MEASURE_FONT_STYLE_ID;
     const nonce = getHostCspNonce();
     if (nonce) {
-      styleEl.setAttribute('nonce', nonce);
+      styleEl.setAttribute("nonce", nonce);
     }
     document.head.appendChild(styleEl);
   }
@@ -107,12 +108,13 @@ function ensureMermaidMeasureFontCss(): void {
     `  margin: 0 !important;`,
     `  padding: 0 !important;`,
     `}`,
-  ].join('\n');
+  ].join("\n");
 }
 
 function sourceRequestsElkLayout(source: string): boolean {
   return (
-    /(?:^|[\s,{])layout\s*:\s*['"]?elk\b/i.test(source) || /flowchart-elk/i.test(source)
+    /(?:^|[\s,{])layout\s*:\s*['"]?elk\b/i.test(source) ||
+    /flowchart-elk/i.test(source)
   );
 }
 
@@ -125,12 +127,15 @@ async function ensureElkLayoutRegistered(source: string): Promise<void> {
       try {
         // Host 注入 URI を優先（classic script の相対 import 解決を避ける）。
         // パッケージ名の dynamic import はソース契約（TC-014）と非 Webview フォールバック用。
-        const chunkUri = document.body?.getAttribute('data-elk-chunk-uri');
+        const chunkUri = document.body?.getAttribute("data-elk-chunk-uri");
         const elkModule = chunkUri
           ? await import(/* webpackIgnore: true */ chunkUri)
-          : await import('@mermaid-js/layout-elk');
-        const elkLayouts = (elkModule as { default?: unknown }).default ?? elkModule;
-        mermaid.registerLayoutLoaders(elkLayouts as Parameters<typeof mermaid.registerLayoutLoaders>[0]);
+          : await import("@mermaid-js/layout-elk");
+        const elkLayouts =
+          (elkModule as { default?: unknown }).default ?? elkModule;
+        mermaid.registerLayoutLoaders(
+          elkLayouts as Parameters<typeof mermaid.registerLayoutLoaders>[0],
+        );
       } catch (err) {
         // 再試行可能にするため失敗時は Promise を破棄（図単位エラーは呼び出し側）
         elkLayoutRegisterPromise = undefined;
@@ -147,11 +152,11 @@ async function ensureElkLayoutRegistered(source: string): Promise<void> {
  */
 function sanitizeMermaidPresentationCss(css: string): string {
   return css
-    .replace(/@import\b[^;]*;?/gi, '')
-    .replace(/expression\s*\(/gi, '(')
-    .replace(/javascript\s*:/gi, '')
-    .replace(/-moz-binding\s*:/gi, 'moz-binding-blocked:')
-    .replace(/behavior\s*:/gi, 'behavior-blocked:');
+    .replace(/@import\b[^;]*;?/gi, "")
+    .replace(/expression\s*\(/gi, "(")
+    .replace(/javascript\s*:/gi, "")
+    .replace(/-moz-binding\s*:/gi, "moz-binding-blocked:")
+    .replace(/behavior\s*:/gi, "behavior-blocked:");
 }
 
 /**
@@ -160,48 +165,54 @@ function sanitizeMermaidPresentationCss(css: string): string {
  */
 function applyMermaidPresentationStyle(viewId: string, svg: string): string {
   const styleChunks: string[] = [];
-  const svgWithoutStyles = svg.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_match, css: string) => {
-    const cleaned = sanitizeMermaidPresentationCss(css);
-    if (cleaned.trim()) {
-      styleChunks.push(cleaned);
-    }
-    return '';
-  });
+  const svgWithoutStyles = svg.replace(
+    /<style[^>]*>([\s\S]*?)<\/style>/gi,
+    (_match, css: string) => {
+      const cleaned = sanitizeMermaidPresentationCss(css);
+      if (cleaned.trim()) {
+        styleChunks.push(cleaned);
+      }
+      return "";
+    },
+  );
 
   const styleId = `mermaid-presentation-${viewId}`;
   let styleEl = document.getElementById(styleId) as HTMLStyleElement | null;
   if (!styleEl) {
-    styleEl = document.createElement('style');
+    styleEl = document.createElement("style");
     styleEl.id = styleId;
     const nonce = getHostCspNonce();
     if (nonce) {
-      styleEl.setAttribute('nonce', nonce);
+      styleEl.setAttribute("nonce", nonce);
     }
     document.head.appendChild(styleEl);
   }
 
   // Scope reinjected rules under .mermaid-preview; keep fill:none safety for edge paths
   const scopedChunks = styleChunks.map((css) =>
-    css.replace(/(^|})\s*([^{}@/][^{]*)\{/g, (_m, brace: string, selectors: string) => {
-      const scoped = selectors
-        .split(',')
-        .map((sel) => {
-          const trimmed = sel.trim();
-          if (!trimmed) {
-            return trimmed;
-          }
-          if (trimmed.startsWith('.mermaid-preview')) {
-            return trimmed;
-          }
-          return `.mermaid-preview ${trimmed}`;
-        })
-        .join(', ');
-      return `${brace} ${scoped}{`;
-    }),
+    css.replace(
+      /(^|})\s*([^{}@/][^{]*)\{/g,
+      (_m, brace: string, selectors: string) => {
+        const scoped = selectors
+          .split(",")
+          .map((sel) => {
+            const trimmed = sel.trim();
+            if (!trimmed) {
+              return trimmed;
+            }
+            if (trimmed.startsWith(".mermaid-preview")) {
+              return trimmed;
+            }
+            return `.mermaid-preview ${trimmed}`;
+          })
+          .join(", ");
+        return `${brace} ${scoped}{`;
+      },
+    ),
   );
   const safetyNet =
-    '.mermaid-preview .edgePath .path, .mermaid-preview .edgePaths .path, .mermaid-preview .flowchart-link, .mermaid-preview path.flowchart-link { fill: none; }';
-  styleEl.textContent = [...scopedChunks, safetyNet].join('\n');
+    ".mermaid-preview .edgePath .path, .mermaid-preview .edgePaths .path, .mermaid-preview .flowchart-link, .mermaid-preview path.flowchart-link { fill: none; }";
+  styleEl.textContent = [...scopedChunks, safetyNet].join("\n");
 
   return svgWithoutStyles;
 }
@@ -213,7 +224,7 @@ function initializeMermaidTheme(kind: ThemeKind): void {
       startOnLoad: false,
       theme: config.theme as any,
       themeVariables: config.themeVariables,
-      securityLevel: 'strict',
+      securityLevel: "strict",
       // Default-like hug→wrap (stock Mermaid defaults; explicit for contract)
       flowchart: {
         wrappingWidth: config.flowchart.wrappingWidth,
@@ -221,12 +232,12 @@ function initializeMermaidTheme(kind: ThemeKind): void {
       },
     });
   } catch (err) {
-    console.error('Mermaid initialization failed:', err);
+    console.error("Mermaid initialization failed:", err);
   }
 }
 
 ensureMermaidMeasureFontCss();
-initializeMermaidTheme('dark');
+initializeMermaidTheme("dark");
 
 function scheduleMermaidThemeRerender(): void {
   if (mermaidThemeRerenderTimer) {
@@ -246,14 +257,14 @@ registerMermaidThemeRuntime({
         startOnLoad: false,
         theme: config.theme as any,
         themeVariables: config.themeVariables,
-        securityLevel: 'strict',
+        securityLevel: "strict",
         flowchart: {
           wrappingWidth: config.flowchart.wrappingWidth,
           padding: config.flowchart.padding,
         },
       });
     } catch (err) {
-      console.error('Mermaid runtime initialization failed:', err);
+      console.error("Mermaid runtime initialization failed:", err);
     }
   },
   scheduleRerender: scheduleMermaidThemeRerender,
@@ -268,16 +279,16 @@ interface TipTapDoc {
 }
 
 let editor: Editor | undefined;
-let insertTableFormat: TableFormat = 'gfm';
+let insertTableFormat: TableFormat = "gfm";
 let readonly = false;
 /** Must match Host DEFAULT_EDITOR_MODE / initial HTML body[data-mode] (AD-016). */
-let editorMode: EditorMode = 'raw';
-let previewSurface: 'tiptap' | 'marp' = 'tiptap';
+let editorMode: EditorMode = "raw";
+let previewSurface: "tiptap" | "marp" = "tiptap";
 let suppressUpdate = false;
 let suppressRawUpdate = false;
 /** True after the first successful initEditor — ready must not force a second full init. */
 let isEditorInitialized = false;
-let latestMarkdownText = '';
+let latestMarkdownText = "";
 let rawSyncTimer: ReturnType<typeof setTimeout> | undefined;
 let rawUpdateTimer: ReturnType<typeof setTimeout> | undefined;
 /** Bumped on HTML→GFM convert so Host can drop pre-convert `update` messages. */
@@ -285,13 +296,13 @@ let updateEpoch = 0;
 let gfmConvertPending = false;
 
 const HtmlTableExtension = Extension.create({
-  name: 'htmlTable',
+  name: "htmlTable",
   addGlobalAttributes() {
     return [
       {
-        types: ['table'],
+        types: ["table"],
         attributes: {
-          tableFormat: { default: 'gfm' },
+          tableFormat: { default: "gfm" },
           html: { default: null },
           gfmSource: { default: false },
           converted: { default: false },
@@ -304,26 +315,29 @@ const HtmlTableExtension = Extension.create({
 });
 
 const HtmlBlockNode = Node.create({
-  name: 'htmlBlock',
-  group: 'block',
+  name: "htmlBlock",
+  group: "block",
   atom: true,
   selectable: true,
   addAttributes() {
     return {
-      html: { default: '' },
+      html: { default: "" },
     };
   },
   parseHTML() {
-    return [{ tag: 'div[data-html-block]' }];
+    return [{ tag: "div[data-html-block]" }];
   },
   renderHTML({ HTMLAttributes }) {
-    return ['div', { 'data-html-block': 'true', 'data-html': HTMLAttributes.html as string }];
+    return [
+      "div",
+      { "data-html-block": "true", "data-html": HTMLAttributes.html as string },
+    ];
   },
   addNodeView() {
     return ({ node }) => {
-      const dom = document.createElement('div');
-      dom.setAttribute('data-html-block', 'true');
-      dom.innerHTML = DOMPurify.sanitize((node.attrs.html as string) ?? '');
+      const dom = document.createElement("div");
+      dom.setAttribute("data-html-block", "true");
+      dom.innerHTML = DOMPurify.sanitize((node.attrs.html as string) ?? "");
       return { dom };
     };
   },
@@ -336,10 +350,10 @@ const HtmlBlockNode = Node.create({
 const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
   addNodeView() {
     return ({ node }) => {
-      const language = (node.attrs.language as string) ?? '';
-      if (language !== 'mermaid') {
-        const pre = document.createElement('pre');
-        const code = document.createElement('code');
+      const language = (node.attrs.language as string) ?? "";
+      if (language !== "mermaid") {
+        const pre = document.createElement("pre");
+        const code = document.createElement("code");
         if (language) {
           code.classList.add(`language-${language}`);
         }
@@ -347,29 +361,30 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
         return { dom: pre, contentDOM: code };
       }
 
-      const dom = document.createElement('div');
-      dom.classList.add('mermaid-block');
-      dom.setAttribute('data-mermaid-node', 'true');
+      const dom = document.createElement("div");
+      dom.classList.add("mermaid-block");
+      dom.setAttribute("data-mermaid-node", "true");
 
-      const { toolbar, zoomInBtn, zoomOutBtn, fitBtn } = createMermaidViewportToolbar();
+      const { toolbar, zoomInBtn, zoomOutBtn, fitBtn } =
+        createMermaidViewportToolbar();
       dom.appendChild(toolbar);
 
-      const viewport = document.createElement('div');
-      viewport.classList.add('mermaid-viewport');
+      const viewport = document.createElement("div");
+      viewport.classList.add("mermaid-viewport");
 
-      const canvas = document.createElement('div');
-      canvas.classList.add('mermaid-viewport-canvas');
+      const canvas = document.createElement("div");
+      canvas.classList.add("mermaid-viewport-canvas");
 
-      const preview = document.createElement('div');
-      preview.classList.add('mermaid-preview');
+      const preview = document.createElement("div");
+      preview.classList.add("mermaid-preview");
       canvas.appendChild(preview);
       viewport.appendChild(canvas);
       dom.appendChild(viewport);
 
-      const pre = document.createElement('pre');
-      pre.classList.add('mermaid-source');
-      const code = document.createElement('code');
-      code.classList.add('language-mermaid');
+      const pre = document.createElement("pre");
+      pre.classList.add("mermaid-source");
+      const code = document.createElement("code");
+      code.classList.add("language-mermaid");
       pre.appendChild(code);
       dom.appendChild(pre);
 
@@ -379,15 +394,15 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
 
       const setViewportUiEnabled = (enabled: boolean): void => {
         toolbar.hidden = !enabled;
-        toolbar.setAttribute('aria-hidden', enabled ? 'false' : 'true');
+        toolbar.setAttribute("aria-hidden", enabled ? "false" : "true");
         zoomInBtn.disabled = !enabled;
         zoomOutBtn.disabled = !enabled;
         fitBtn.disabled = !enabled;
         if (!enabled) {
           // mermaid-error path — hide/disable viewport chrome (TC-017)
-          viewport.setAttribute('aria-hidden', 'true');
+          viewport.setAttribute("aria-hidden", "true");
         } else {
-          viewport.removeAttribute('aria-hidden');
+          viewport.removeAttribute("aria-hidden");
         }
       };
 
@@ -404,17 +419,17 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
         applyScale(viewportScale / MERMAID_VIEWPORT_ZOOM_STEP);
       };
 
-      zoomInBtn.addEventListener('click', (event) => {
+      zoomInBtn.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
         zoomIn();
       });
-      zoomOutBtn.addEventListener('click', (event) => {
+      zoomOutBtn.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
         zoomOut();
       });
-      fitBtn.addEventListener('click', (event) => {
+      fitBtn.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
         // Fit clears pan offset via fitToViewport → centerOnSmallerAxes (AD-007/008)
@@ -436,11 +451,11 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
               ensureMermaidMeasureFontCss();
               const { svg: renderedSvg } = await mermaid.render(
                 `${viewId}-svg`,
-                renderSource || ' ',
+                renderSource || " ",
               );
               const svg = applyMermaidPresentationStyle(viewId, renderedSvg);
               preview.innerHTML = sanitizeMermaidSvg(svg);
-              const svgEl = preview.querySelector('svg');
+              const svgEl = preview.querySelector("svg");
               if (svgEl) {
                 ensureTitleVisible(svgEl as SVGSVGElement);
               }
@@ -455,14 +470,14 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
               setViewportUiEnabled(false);
               applyViewportZoom(canvas, 1);
               viewportScale = 1;
-              vscode.postMessage({ type: 'mermaidError', error: String(err) });
+              vscode.postMessage({ type: "mermaidError", error: String(err) });
             }
           }, MERMAID_DEBOUNCE_MS),
         );
       };
 
       const rerenderFromDom = (): void => {
-        renderPreview(code.textContent ?? '');
+        renderPreview(code.textContent ?? "");
       };
 
       mermaidRerenderCallbacks.add(rerenderFromDom);
@@ -472,10 +487,10 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
         dom,
         contentDOM: code,
         update: (updatedNode) => {
-          if (updatedNode.type.name !== 'codeBlock') {
+          if (updatedNode.type.name !== "codeBlock") {
             return false;
           }
-          if ((updatedNode.attrs.language as string) !== 'mermaid') {
+          if ((updatedNode.attrs.language as string) !== "mermaid") {
             return false;
           }
           renderPreview(updatedNode.textContent);
@@ -505,27 +520,27 @@ function prepareDocForEditor(doc: TipTapDoc): JSONContent {
   const content = (doc.content ?? []).map((raw) => {
     const node = raw as TipTapDoc;
     if (
-      node.type === 'table' &&
-      typeof node.attrs?.html === 'string' &&
+      node.type === "table" &&
+      typeof node.attrs?.html === "string" &&
       node.attrs.html.length > 0 &&
       (!node.content || node.content.length === 0)
     ) {
       return {
-        type: 'htmlBlock',
+        type: "htmlBlock",
         attrs: { html: node.attrs.html },
       };
     }
     return raw;
   });
-  return { type: 'doc', content: content as JSONContent[] };
+  return { type: "doc", content: content as JSONContent[] };
 }
 
 function escapeHtml(text: string): string {
   return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 /**
@@ -535,8 +550,8 @@ function escapeHtml(text: string): string {
 function sanitizeMermaidSvg(svg: string): string {
   return DOMPurify.sanitize(svg, {
     USE_PROFILES: { svg: true, svgFilters: true, html: true },
-    ADD_TAGS: ['foreignObject'],
-    ADD_ATTR: ['xmlns'],
+    ADD_TAGS: ["foreignObject"],
+    ADD_ATTR: ["xmlns"],
     // foreignObject 内の XHTML ラベルを空シェルにしない（mermaid-contrast-readable P0）
     HTML_INTEGRATION_POINTS: { foreignobject: true },
   });
@@ -551,7 +566,7 @@ type SvgBounds = { minX: number; minY: number; maxX: number; maxY: number };
 function getSvgTextExtent(
   el: SVGGraphicsElement,
 ): { left: number; right: number; top: number; bottom: number } | null {
-  if (typeof el.getBBox !== 'function') {
+  if (typeof el.getBBox !== "function") {
     return null;
   }
   try {
@@ -562,34 +577,34 @@ function getSvgTextExtent(
     const bottom = tb.y + tb.height;
 
     const textEl = el as SVGTextContentElement;
-    if (typeof textEl.getComputedTextLength === 'function') {
+    if (typeof textEl.getComputedTextLength === "function") {
       const textLen = textEl.getComputedTextLength();
       if (Number.isFinite(textLen) && textLen > 0) {
         let anchor =
-          el.getAttribute('text-anchor') ||
-          (typeof getComputedStyle === 'function'
-            ? getComputedStyle(el).getPropertyValue('text-anchor')
-            : '') ||
-          'start';
-        anchor = anchor.trim() || 'start';
+          el.getAttribute("text-anchor") ||
+          (typeof getComputedStyle === "function"
+            ? getComputedStyle(el).getPropertyValue("text-anchor")
+            : "") ||
+          "start";
+        anchor = anchor.trim() || "start";
 
         let anchorX: number;
-        const xAttr = el.getAttribute('x');
-        const xNum = xAttr !== null && xAttr !== '' ? Number(xAttr) : NaN;
+        const xAttr = el.getAttribute("x");
+        const xNum = xAttr !== null && xAttr !== "" ? Number(xAttr) : NaN;
         if (Number.isFinite(xNum)) {
           anchorX = xNum;
-        } else if (anchor === 'middle') {
+        } else if (anchor === "middle") {
           anchorX = tb.x + tb.width / 2;
-        } else if (anchor === 'end') {
+        } else if (anchor === "end") {
           anchorX = tb.x + tb.width;
         } else {
           anchorX = tb.x;
         }
 
-        if (anchor === 'middle') {
+        if (anchor === "middle") {
           left = Math.min(left, anchorX - textLen / 2);
           right = Math.max(right, anchorX + textLen / 2);
-        } else if (anchor === 'end') {
+        } else if (anchor === "end") {
           left = Math.min(left, anchorX - textLen);
           right = Math.max(right, anchorX);
         } else {
@@ -606,7 +621,10 @@ function getSvgTextExtent(
   }
 }
 
-function expandBoundsForSvgText(el: SVGGraphicsElement, bounds: SvgBounds): void {
+function expandBoundsForSvgText(
+  el: SVGGraphicsElement,
+  bounds: SvgBounds,
+): void {
   const extent = getSvgTextExtent(el);
   if (!extent) {
     return;
@@ -617,8 +635,11 @@ function expandBoundsForSvgText(el: SVGGraphicsElement, bounds: SvgBounds): void
   bounds.maxY = Math.max(bounds.maxY, extent.bottom);
 }
 
-function expandBoundsFromBBox(el: SVGGraphicsElement, bounds: SvgBounds): boolean {
-  if (typeof el.getBBox !== 'function') {
+function expandBoundsFromBBox(
+  el: SVGGraphicsElement,
+  bounds: SvgBounds,
+): boolean {
+  if (typeof el.getBBox !== "function") {
     return false;
   }
   try {
@@ -642,9 +663,11 @@ function expandBoundsFromBBox(el: SVGGraphicsElement, bounds: SvgBounds): boolea
 /**
  * Prefer Mermaid `.titleText`; else title-like text above diagram content (not node labels).
  */
-function findMermaidTitleElements(svgRoot: SVGSVGElement): SVGGraphicsElement[] {
+function findMermaidTitleElements(
+  svgRoot: SVGSVGElement,
+): SVGGraphicsElement[] {
   const byClass = Array.from(
-    svgRoot.querySelectorAll('.titleText, g.title > text, text.title'),
+    svgRoot.querySelectorAll(".titleText, g.title > text, text.title"),
   ) as SVGGraphicsElement[];
   if (byClass.length > 0) {
     return byClass;
@@ -658,7 +681,9 @@ function findMermaidTitleElements(svgRoot: SVGSVGElement): SVGGraphicsElement[] 
   };
   let hasShapes = false;
   svgRoot
-    .querySelectorAll('path, rect, circle, ellipse, polygon, polyline, line, foreignObject')
+    .querySelectorAll(
+      "path, rect, circle, ellipse, polygon, polyline, line, foreignObject",
+    )
     .forEach((node) => {
       if (expandBoundsFromBBox(node as SVGGraphicsElement, shapeBounds)) {
         hasShapes = true;
@@ -669,7 +694,7 @@ function findMermaidTitleElements(svgRoot: SVGSVGElement): SVGGraphicsElement[] 
   }
 
   const above: { el: SVGGraphicsElement; top: number }[] = [];
-  svgRoot.querySelectorAll('text').forEach((node) => {
+  svgRoot.querySelectorAll("text").forEach((node) => {
     const el = node as SVGGraphicsElement;
     const extent = getSvgTextExtent(el);
     if (!extent) {
@@ -713,14 +738,14 @@ function computeDiagramContentBounds(
 
   svgRoot
     .querySelectorAll(
-      'path, rect, circle, ellipse, polygon, polyline, line, foreignObject, text, .label, .node',
+      "path, rect, circle, ellipse, polygon, polyline, line, foreignObject, text, .label, .node",
     )
     .forEach((node) => {
       if (titleSet.has(node) || isUnderTitle(node)) {
         return;
       }
       const el = node as SVGGraphicsElement;
-      if (el.tagName.toLowerCase() === 'text') {
+      if (el.tagName.toLowerCase() === "text") {
         const extent = getSvgTextExtent(el);
         if (!extent) {
           return;
@@ -746,26 +771,28 @@ function shiftSvgTextByX(el: SVGGraphicsElement, deltaX: number): void {
     return;
   }
 
-  const xAttr = el.getAttribute('x');
-  const xNum = xAttr !== null && xAttr !== '' ? Number(xAttr) : NaN;
+  const xAttr = el.getAttribute("x");
+  const xNum = xAttr !== null && xAttr !== "" ? Number(xAttr) : NaN;
   if (Number.isFinite(xNum)) {
-    el.setAttribute('x', String(xNum + deltaX));
+    el.setAttribute("x", String(xNum + deltaX));
   } else {
-    const existing = el.getAttribute('transform')?.trim() ?? '';
+    const existing = el.getAttribute("transform")?.trim() ?? "";
     el.setAttribute(
-      'transform',
-      existing ? `translate(${deltaX},0) ${existing}` : `translate(${deltaX},0)`,
+      "transform",
+      existing
+        ? `translate(${deltaX},0) ${existing}`
+        : `translate(${deltaX},0)`,
     );
   }
 
-  el.querySelectorAll('tspan').forEach((tspan) => {
-    const tx = tspan.getAttribute('x');
-    if (tx === null || tx === '') {
+  el.querySelectorAll("tspan").forEach((tspan) => {
+    const tx = tspan.getAttribute("x");
+    if (tx === null || tx === "") {
       return;
     }
     const n = Number(tx);
     if (Number.isFinite(n)) {
-      tspan.setAttribute('x', String(n + deltaX));
+      tspan.setAttribute("x", String(n + deltaX));
     }
   });
 }
@@ -803,11 +830,15 @@ function alignMermaidTitleToDiagram(svgRoot: SVGSVGElement): void {
  */
 function ensureTitleVisible(svgRoot: SVGSVGElement): void {
   try {
-    svgRoot.style.overflow = 'visible';
+    svgRoot.style.overflow = "visible";
     alignMermaidTitleToDiagram(svgRoot);
 
     const bbox = svgRoot.getBBox();
-    if (!Number.isFinite(bbox.width) || !Number.isFinite(bbox.height) || bbox.width <= 0) {
+    if (
+      !Number.isFinite(bbox.width) ||
+      !Number.isFinite(bbox.height) ||
+      bbox.width <= 0
+    ) {
       return;
     }
     const bounds: SvgBounds = {
@@ -821,7 +852,7 @@ function ensureTitleVisible(svgRoot: SVGSVGElement): void {
     if (titles.length > 0) {
       titles.forEach((node) => expandBoundsForSvgText(node, bounds));
     } else {
-      svgRoot.querySelectorAll('text, .titleText').forEach((node) => {
+      svgRoot.querySelectorAll("text, .titleText").forEach((node) => {
         expandBoundsForSvgText(node as SVGGraphicsElement, bounds);
       });
     }
@@ -831,17 +862,23 @@ function ensureTitleVisible(svgRoot: SVGSVGElement): void {
     const vbY = bounds.minY - padY;
     const vbW = Math.max(1, bounds.maxX - bounds.minX + padX * 2);
     const vbH = Math.max(1, bounds.maxY - bounds.minY + padY * 2);
-    svgRoot.setAttribute('viewBox', `${vbX} ${vbY} ${vbW} ${vbH}`);
+    svgRoot.setAttribute("viewBox", `${vbX} ${vbY} ${vbW} ${vbH}`);
     // Keep width/height consistent with padded viewBox so fit math stays correct
-    if (!svgRoot.getAttribute('width') || svgRoot.getAttribute('width') === '100%') {
-      svgRoot.setAttribute('width', String(vbW));
+    if (
+      !svgRoot.getAttribute("width") ||
+      svgRoot.getAttribute("width") === "100%"
+    ) {
+      svgRoot.setAttribute("width", String(vbW));
     }
-    if (!svgRoot.getAttribute('height') || svgRoot.getAttribute('height') === '100%') {
-      svgRoot.setAttribute('height', String(vbH));
+    if (
+      !svgRoot.getAttribute("height") ||
+      svgRoot.getAttribute("height") === "100%"
+    ) {
+      svgRoot.setAttribute("height", String(vbH));
     }
   } catch {
     // SVG not in DOM yet or getBBox unavailable — overflow:visible CSS still helps
-    svgRoot.style.overflow = 'visible';
+    svgRoot.style.overflow = "visible";
   }
 }
 
@@ -879,7 +916,7 @@ function fitToViewport(
   canvas: HTMLElement,
   preview: HTMLElement,
 ): number {
-  const svg = preview.querySelector('svg');
+  const svg = preview.querySelector("svg");
   if (!svg) {
     applyViewportZoom(canvas, 1);
     centerOnSmallerAxes(viewport);
@@ -911,16 +948,16 @@ function createMermaidViewportToolbar(): {
   zoomOutBtn: HTMLButtonElement;
   fitBtn: HTMLButtonElement;
 } {
-  const toolbar = document.createElement('div');
-  toolbar.classList.add('mermaid-viewport-toolbar');
+  const toolbar = document.createElement("div");
+  toolbar.classList.add("mermaid-viewport-toolbar");
   // Native <button aria-label="…"> for keyboard reachability (AD-011 / TC-007)
   toolbar.innerHTML = [
     '<button type="button" aria-label="Zoom out">−</button>',
     '<button type="button" aria-label="Zoom in">+</button>',
     '<button type="button" aria-label="Fit">Fit</button>',
-  ].join('');
+  ].join("");
 
-  const buttons = toolbar.querySelectorAll('button');
+  const buttons = toolbar.querySelectorAll("button");
   const zoomOutBtn = buttons[0] as HTMLButtonElement;
   const zoomInBtn = buttons[1] as HTMLButtonElement;
   const fitBtn = buttons[2] as HTMLButtonElement;
@@ -946,7 +983,7 @@ function attachMermaidViewportPan(viewport: HTMLElement): () => void {
       return;
     }
     const target = event.target as HTMLElement | null;
-    if (target?.closest('button')) {
+    if (target?.closest("button")) {
       return;
     }
     isPanning = true;
@@ -955,7 +992,7 @@ function attachMermaidViewportPan(viewport: HTMLElement): () => void {
     startY = event.clientY;
     originScrollLeft = viewport.scrollLeft;
     originScrollTop = viewport.scrollTop;
-    viewport.classList.add('is-panning');
+    viewport.classList.add("is-panning");
     viewport.setPointerCapture(event.pointerId);
     event.preventDefault();
   };
@@ -976,7 +1013,7 @@ function attachMermaidViewportPan(viewport: HTMLElement): () => void {
     }
     isPanning = false;
     activePointerId = null;
-    viewport.classList.remove('is-panning');
+    viewport.classList.remove("is-panning");
     try {
       viewport.releasePointerCapture(event.pointerId);
     } catch {
@@ -984,16 +1021,16 @@ function attachMermaidViewportPan(viewport: HTMLElement): () => void {
     }
   };
 
-  viewport.addEventListener('pointerdown', onPointerDown);
-  viewport.addEventListener('pointermove', onPointerMove);
-  viewport.addEventListener('pointerup', endPan);
-  viewport.addEventListener('pointercancel', endPan);
+  viewport.addEventListener("pointerdown", onPointerDown);
+  viewport.addEventListener("pointermove", onPointerMove);
+  viewport.addEventListener("pointerup", endPan);
+  viewport.addEventListener("pointercancel", endPan);
 
   return () => {
-    viewport.removeEventListener('pointerdown', onPointerDown);
-    viewport.removeEventListener('pointermove', onPointerMove);
-    viewport.removeEventListener('pointerup', endPan);
-    viewport.removeEventListener('pointercancel', endPan);
+    viewport.removeEventListener("pointerdown", onPointerDown);
+    viewport.removeEventListener("pointermove", onPointerMove);
+    viewport.removeEventListener("pointerup", endPan);
+    viewport.removeEventListener("pointercancel", endPan);
   };
 }
 
@@ -1022,40 +1059,40 @@ function getEditorExtensions() {
 }
 
 function getRawEditor(): HTMLTextAreaElement | null {
-  return document.getElementById('raw-editor') as HTMLTextAreaElement | null;
+  return document.getElementById("raw-editor") as HTMLTextAreaElement | null;
 }
 
 function getLinkInputBar(): HTMLElement | null {
-  return document.getElementById('link-input-bar');
+  return document.getElementById("link-input-bar");
 }
 
 function getLinkUrlInput(): HTMLInputElement | null {
-  return document.getElementById('link-url-input') as HTMLInputElement | null;
+  return document.getElementById("link-url-input") as HTMLInputElement | null;
 }
 
 function hideLinkInputBar(): void {
-  getLinkInputBar()?.classList.add('hidden');
+  getLinkInputBar()?.classList.add("hidden");
 }
 
 function showLinkInputBar(): void {
-  if (!editor || readonly || editorMode !== 'markdown') {
+  if (!editor || readonly || editorMode !== "markdown") {
     return;
   }
-  editor.chain().focus().extendMarkRange('link').run();
-  const href = (editor.getAttributes('link').href as string) ?? '';
+  editor.chain().focus().extendMarkRange("link").run();
+  const href = (editor.getAttributes("link").href as string) ?? "";
   const bar = getLinkInputBar();
   const input = getLinkUrlInput();
   if (!bar || !input) {
     return;
   }
   input.value = href;
-  bar.classList.remove('hidden');
+  bar.classList.remove("hidden");
   input.focus();
   input.select();
 }
 
 function applyLinkFromInput(): void {
-  if (!editor || readonly || editorMode !== 'markdown') {
+  if (!editor || readonly || editorMode !== "markdown") {
     hideLinkInputBar();
     return;
   }
@@ -1065,9 +1102,9 @@ function applyLinkFromInput(): void {
   }
   const url = input.value.trim();
   if (url) {
-    editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+    editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
   } else {
-    editor.chain().focus().extendMarkRange('link').unsetLink().run();
+    editor.chain().focus().extendMarkRange("link").unsetLink().run();
   }
   hideLinkInputBar();
   editor.commands.focus();
@@ -1075,15 +1112,15 @@ function applyLinkFromInput(): void {
 
 function attachLinkInputHandlers(): void {
   const input = getLinkUrlInput();
-  if (!input || input.dataset.bound === '1') {
+  if (!input || input.dataset.bound === "1") {
     return;
   }
-  input.dataset.bound = '1';
-  input.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
+  input.dataset.bound = "1";
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
       event.preventDefault();
       applyLinkFromInput();
-    } else if (event.key === 'Escape') {
+    } else if (event.key === "Escape") {
       event.preventDefault();
       hideLinkInputBar();
       editor?.commands.focus();
@@ -1132,89 +1169,92 @@ function scheduleRawTextUpdate(text: string): void {
 }
 
 function getEditorRoot(): HTMLElement | null {
-  return document.querySelector('#editor');
+  return document.querySelector("#editor");
 }
 
 function applyPreviewMarpHtml(html: string): void {
-  const marpRoot = document.getElementById('preview-marp-root');
+  const marpRoot = document.getElementById("preview-marp-root");
   const editorEl = getEditorRoot();
-  previewSurface = 'marp';
+  previewSurface = "marp";
   if (marpRoot) {
     marpRoot.innerHTML = html;
-    marpRoot.classList.remove('hidden');
+    marpRoot.classList.remove("hidden");
   }
   if (editorEl) {
-    editorEl.classList.add('hidden');
+    editorEl.classList.add("hidden");
   }
 }
 
 function applyPreviewTipTap(): void {
-  const marpRoot = document.getElementById('preview-marp-root');
+  const marpRoot = document.getElementById("preview-marp-root");
   const editorEl = getEditorRoot();
-  previewSurface = 'tiptap';
+  previewSurface = "tiptap";
   if (marpRoot) {
-    marpRoot.innerHTML = '';
-    marpRoot.classList.add('hidden');
+    marpRoot.innerHTML = "";
+    marpRoot.classList.add("hidden");
   }
   if (editorEl) {
-    editorEl.classList.remove('hidden');
+    editorEl.classList.remove("hidden");
   }
 }
 
 function setModeUi(mode: EditorMode): void {
   editorMode = mode;
-  document.body.setAttribute('data-mode', mode);
+  document.body.setAttribute("data-mode", mode);
 
-  document.querySelectorAll('#mode-toolbar button[data-mode]').forEach((btn) => {
-    const el = btn as HTMLElement;
-    el.classList.toggle('active', el.getAttribute('data-mode') === mode);
-  });
+  document
+    .querySelectorAll("#mode-toolbar button[data-mode]")
+    .forEach((btn) => {
+      const el = btn as HTMLElement;
+      el.classList.toggle("active", el.getAttribute("data-mode") === mode);
+    });
 
   const editorEl = getEditorRoot();
   const rawEl = getRawEditor();
-  const formatToolbar = document.getElementById('toolbar');
-  const marpRoot = document.getElementById('preview-marp-root');
+  const formatToolbar = document.getElementById("toolbar");
+  const marpRoot = document.getElementById("preview-marp-root");
 
-  if (mode !== 'preview') {
+  if (mode !== "preview") {
     if (marpRoot) {
-      marpRoot.innerHTML = '';
-      marpRoot.classList.add('hidden');
+      marpRoot.innerHTML = "";
+      marpRoot.classList.add("hidden");
     }
-    previewSurface = 'tiptap';
-  } else if (previewSurface === 'marp') {
+    previewSurface = "tiptap";
+  } else if (previewSurface === "marp") {
     if (marpRoot) {
-      marpRoot.classList.remove('hidden');
+      marpRoot.classList.remove("hidden");
     }
   } else if (marpRoot) {
-    marpRoot.innerHTML = '';
-    marpRoot.classList.add('hidden');
+    marpRoot.innerHTML = "";
+    marpRoot.classList.add("hidden");
   }
 
   if (editorEl) {
-    const hideEditor = mode === 'raw' || (mode === 'preview' && previewSurface === 'marp');
-    editorEl.classList.toggle('hidden', hideEditor);
-    editorEl.setAttribute('aria-readonly', String(mode === 'preview'));
+    const hideEditor =
+      mode === "raw" || (mode === "preview" && previewSurface === "marp");
+    editorEl.classList.toggle("hidden", hideEditor);
+    editorEl.setAttribute("aria-readonly", String(mode === "preview"));
   }
   if (rawEl) {
-    rawEl.classList.toggle('hidden', mode !== 'raw');
+    rawEl.classList.toggle("hidden", mode !== "raw");
   }
   if (formatToolbar) {
     // Format toolbar only for Markdown WYSIWYG (and hidden when file RO).
-    formatToolbar.classList.toggle('hidden', mode !== 'markdown');
+    formatToolbar.classList.toggle("hidden", mode !== "markdown");
   }
-  if (mode !== 'markdown' || readonly) {
+  if (mode !== "markdown" || readonly) {
     hideLinkInputBar();
   }
 
-  const canEdit = !readonly && (mode === 'markdown' || mode === 'raw');
+  const canEdit = !readonly && (mode === "markdown" || mode === "raw");
   // emitUpdate=false — UI-only; must not post Host update / dirty on open or mode switch.
-  editor?.setEditable(mode === 'markdown' && canEdit, false);
-  if (mode === 'preview') {
+  editor?.setEditable(mode === "markdown" && canEdit, false);
+  if (mode === "preview") {
     editor?.setEditable(false, false);
     editor?.commands.blur();
   }
   if (rawEl) {
-    rawEl.readOnly = !canEdit || mode !== 'raw';
+    rawEl.readOnly = !canEdit || mode !== "raw";
   }
 }
 
@@ -1233,15 +1273,15 @@ function flushPendingRawUpdate(): void {
     return;
   }
   // Host accepts late updateRaw when !readonly (even if UI already left Raw).
-  vscode.postMessage({ type: 'updateRaw', markdown: raw.value });
+  vscode.postMessage({ type: "updateRaw", markdown: raw.value });
 }
 
 function applyMode(mode: EditorMode, notifyHost: boolean): void {
-  if (editorMode === 'raw' && mode !== 'raw') {
+  if (editorMode === "raw" && mode !== "raw") {
     flushPendingRawUpdate();
   }
   setModeUi(mode);
-  if (mode === 'raw') {
+  if (mode === "raw") {
     const raw = getRawEditor();
     if (raw) {
       suppressRawUpdate = true;
@@ -1250,7 +1290,7 @@ function applyMode(mode: EditorMode, notifyHost: boolean): void {
     }
   }
   if (notifyHost) {
-    vscode.postMessage({ type: 'setMode', editorMode: mode });
+    vscode.postMessage({ type: "setMode", editorMode: mode });
   }
 }
 
@@ -1266,16 +1306,25 @@ function initEditor(initialDoc: TipTapDoc): void {
     const content = prepareDocForEditor(initialDoc);
 
     editor = new Editor({
-      element: document.getElementById('editor')!,
+      element: document.getElementById("editor")!,
       extensions: getEditorExtensions(),
       content,
-      editable: !readonly && editorMode === 'markdown',
+      editable: !readonly && editorMode === "markdown",
       onUpdate: ({ editor: ed }) => {
-        if (suppressUpdate || gfmConvertPending || readonly || editorMode !== 'markdown') {
+        if (
+          suppressUpdate ||
+          gfmConvertPending ||
+          readonly ||
+          editorMode !== "markdown"
+        ) {
           return;
         }
         const json = ed.getJSON();
-        vscode.postMessage({ type: 'update', docJson: JSON.stringify(json), epoch: updateEpoch });
+        vscode.postMessage({
+          type: "update",
+          docJson: JSON.stringify(json),
+          epoch: updateEpoch,
+        });
         checkTableLimitsFromEditor(ed);
       },
     });
@@ -1286,8 +1335,8 @@ function initEditor(initialDoc: TipTapDoc): void {
     attachModeToolbarHandlers();
     attachTableMenuHandlers();
     updateFormatToolbarPressedState();
-    editor.on('selectionUpdate', () => updateFormatToolbarPressedState());
-    editor.on('transaction', () => updateFormatToolbarPressedState());
+    editor.on("selectionUpdate", () => updateFormatToolbarPressedState());
+    editor.on("transaction", () => updateFormatToolbarPressedState());
     attachPasteHandler();
     attachRawEditorHandlers();
     attachPreviewGuard();
@@ -1303,7 +1352,7 @@ function applyExternalDoc(doc: TipTapDoc, options?: { force?: boolean }): void {
     return;
   }
   // TC-067: skip re-apply during active Markdown typing unless Host pushes full docJson.
-  if (editorMode === 'markdown' && editor.isFocused && !options?.force) {
+  if (editorMode === "markdown" && editor.isFocused && !options?.force) {
     return;
   }
   suppressUpdate = true;
@@ -1315,38 +1364,40 @@ function applyExternalDoc(doc: TipTapDoc, options?: { force?: boolean }): void {
 /** Block keyboard/paste/drop edits while Preview is active (strict RO). Scroll is allowed. */
 function attachPreviewGuard(): void {
   const editorEl = getEditorRoot();
-  if (!editorEl || editorEl.dataset.previewGuard === '1') {
+  if (!editorEl || editorEl.dataset.previewGuard === "1") {
     return;
   }
-  editorEl.dataset.previewGuard = '1';
+  editorEl.dataset.previewGuard = "1";
 
   const blockWhenPreview = (event: Event): void => {
-    if (editorMode !== 'preview') {
+    if (editorMode !== "preview") {
       return;
     }
     event.preventDefault();
     event.stopPropagation();
   };
 
-  editorEl.addEventListener('keydown', blockWhenPreview, true);
-  editorEl.addEventListener('beforeinput', blockWhenPreview, true);
-  editorEl.addEventListener('paste', blockWhenPreview, true);
-  editorEl.addEventListener('drop', blockWhenPreview, true);
+  editorEl.addEventListener("keydown", blockWhenPreview, true);
+  editorEl.addEventListener("beforeinput", blockWhenPreview, true);
+  editorEl.addEventListener("paste", blockWhenPreview, true);
+  editorEl.addEventListener("drop", blockWhenPreview, true);
 }
 
 function attachModeToolbarHandlers(): void {
-  document.querySelectorAll('#mode-toolbar button[data-mode]').forEach((btn) => {
-    const clone = btn.cloneNode(true) as HTMLElement;
-    btn.parentNode?.replaceChild(clone, btn);
-    clone.addEventListener('click', () => {
-      const mode = clone.getAttribute('data-mode') as EditorMode | null;
-      if (!mode || mode === editorMode) {
-        return;
-      }
-      // Mode switch alone — no content mutation; Host does not write disk.
-      applyMode(mode, true);
+  document
+    .querySelectorAll("#mode-toolbar button[data-mode]")
+    .forEach((btn) => {
+      const clone = btn.cloneNode(true) as HTMLElement;
+      btn.parentNode?.replaceChild(clone, btn);
+      clone.addEventListener("click", () => {
+        const mode = clone.getAttribute("data-mode") as EditorMode | null;
+        if (!mode || mode === editorMode) {
+          return;
+        }
+        // Mode switch alone — no content mutation; Host does not write disk.
+        applyMode(mode, true);
+      });
     });
-  });
   // Re-bind after mode-button clones so Default Preview keeps its click handler.
   attachNativePreviewHandler();
 }
@@ -1363,20 +1414,20 @@ function attachNativePreviewHandler(): void {
   const clone = btn.cloneNode(true) as HTMLElement;
   delete clone.dataset.bound;
   btn.parentNode?.replaceChild(clone, btn);
-  clone.dataset.bound = '1';
-  clone.addEventListener('click', () => {
-    vscode.postMessage({ type: 'openNativePreview' });
+  clone.dataset.bound = "1";
+  clone.addEventListener("click", () => {
+    vscode.postMessage({ type: "openNativePreview" });
   });
 }
 
 function attachRawEditorHandlers(): void {
   const raw = getRawEditor();
-  if (!raw || raw.dataset.bound === '1') {
+  if (!raw || raw.dataset.bound === "1") {
     return;
   }
-  raw.dataset.bound = '1';
-  raw.addEventListener('input', () => {
-    if (suppressRawUpdate || readonly || editorMode !== 'raw') {
+  raw.dataset.bound = "1";
+  raw.addEventListener("input", () => {
+    if (suppressRawUpdate || readonly || editorMode !== "raw") {
       return;
     }
     const value = raw.value;
@@ -1384,64 +1435,61 @@ function attachRawEditorHandlers(): void {
       clearTimeout(rawUpdateTimer);
     }
     rawUpdateTimer = setTimeout(() => {
-      vscode.postMessage({ type: 'updateRaw', markdown: value });
+      vscode.postMessage({ type: "updateRaw", markdown: value });
     }, RAW_UPDATE_DEBOUNCE_MS);
   });
 }
 
 function attachToolbarHandlers(): void {
-  document.querySelectorAll('#toolbar button').forEach((btn) => {
+  document.querySelectorAll("#toolbar button").forEach((btn) => {
     // Avoid stacking handlers across re-inits.
     const clone = btn.cloneNode(true) as HTMLElement;
     btn.parentNode?.replaceChild(clone, btn);
-    clone.addEventListener('click', () => {
-      if (!editor || readonly || editorMode !== 'markdown') {
+    clone.addEventListener("click", () => {
+      if (!editor || readonly || editorMode !== "markdown") {
         return;
       }
-      const cmd = clone.getAttribute('data-cmd');
+      const cmd = clone.getAttribute("data-cmd");
       switch (cmd) {
-        case 'bold':
+        case "bold":
           editor.chain().focus().toggleBold().run();
           break;
-        case 'italic':
+        case "italic":
           editor.chain().focus().toggleItalic().run();
           break;
-        case 'strike':
+        case "strike":
           editor.chain().focus().toggleStrike().run();
           break;
-        case 'inlineCode':
+        case "inlineCode":
           editor.chain().focus().toggleCode().run();
           break;
-        case 'heading': {
-          const level = parseInt(clone.getAttribute('data-level') ?? '1', 10) as
-            | 1
-            | 2
-            | 3
-            | 4
-            | 5
-            | 6;
+        case "heading": {
+          const level = parseInt(
+            clone.getAttribute("data-level") ?? "1",
+            10,
+          ) as 1 | 2 | 3 | 4 | 5 | 6;
           editor.chain().focus().toggleHeading({ level }).run();
           break;
         }
-        case 'bulletList':
+        case "bulletList":
           editor.chain().focus().toggleBulletList().run();
           break;
-        case 'orderedList':
+        case "orderedList":
           editor.chain().focus().toggleOrderedList().run();
           break;
-        case 'taskList':
+        case "taskList":
           editor.chain().focus().toggleTaskList().run();
           break;
-        case 'blockquote':
+        case "blockquote":
           editor.chain().focus().toggleBlockquote().run();
           break;
-        case 'link':
+        case "link":
           showLinkInputBar();
           break;
-        case 'codeBlock':
+        case "codeBlock":
           editor.chain().focus().toggleCodeBlock().run();
           break;
-        case 'horizontalRule':
+        case "horizontalRule":
           editor.chain().focus().setHorizontalRule().run();
           break;
       }
@@ -1451,8 +1499,8 @@ function attachToolbarHandlers(): void {
 }
 
 function setToolbarPressed(btn: Element, pressed: boolean): void {
-  btn.setAttribute('aria-pressed', pressed ? 'true' : 'false');
-  btn.classList.toggle('pressed', pressed);
+  btn.setAttribute("aria-pressed", pressed ? "true" : "false");
+  btn.classList.toggle("pressed", pressed);
 }
 
 /** Sync aria-pressed / pressed class with TipTap selection (AD-012). HR is insert-only. */
@@ -1460,27 +1508,27 @@ function updateFormatToolbarPressedState(): void {
   if (!editor) {
     return;
   }
-  document.querySelectorAll('#toolbar button[data-cmd]').forEach((btn) => {
-    const cmd = btn.getAttribute('data-cmd');
-    if (!cmd || cmd === 'horizontalRule') {
+  document.querySelectorAll("#toolbar button[data-cmd]").forEach((btn) => {
+    const cmd = btn.getAttribute("data-cmd");
+    if (!cmd || cmd === "horizontalRule") {
       return;
     }
-    if (cmd === 'heading') {
-      const level = parseInt(btn.getAttribute('data-level') ?? '0', 10);
-      setToolbarPressed(btn, editor!.isActive('heading', { level }));
+    if (cmd === "heading") {
+      const level = parseInt(btn.getAttribute("data-level") ?? "0", 10);
+      setToolbarPressed(btn, editor!.isActive("heading", { level }));
       return;
     }
     const activeMap: Record<string, boolean> = {
-      bold: editor.isActive('bold'),
-      italic: editor.isActive('italic'),
-      strike: editor.isActive('strike'),
-      inlineCode: editor.isActive('code'),
-      bulletList: editor.isActive('bulletList'),
-      orderedList: editor.isActive('orderedList'),
-      taskList: editor.isActive('taskList'),
-      blockquote: editor.isActive('blockquote'),
-      link: editor.isActive('link'),
-      codeBlock: editor.isActive('codeBlock'),
+      bold: editor.isActive("bold"),
+      italic: editor.isActive("italic"),
+      strike: editor.isActive("strike"),
+      inlineCode: editor.isActive("code"),
+      bulletList: editor.isActive("bulletList"),
+      orderedList: editor.isActive("orderedList"),
+      taskList: editor.isActive("taskList"),
+      blockquote: editor.isActive("blockquote"),
+      link: editor.isActive("link"),
+      codeBlock: editor.isActive("codeBlock"),
     };
     if (cmd in activeMap) {
       setToolbarPressed(btn, activeMap[cmd] ?? false);
@@ -1488,31 +1536,33 @@ function updateFormatToolbarPressedState(): void {
   });
 }
 
-function inferTableFormatFromAttrs(attrs: Record<string, unknown>): TableFormat {
-  if (attrs.tableFormat === 'gfm' || attrs.tableFormat === 'html') {
+function inferTableFormatFromAttrs(
+  attrs: Record<string, unknown>,
+): TableFormat {
+  if (attrs.tableFormat === "gfm" || attrs.tableFormat === "html") {
     return attrs.tableFormat;
   }
   if (attrs.gfmSource === true) {
-    return 'gfm';
+    return "gfm";
   }
-  if (typeof attrs.html === 'string' && attrs.html.length > 0) {
-    return 'html';
+  if (typeof attrs.html === "string" && attrs.html.length > 0) {
+    return "html";
   }
   if (attrs.gfmSource === false || attrs.converted === true) {
-    return 'html';
+    return "html";
   }
-  return 'gfm';
+  return "gfm";
 }
 
 function getTableContext(ed: Editor): TableContext {
-  if (!ed.isActive('table')) {
+  if (!ed.isActive("table")) {
     return { inTable: false, tableIndex: -1, tableFormat: null };
   }
 
   const $from = ed.state.selection.$from;
   let tableDepth = -1;
   for (let depth = $from.depth; depth > 0; depth -= 1) {
-    if ($from.node(depth).type.name === 'table') {
+    if ($from.node(depth).type.name === "table") {
       tableDepth = depth;
       break;
     }
@@ -1521,7 +1571,7 @@ function getTableContext(ed: Editor): TableContext {
     return { inTable: false, tableIndex: -1, tableFormat: null };
   }
 
-  const tableAttrs = ed.getAttributes('table') as Record<string, unknown>;
+  const tableAttrs = ed.getAttributes("table") as Record<string, unknown>;
   const tableFormat = inferTableFormatFromAttrs(tableAttrs);
 
   // Index among top-level doc blocks only — must match convertTableToGfmAtIndex(doc.content).
@@ -1529,7 +1579,7 @@ function getTableContext(ed: Editor): TableContext {
   let tableIndex = 0;
   let matched = false;
   ed.state.doc.forEach((node, offset) => {
-    if (matched || node.type.name !== 'table') {
+    if (matched || node.type.name !== "table") {
       return;
     }
     if (offset === currentPos) {
@@ -1547,160 +1597,178 @@ function getTableContext(ed: Editor): TableContext {
 }
 
 function updateTableMenuButtonStyle(): void {
-  const btn = document.getElementById('table-menu-btn');
+  const btn = document.getElementById("table-menu-btn");
   if (!btn) {
     return;
   }
-  btn.classList.toggle('table-format-html', insertTableFormat === 'html');
+  btn.classList.toggle("table-format-html", insertTableFormat === "html");
 }
 
 function closeTableMenuPanel(): void {
-  document.getElementById('table-menu-panel')?.classList.add('hidden');
+  document.getElementById("table-menu-panel")?.classList.add("hidden");
 }
 
 function openTableMenuPanel(): void {
   updateTableMenuState();
-  document.getElementById('table-menu-panel')?.classList.remove('hidden');
+  document.getElementById("table-menu-panel")?.classList.remove("hidden");
 }
 
 function updateTableMenuState(): void {
-  const panel = document.getElementById('table-menu-panel');
+  const panel = document.getElementById("table-menu-panel");
   if (!panel) {
     return;
   }
 
-  const disabled = readonly || editorMode !== 'markdown';
-  const ctx = editor ? getTableContext(editor) : { inTable: false, tableIndex: -1, tableFormat: null };
+  const disabled = readonly || editorMode !== "markdown";
+  const ctx = editor
+    ? getTableContext(editor)
+    : { inTable: false, tableIndex: -1, tableFormat: null };
 
-  panel.querySelectorAll('[data-table-op]').forEach((item) => {
+  panel.querySelectorAll("[data-table-op]").forEach((item) => {
     const el = item as HTMLButtonElement;
-    const op = el.getAttribute('data-table-op');
+    const op = el.getAttribute("data-table-op");
     let isDisabled = disabled;
 
-    if (op === 'insert') {
+    if (op === "insert") {
       isDisabled = disabled;
     } else if (
-      op === 'addRowBefore' ||
-      op === 'addRowAfter' ||
-      op === 'deleteRow' ||
-      op === 'addColumnBefore' ||
-      op === 'addColumnAfter' ||
-      op === 'deleteColumn' ||
-      op === 'deleteTable' ||
-      op === 'convertToGfm' ||
-      op === 'convertToHtml'
+      op === "addRowBefore" ||
+      op === "addRowAfter" ||
+      op === "deleteRow" ||
+      op === "addColumnBefore" ||
+      op === "addColumnAfter" ||
+      op === "deleteColumn" ||
+      op === "deleteTable" ||
+      op === "convertToGfm" ||
+      op === "convertToHtml"
     ) {
       isDisabled = disabled || !ctx.inTable;
-      if (!isDisabled && op === 'convertToGfm' && ctx.tableFormat === 'gfm') {
+      if (!isDisabled && op === "convertToGfm" && ctx.tableFormat === "gfm") {
         isDisabled = true;
       }
-      if (!isDisabled && op === 'convertToHtml' && ctx.tableFormat === 'html') {
+      if (!isDisabled && op === "convertToHtml" && ctx.tableFormat === "html") {
         isDisabled = true;
       }
-    } else if (op === 'setDefaultGfm' || op === 'setDefaultHtml') {
+    } else if (op === "setDefaultGfm" || op === "setDefaultHtml") {
       isDisabled = disabled;
     }
 
     el.disabled = isDisabled;
-    el.classList.toggle('menu-checked', false);
+    el.classList.toggle("menu-checked", false);
 
-    if (op === 'convertToGfm' && ctx.inTable && ctx.tableFormat === 'gfm') {
-      el.classList.add('menu-checked');
+    if (op === "convertToGfm" && ctx.inTable && ctx.tableFormat === "gfm") {
+      el.classList.add("menu-checked");
     }
-    if (op === 'convertToHtml' && ctx.inTable && ctx.tableFormat === 'html') {
-      el.classList.add('menu-checked');
+    if (op === "convertToHtml" && ctx.inTable && ctx.tableFormat === "html") {
+      el.classList.add("menu-checked");
     }
-    if (op === 'setDefaultGfm' && insertTableFormat === 'gfm') {
-      el.classList.add('menu-checked');
+    if (op === "setDefaultGfm" && insertTableFormat === "gfm") {
+      el.classList.add("menu-checked");
     }
-    if (op === 'setDefaultHtml' && insertTableFormat === 'html') {
-      el.classList.add('menu-checked');
+    if (op === "setDefaultHtml" && insertTableFormat === "html") {
+      el.classList.add("menu-checked");
     }
   });
 }
 
 function postDocUpdate(): void {
-  if (!editor || readonly || editorMode !== 'markdown' || gfmConvertPending) {
+  if (!editor || readonly || editorMode !== "markdown" || gfmConvertPending) {
     return;
   }
   const json = editor.getJSON();
-  vscode.postMessage({ type: 'update', docJson: JSON.stringify(json), epoch: updateEpoch });
+  vscode.postMessage({
+    type: "update",
+    docJson: JSON.stringify(json),
+    epoch: updateEpoch,
+  });
   checkTableLimitsFromEditor(editor);
 }
 
 function handleTableOperation(op: string): void {
-  if (!editor || readonly || editorMode !== 'markdown') {
+  if (!editor || readonly || editorMode !== "markdown") {
     return;
   }
 
   closeTableMenuPanel();
 
   switch (op) {
-    case 'insert':
-      editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
-      editor.chain().focus().updateAttributes('table', { tableFormat: insertTableFormat }).run();
+    case "insert":
+      editor
+        .chain()
+        .focus()
+        .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+        .run();
+      editor
+        .chain()
+        .focus()
+        .updateAttributes("table", { tableFormat: insertTableFormat })
+        .run();
       postDocUpdate();
       break;
-    case 'addRowBefore':
+    case "addRowBefore":
       editor.chain().focus().addRowBefore().run();
       postDocUpdate();
       break;
-    case 'addRowAfter':
+    case "addRowAfter":
       editor.chain().focus().addRowAfter().run();
       postDocUpdate();
       break;
-    case 'deleteRow':
+    case "deleteRow":
       editor.chain().focus().deleteRow().run();
       postDocUpdate();
       break;
-    case 'addColumnBefore':
+    case "addColumnBefore":
       editor.chain().focus().addColumnBefore().run();
       postDocUpdate();
       break;
-    case 'addColumnAfter':
+    case "addColumnAfter":
       editor.chain().focus().addColumnAfter().run();
       postDocUpdate();
       break;
-    case 'deleteColumn':
+    case "deleteColumn":
       editor.chain().focus().deleteColumn().run();
       postDocUpdate();
       break;
-    case 'deleteTable':
+    case "deleteTable":
       editor.chain().focus().deleteTable().run();
       postDocUpdate();
       break;
-    case 'convertToHtml': {
+    case "convertToHtml": {
       const ctx = getTableContext(editor);
-      if (!ctx.inTable || ctx.tableFormat === 'html') {
+      if (!ctx.inTable || ctx.tableFormat === "html") {
         return;
       }
-      editor.chain().focus().updateAttributes('table', { tableFormat: 'html' }).run();
+      editor
+        .chain()
+        .focus()
+        .updateAttributes("table", { tableFormat: "html" })
+        .run();
       postDocUpdate();
       break;
     }
-    case 'convertToGfm': {
+    case "convertToGfm": {
       const ctx = getTableContext(editor);
-      if (!ctx.inTable || ctx.tableFormat === 'gfm') {
+      if (!ctx.inTable || ctx.tableFormat === "gfm") {
         return;
       }
       // Confirm on Host. Do not postDocUpdate first — that HTML snapshot races the convert.
       gfmConvertPending = true;
       updateEpoch += 1;
       vscode.postMessage({
-        type: 'requestConvertToGfm',
+        type: "requestConvertToGfm",
         tableIndex: ctx.tableIndex,
         docJson: JSON.stringify(editor.getJSON()),
         epoch: updateEpoch,
       });
       break;
     }
-    case 'setDefaultGfm':
-      insertTableFormat = 'gfm';
+    case "setDefaultGfm":
+      insertTableFormat = "gfm";
       updateTableMenuButtonStyle();
       updateTableMenuState();
       break;
-    case 'setDefaultHtml':
-      insertTableFormat = 'html';
+    case "setDefaultHtml":
+      insertTableFormat = "html";
       updateTableMenuButtonStyle();
       updateTableMenuState();
       break;
@@ -1710,29 +1778,29 @@ function handleTableOperation(op: string): void {
 }
 
 function attachTableMenuHandlers(): void {
-  const btn = document.getElementById('table-menu-btn');
-  const panel = document.getElementById('table-menu-panel');
-  if (!btn || !panel || btn.dataset.bound === '1') {
+  const btn = document.getElementById("table-menu-btn");
+  const panel = document.getElementById("table-menu-panel");
+  if (!btn || !panel || btn.dataset.bound === "1") {
     return;
   }
-  btn.dataset.bound = '1';
+  btn.dataset.bound = "1";
 
-  btn.addEventListener('click', (event) => {
+  btn.addEventListener("click", (event) => {
     event.stopPropagation();
-    if (readonly || editorMode !== 'markdown') {
+    if (readonly || editorMode !== "markdown") {
       return;
     }
-    if (panel.classList.contains('hidden')) {
+    if (panel.classList.contains("hidden")) {
       openTableMenuPanel();
     } else {
       closeTableMenuPanel();
     }
   });
 
-  panel.querySelectorAll('[data-table-op]').forEach((item) => {
-    item.addEventListener('click', (event) => {
+  panel.querySelectorAll("[data-table-op]").forEach((item) => {
+    item.addEventListener("click", (event) => {
       event.stopPropagation();
-      const op = (item as HTMLElement).getAttribute('data-table-op');
+      const op = (item as HTMLElement).getAttribute("data-table-op");
       if (op) {
         handleTableOperation(op);
       }
@@ -1740,10 +1808,10 @@ function attachTableMenuHandlers(): void {
   });
 
   if (!document.body.dataset.tableMenuBound) {
-    document.body.dataset.tableMenuBound = '1';
-    document.addEventListener('click', () => closeTableMenuPanel());
-    editor?.on('selectionUpdate', () => {
-      if (!panel.classList.contains('hidden')) {
+    document.body.dataset.tableMenuBound = "1";
+    document.addEventListener("click", () => closeTableMenuPanel());
+    editor?.on("selectionUpdate", () => {
+      if (!panel.classList.contains("hidden")) {
         updateTableMenuState();
       }
     });
@@ -1756,13 +1824,13 @@ function attachPasteHandler(): void {
     return;
   }
   pasteHandlerAttached = true;
-  document.addEventListener('paste', (event) => {
-    if (readonly || editorMode !== 'markdown' || !event.clipboardData) {
+  document.addEventListener("paste", (event) => {
+    if (readonly || editorMode !== "markdown" || !event.clipboardData) {
       return;
     }
     const items = event.clipboardData.items;
     for (const item of items) {
-      if (item.type.startsWith('image/')) {
+      if (item.type.startsWith("image/")) {
         event.preventDefault();
         const file = item.getAsFile();
         if (!file) {
@@ -1771,8 +1839,12 @@ function attachPasteHandler(): void {
         const reader = new FileReader();
         reader.onload = () => {
           const result = reader.result as string;
-          const base64 = result.split(',')[1] ?? '';
-          vscode.postMessage({ type: 'pasteImage', mime: item.type, dataBase64: base64 });
+          const base64 = result.split(",")[1] ?? "";
+          vscode.postMessage({
+            type: "pasteImage",
+            mime: item.type,
+            dataBase64: base64,
+          });
         };
         reader.readAsDataURL(file);
         return;
@@ -1786,7 +1858,7 @@ function checkTableLimitsFromEditor(ed: Editor): void {
   let maxRows = 0;
   let maxCols = 0;
   for (const node of json.content ?? []) {
-    if (node.type === 'table') {
+    if (node.type === "table") {
       const rows = node.content?.length ?? 0;
       const cols = node.content?.[0]?.content?.length ?? 0;
       maxRows = Math.max(maxRows, rows);
@@ -1794,36 +1866,41 @@ function checkTableLimitsFromEditor(ed: Editor): void {
     }
   }
   if (maxRows > 0 || maxCols > 0) {
-    vscode.postMessage({ type: 'checkTableLimits', rows: maxRows, cols: maxCols });
+    vscode.postMessage({
+      type: "checkTableLimits",
+      rows: maxRows,
+      cols: maxCols,
+    });
   }
 }
 
 function setRawParseBanner(failed: boolean, message?: string): void {
-  const el = document.getElementById('raw-parse-banner');
+  const el = document.getElementById("raw-parse-banner");
   if (!el) {
     return;
   }
   if (failed) {
-    el.textContent = message ?? 'Raw Markdown parse failed. Save is blocked until fixed.';
-    el.classList.remove('hidden');
+    el.textContent =
+      message ?? "Raw Markdown parse failed. Save is blocked until fixed.";
+    el.classList.remove("hidden");
   } else {
-    el.classList.add('hidden');
-    el.textContent = '';
+    el.classList.add("hidden");
+    el.textContent = "";
   }
 }
 
-window.addEventListener('message', (event) => {
+window.addEventListener("message", (event) => {
   const message = event.data;
   switch (message.type) {
-    case 'init':
+    case "init":
       readonly = message.readonly;
-      document.body.setAttribute('data-readonly', String(readonly));
-      latestMarkdownText = message.markdownText ?? '';
-      editorMode = (message.editorMode as EditorMode) ?? 'raw';
+      document.body.setAttribute("data-readonly", String(readonly));
+      latestMarkdownText = message.markdownText ?? "";
+      editorMode = (message.editorMode as EditorMode) ?? "raw";
       // ready must not force a second full init if already initialized —
       // apply content refresh instead of destroying a live editing session.
       if (isEditorInitialized && editor) {
-        editor.setEditable(!readonly && editorMode === 'markdown', false);
+        editor.setEditable(!readonly && editorMode === "markdown", false);
         applyExternalDoc(JSON.parse(message.docJson));
         scheduleRawTextUpdate(latestMarkdownText);
         setModeUi(editorMode);
@@ -1834,14 +1911,14 @@ window.addEventListener('message', (event) => {
       // Ensure UI matches Host mode after init (DEFAULT may be raw before first paint).
       setModeUi(editorMode);
       break;
-    case 'docUpdated':
+    case "docUpdated":
       latestMarkdownText = message.markdownText ?? latestMarkdownText;
-      if (typeof message.docJson !== 'string') {
+      if (typeof message.docJson !== "string") {
         // Markdown-originated sync (TC-067): markdownText only.
         scheduleRawTextUpdate(latestMarkdownText);
         break;
       }
-      if (editorMode === 'preview') {
+      if (editorMode === "preview") {
         applyPreviewTipTap();
       }
       // Host-initiated full doc (table convert, Raw parse, revert, undo/redo).
@@ -1849,51 +1926,62 @@ window.addEventListener('message', (event) => {
       syncRawTextFromHost(latestMarkdownText, true);
       applyExternalDoc(JSON.parse(message.docJson), { force: true });
       break;
-    case 'previewMarpHtml':
-      if (editorMode === 'preview' && typeof message.html === 'string') {
+    case "previewMarpHtml":
+      if (editorMode === "preview" && typeof message.html === "string") {
         applyPreviewMarpHtml(message.html);
       }
       break;
-    case 'convertToGfmCancelled':
+    case "convertToGfmCancelled":
       gfmConvertPending = false;
       break;
-    case 'modeChanged':
+    case "modeChanged":
       if (message.editorMode && message.editorMode !== editorMode) {
         applyMode(message.editorMode as EditorMode, false);
       }
       break;
-    case 'rawParseFailed':
+    case "rawParseFailed":
       setRawParseBanner(!!message.failed, message.message);
       break;
-    case 'readonlyChanged':
+    case "readonlyChanged":
       readonly = message.readonly;
-      document.body.setAttribute('data-readonly', String(readonly));
+      document.body.setAttribute("data-readonly", String(readonly));
       setModeUi(editorMode);
       break;
-    case 'tableLimitWarning': {
-      const el = document.getElementById('table-warning');
+    case "tableLimitWarning": {
+      const el = document.getElementById("table-warning");
       if (el) {
         if (message.exceeded) {
-          el.textContent = message.message ?? 'Table size warning';
-          el.classList.remove('hidden');
+          el.textContent = message.message ?? "Table size warning";
+          el.classList.remove("hidden");
         } else {
-          el.classList.add('hidden');
+          el.classList.add("hidden");
         }
       }
       break;
     }
-    case 'imageInserted':
-      if (editor && !readonly && editorMode === 'markdown') {
-        editor.chain().focus().setImage({ src: message.relativePath, alt: message.relativePath }).run();
-        vscode.postMessage({ type: 'update', docJson: JSON.stringify(editor.getJSON()) });
+    case "imageInserted":
+      if (editor && !readonly && editorMode === "markdown") {
+        editor
+          .chain()
+          .focus()
+          .setImage({ src: message.relativePath, alt: message.relativePath })
+          .run();
+        vscode.postMessage({
+          type: "update",
+          docJson: JSON.stringify(editor.getJSON()),
+        });
       }
       break;
-    case 'themeUpdated':
-      if (message.kind === 'light' || message.kind === 'dark' || message.kind === 'highContrast') {
+    case "themeUpdated":
+      if (
+        message.kind === "light" ||
+        message.kind === "dark" ||
+        message.kind === "highContrast"
+      ) {
         handleThemeUpdated(message.kind);
       }
       break;
   }
 });
 
-vscode.postMessage({ type: 'ready' });
+vscode.postMessage({ type: "ready" });
