@@ -16,4 +16,8 @@ if [[ ${#vsix_files[@]} -ne 1 ]]; then
 fi
 VSIX="${vsix_files[0]}"
 
+echo "Publishing to Visual Studio Marketplace..."
 npx @vscode/vsce publish --packagePath "$VSIX"
+
+echo "Publishing to Open VSX Registry..."
+npx ovsx publish "$VSIX"
