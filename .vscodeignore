@@ -2,6 +2,7 @@
 .vscode-test/**
 .github/**
 .cursor/**
+.agents/**
 doc/**
 templates/**
 temporary/**

@@ -2,7 +2,7 @@
   "name": "vsc-md-editor",
   "displayName": "MD WYSIWYG Editor",
   "description": "WYSIWYG Markdown editor with tables, Mermaid, Marp preview, and image paste",
-  "version": "0.3.0",
+  "version": "0.3.2",
   "publisher": "mshiono",
   "author": "mshiono",
   "icon": "media/icon.png",
@@ -33,10 +33,20 @@
         "displayName": "MD WYSIWYG Editor",
         "selector": [
           {
+            "scheme": "file",
+            "filenamePattern": "*.md"
+          },
+          {
+            "scheme": "untitled",
+            "filenamePattern": "*.md"
+          },
+          {
+            "scheme": "vscode-remote",
             "filenamePattern": "*.md"
           }
         ],
-        "priority": "default"
+        "priority": "default",
+        "diffEditorPriority": "option"
       }
     ],
     "commands": [
@@ -81,6 +91,14 @@
           "default": false,
           "description": "Automatically reopen the WYSIWYG editor when switching from it to the built-in Markdown editor via the IDE title bar."
         }
+      }
+    },
+    "configurationDefaults": {
+      "workbench.diffEditorAssociations": {
+        "*.md": "default"
+      },
+      "workbench.editorAssociations": {
+        "{git}:/**/*.md": "default"
       }
     },
     "menus": {

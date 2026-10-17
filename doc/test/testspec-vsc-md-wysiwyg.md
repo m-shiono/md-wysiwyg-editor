@@ -267,6 +267,9 @@
 | TC-154 | Happy | contribution-viewtype-commands | P0 | `package.json` `contributes.customEditors` / `commands` / `activationEvents` / `menus` を検査 | viewType `md-wysiwyg-editor.wysiwyg`。公開コマンドは `md-wysiwyg-editor.*` プレフィックス（例: `openWithWysiwyg` / `reloadExtension` / `showNativeMarkdownPreview` / `showMarpPreview`）。`activeCustomEditorId` / when 句も新 viewType | 貢献 ID 一括同期 | §1 / §10, AD-001 |
 | TC-155 | Happy | settings-key-auto-restore | P0 | `package.json` `contributes.configuration` を検査 | 設定キー `md-wysiwyg-editor.autoRestoreOnBuiltinSwitch`（boolean、既定 `false`）が存在する。旧キー `vsc-md-editor.autoRestoreOnBuiltinSwitch` は **無い** | 設定キー同期 + 旧キー非互換 | §10 設定, AD-002/003 |
 | TC-156 | Corner | no-legacy-contribution-ids | P0 | `package.json` contributes を走査 | viewType / command / configuration / activationEvents / menus.when 内に旧プレフィックス `vsc-md-editor.` を含む項目が **0 件** | 旧プレフィックス互換なし（内部コードは md-wysiwyg-editor.* に統一） | AD-002, RK-004 |
+| TC-157 | Happy | custom-editor-selector-schemes | P0 | `package.json` `contributes.customEditors[0].selector` を検査 | `selector` の各エントリが `filenamePattern: "*.md"` を持ち、対応スキーム（`file`, `untitled`, `vscode-remote`）を明示していること。`git` 等の SCM/仮想スキームが含まれず、SCM 差分時に VS Code 標準テキスト Diff Editor へフォールバックすること | SCM 差分フォールバックとスキーム明示の担保 | §1 Preconditions, AD-001 |
+| TC-158 | Happy | configuration-defaults-diff-fallback | P0 | `package.json` `contributes.configurationDefaults` を検査 | `workbench.diffEditorAssociations` に `{"*.md": "default"}`、`workbench.editorAssociations` に `{"{git}:/**/*.md": "default"}` が設定されていること | 全 VS Code バージョンでの標準テキスト Diff Editor への安全・自動フォールバックの担保 | §1 Preconditions, AD-002 |
+| TC-159 | Corner | open-custom-document-safe-loading | P0 | `MarkdownEditorProvider.openCustomDocument` を検査 | プロバイダ側で例外を throw して VS Code に予期せぬエラーを表示させないこと | openCustomDocument の安全なドキュメント作成の担保 | §1 Preconditions, AD-001 |
 
 ### Fixtures — preview-mode-quality
 
@@ -785,3 +788,5 @@ P0 + P1 の机上トレース（実装前）。
 | 2026-09-29 | **BREAKING** `rename-md-wysiwyg`: 貢献 ID 期待を `md-wysiwyg-editor.*` に同期（TC-070/077/084 等）。TC-153–156 追加（Extension ID / viewType・commands / 設定キー / 旧プレフィックス不在）。**ファイル名は `testspec-vsc-md-wysiwyg.md` のまま**（systemspec feature-slug 維持）。テストコード未変更（design only） |
 | 2026-09-29 | testspec-implementation（Red）: TC-153–156 `contribution-id-rename.test.ts`；TC-070/077/084/141 と統合テストの貢献 ID 期待を `md-wysiwyg-editor.*` に更新 | `rename-md-wysiwyg` |
 | 2026-09-29 | Trace Results: TC-070 / TC-153–156 を Pass に同期（Quality Gate green 後。Expected 不変） | `rename-md-wysiwyg` |
+| 2026-10-17 | TC-157 追加（SCM 差分フォールバックのための selector スキーム明示設計） | `scm-diff-fallback` |
+| 2026-10-18 | TC-158（configurationDefaults の diff 関連付け検証）および TC-159（openCustomDocument の安全初期化検証）を更新 | `scm-diff-config-defaults` |

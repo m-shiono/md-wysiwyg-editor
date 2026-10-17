@@ -36,9 +36,14 @@ type PackageJson = {
   repository?: { type?: string; url?: string };
   activationEvents?: string[];
   contributes: {
-    customEditors: Array<{ viewType: string }>;
+    customEditors: Array<{
+      viewType: string;
+      selector?: Array<{ scheme?: string; filenamePattern?: string }>;
+      diffEditorPriority?: string;
+    }>;
     commands: Array<{ command: string }>;
     configuration?: { properties?: Record<string, { type?: string; default?: unknown }> };
+    configurationDefaults?: Record<string, Record<string, string>>;
     menus?: Record<string, Array<{ command?: string; when?: string }>>;
   };
 };
@@ -159,6 +164,56 @@ suite('Contribution ID & Marketplace ID guard', () => {
       legacyHits,
       [],
       `legacy contribution IDs (vsc-md-editor.*) must be absent; found: ${legacyHits.join(', ')}`,
+    );
+  });
+
+  test('TC-157: customEditors.selector restricts schemes to file, untitled, vscode-remote without git', () => {
+    const pkg = loadPackageJson();
+    const editor = pkg.contributes.customEditors.find((e) => e.viewType === VIEW_TYPE);
+    assert.ok(editor, `customEditors must include ${VIEW_TYPE}`);
+    assert.ok(editor.selector && editor.selector.length > 0, 'selector must be specified');
+
+    const schemes = editor.selector.map((s) => s.scheme);
+    assert.ok(schemes.includes('file'), 'selector must include scheme: "file"');
+    assert.ok(schemes.includes('untitled'), 'selector must include scheme: "untitled"');
+    assert.ok(schemes.includes('vscode-remote'), 'selector must include scheme: "vscode-remote"');
+    assert.ok(!schemes.includes('git'), 'selector must NOT include scheme: "git" so diffs fall back');
+
+    for (const item of editor.selector) {
+      assert.strictEqual(item.filenamePattern, '*.md', 'filenamePattern must be *.md');
+    }
+  });
+
+  test('TC-158: configurationDefaults configures diffEditorAssociations and editorAssociations for markdown diff fallback', () => {
+    const pkg = loadPackageJson();
+    const configDefaults = pkg.contributes.configurationDefaults;
+    assert.ok(configDefaults, 'contributes must define configurationDefaults');
+
+    const diffAssociations = configDefaults['workbench.diffEditorAssociations'];
+    assert.ok(diffAssociations, 'configurationDefaults must define workbench.diffEditorAssociations');
+    assert.strictEqual(
+      diffAssociations['*.md'],
+      'default',
+      'workbench.diffEditorAssociations must map "*.md" to "default"',
+    );
+
+    const editorAssociations = configDefaults['workbench.editorAssociations'];
+    assert.ok(editorAssociations, 'configurationDefaults must define workbench.editorAssociations');
+    assert.strictEqual(
+      editorAssociations['{git}:/**/*.md'],
+      'default',
+      'workbench.editorAssociations must map "{git}:/**/*.md" to "default"',
+    );
+  });
+
+  test('TC-159: customEditors sets diffEditorPriority to option as secondary defense', () => {
+    const pkg = loadPackageJson();
+    const editor = pkg.contributes.customEditors.find((e) => e.viewType === VIEW_TYPE);
+    assert.ok(editor, `customEditors must include ${VIEW_TYPE}`);
+    assert.strictEqual(
+      editor.diffEditorPriority,
+      'option',
+      'diffEditorPriority must be "option" as secondary defense for VS Code 1.120+',
     );
   });
 });
