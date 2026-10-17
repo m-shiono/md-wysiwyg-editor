@@ -72,7 +72,8 @@ AD-* の HOW 境界・レイヤ方針の正本は [architecture.md](../design/ar
 ### Preconditions
 
 - VS Code が AD-001 で定める最小 `engines.vscode` を満たすこと
-- 対象 URI がファイルシステム上の通常ファイルであること（リモート FS は未保証）
+- 対象 URI が対応スキーム（`file`, `untitled`, `vscode-remote`）であること（`package.json` の `customEditors.selector` で明示的に制限）
+- Source Control（Git 差分など `git:` スキーム）は、`contributes.configurationDefaults`（`workbench.diffEditorAssociations` および `workbench.editorAssociations`）およびセレクタ制限により、VS Code 標準のテキスト Diff Editor（Monaco Diff Editor）へ自動フォールバックさせること（AD-001 / AD-002 / UD-001）
 - Webview でスクリプト有効化が許可されること
 
 ### Behavior
@@ -1058,3 +1059,5 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | 2026-09-29 | 概要, §1, §10, RK-020–021, Spec Gaps, 改訂履歴 | 製品リネーム（`rename-md-wysiwyg`）: 貢献 ID プレフィックスを `md-wysiwyg-editor` に同期。viewType `md-wysiwyg-editor.wysiwyg`、コマンド／設定 `md-wysiwyg-editor.*`、Extension ID `mshiono.md-wysiwyg-editor`、repo `https://github.com/m-shiono/md-wysiwyg-editor.git`。製品内 `showNativeMarkdownPreviewToSide` は同一ハンドラ継続（AD-004）。CSP／サニタイズ境界は不変（AD-008）。Requirements Brief AD-001–AD-010 |
 | 2026-10-03 | Non-Goals, Related Tests, 改訂履歴 | doc 整理: `backlog.md` への参照リンク更新 |
 | 2026-10-03 | 概要, §10 Non-Goals, 改訂履歴 | doc 整理: Marketplace 記述全廃。識別子統一方針（package.json name のみ vsc-md-editor、他は md-wysiwyg-editor 統一）を記録 |
+| 2026-10-17 | §1 Preconditions, 改訂履歴 | SCM 差分フォールバック（`scm-diff-fallback`）: `package.json` の `contributes.customEditors[0].selector` を `scheme: "file"`, `scheme: "untitled"`, `scheme: "vscode-remote"` に限定し、`git:` 等の仮想スキーム（Source Control diff）では VS Code 標準テキスト Diff Editor にフォールバックする契約を明記 |
+| 2026-10-18 | §1 Preconditions, 改訂履歴 | SCM 差分フォールバック方式を `configurationDefaults` に移行（`scm-diff-config-defaults`）: `openCustomDocument` の throw 方式を撤回（VS Code が予期せぬエラーを表示するため）。`package.json` の `contributes.configurationDefaults` に `workbench.diffEditorAssociations`（`"*.md": "default"`）および `workbench.editorAssociations`（`"{git}:/**/*.md": "default"`）を定義し、標準テキスト Diff Editor への安全・確実な自動フォールバックを契約化 |
