@@ -1309,6 +1309,7 @@ function setModeUi(mode: EditorMode): void {
   }
   if (mode !== "markdown" || readonly) {
     hideLinkInputBar();
+    closeTableContextMenu();
   }
 
   const canEdit = !readonly && (mode === "markdown" || mode === "raw");
@@ -1410,6 +1411,7 @@ function initEditor(initialDoc: TipTapDoc): void {
     attachLinkInputHandlers();
     attachModeToolbarHandlers();
     attachTableMenuHandlers();
+    attachTableContextMenuHandlers();
     updateFormatToolbarPressedState();
     editor.on("selectionUpdate", () => updateFormatToolbarPressedState());
     editor.on("transaction", () => updateFormatToolbarPressedState());
@@ -1700,6 +1702,36 @@ function openTableMenuPanel(): void {
   document.getElementById("table-menu-panel")?.classList.remove("hidden");
 }
 
+function closeTableContextMenu(): void {
+  document.getElementById("table-context-menu")?.classList.add("hidden");
+}
+
+function openTableContextMenu(clientX: number, clientY: number): void {
+  const menu = document.getElementById("table-context-menu");
+  if (!menu) {
+    return;
+  }
+  menu.classList.remove("hidden");
+
+  const menuWidth = menu.offsetWidth || 180;
+  const menuHeight = menu.offsetHeight || 220;
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+
+  let left = clientX;
+  let top = clientY;
+
+  if (left + menuWidth > viewportWidth) {
+    left = Math.max(0, viewportWidth - menuWidth - 8);
+  }
+  if (top + menuHeight > viewportHeight) {
+    top = Math.max(0, viewportHeight - menuHeight - 8);
+  }
+
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+}
+
 function updateTableMenuState(): void {
   const panel = document.getElementById("table-menu-panel");
   if (!panel) {
@@ -1777,6 +1809,7 @@ function handleTableOperation(op: string): void {
   }
 
   closeTableMenuPanel();
+  closeTableContextMenu();
 
   switch (op) {
     case "insert":
@@ -1902,6 +1935,61 @@ function attachTableMenuHandlers(): void {
         updateTableMenuState();
       }
     });
+  }
+}
+
+function attachTableContextMenuHandlers(): void {
+  const menu = document.getElementById("table-context-menu");
+  if (!menu || menu.dataset.bound === "1") {
+    return;
+  }
+  menu.dataset.bound = "1";
+
+  menu.querySelectorAll("[data-table-op]").forEach((item) => {
+    item.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const op = (item as HTMLElement).getAttribute("data-table-op");
+      closeTableContextMenu();
+      if (op) {
+        handleTableOperation(op);
+      }
+    });
+  });
+
+  document.addEventListener("contextmenu", (event: MouseEvent) => {
+    if (readonly || editorMode !== "markdown" || !editor) {
+      return;
+    }
+    const target = event.target as HTMLElement | null;
+    const cell = target?.closest("td, th");
+    if (!cell) {
+      closeTableContextMenu();
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const pos = editor.view.posAtCoords({ left: event.clientX, top: event.clientY });
+    if (pos) {
+      editor.chain().focus().setTextSelection(pos.pos).run();
+    } else {
+      editor.chain().focus().run();
+    }
+
+    openTableContextMenu(event.clientX, event.clientY);
+  });
+
+  if (!document.body.dataset.tableContextMenuBound) {
+    document.body.dataset.tableContextMenuBound = "1";
+    document.addEventListener("click", () => closeTableContextMenu());
+    document.addEventListener("keydown", (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeTableContextMenu();
+      }
+    });
+    window.addEventListener("resize", () => closeTableContextMenu());
+    window.addEventListener("scroll", () => closeTableContextMenu(), true);
   }
 }
 

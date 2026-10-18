@@ -270,6 +270,12 @@
 | TC-157 | Happy | custom-editor-selector-schemes | P0 | `package.json` `contributes.customEditors[0].selector` を検査 | `selector` の各エントリが `filenamePattern: "*.md"` を持ち、対応スキーム（`file`, `untitled`, `vscode-remote`）を明示していること。`git` 等の SCM/仮想スキームが含まれず、SCM 差分時に VS Code 標準テキスト Diff Editor へフォールバックすること | SCM 差分フォールバックとスキーム明示の担保 | §1 Preconditions, AD-001 |
 | TC-158 | Happy | configuration-defaults-diff-fallback | P0 | `package.json` `contributes.configurationDefaults` を検査 | `workbench.diffEditorAssociations` に `{"*.md": "default"}`、`workbench.editorAssociations` に `{"{git}:/**/*.md": "default"}` が設定されていること | 全 VS Code バージョンでの標準テキスト Diff Editor への安全・自動フォールバックの担保 | §1 Preconditions, AD-002 |
 | TC-159 | Corner | open-custom-document-safe-loading | P0 | `MarkdownEditorProvider.openCustomDocument` を検査 | プロバイダ側で例外を throw して VS Code に予期せぬエラーを表示させないこと | openCustomDocument の安全なドキュメント作成の担保 | §1 Preconditions, AD-001 |
+| TC-160 | Happy | table-context-menu-open | P0 | Visual（`markdown`）モードで表セル（`td`/`th`）上で右クリック（`contextmenu` イベント） | `#table-context-menu` が表示され、ポインター位置に配置される。デフォルトメニューは抑止（`preventDefault`）される | 右クリックメニューの表示と位置 | §3 表編集 UI |
+| TC-161 | Happy | table-context-menu-row-col-ops | P0 | コンテキストメニュー内の行/列追加・削除（`addRowBefore`, `addRowAfter`, `deleteRow`, `addColumnBefore`, `addColumnAfter`, `deleteColumn`）をクリック | 対象セルに対して指定操作が実行され、メニューが閉じ、ドキュメントが更新（`postDocUpdate`）される | コンテキストメニューからの行列操作 | §3 表編集 UI, 正常系 8 |
+| TC-162 | Happy | table-context-menu-delete-table | P0 | コンテキストメニュー内の `deleteTable` をクリック | 表全体が削除され、メニューが閉じ、ドキュメントが更新される | コンテキストメニューからの表削除 | §3 表編集 UI, 正常系 8 |
+| TC-163 | Happy | table-context-menu-dismiss | P1 | コンテキストメニュー表示中にメニュー外をクリック、または `Escape` キーを押下 | コンテキストメニューが非表示（`hidden`）になる | メニューのキャンセル・非表示 | §3 表編集 UI |
+| TC-164 | Corner | table-context-menu-readonly-guard | P1 | Readonly（`readonly: true`）モードで表セル上を右クリック | コンテキストメニューは表示されない | Readonly 編集保護 | §3 例外系 3 |
+| TC-165 | Corner | table-context-menu-non-markdown-guard | P1 | Preview モードまたは Raw モードで右クリック | 表のコンテキストメニューは表示されない | 非 Visual モード保護 | §3 例外系 3 |
 
 ### Fixtures — preview-mode-quality
 
@@ -791,3 +797,4 @@ P0 + P1 の机上トレース（実装前）。
 | 2026-10-17 | TC-157 追加（SCM 差分フォールバックのための selector スキーム明示設計） | `scm-diff-fallback` |
 | 2026-10-18 | TC-158（configurationDefaults の diff 関連付け検証）および TC-159（openCustomDocument の安全初期化検証）を更新 | `scm-diff-config-defaults` |
 | 2026-10-19 | TC-130 / TC-132 Expected 更新 | Preview モードでの Mermaid ソース非表示化（`body[data-mode='preview'] .mermaid-source { display: none; }`）。Markdown ではソース併記を維持 |
+| 2026-10-19 | TC-160–165 追加 | 表の右クリックコンテキストメニュー（`table-context-menu`）: Visualモードでの表セル右クリック表示、行列操作・表削除、Escape/外部クリックでのキャンセル、Readonly/非Visualモードでのガード |

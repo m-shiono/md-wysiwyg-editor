@@ -228506,6 +228506,7 @@ ${prefix}
     }
     if (mode !== "markdown" || readonly) {
       hideLinkInputBar();
+      closeTableContextMenu();
     }
     const canEdit = !readonly && (mode === "markdown" || mode === "raw");
     editor?.setEditable(mode === "markdown" && canEdit, false);
@@ -228587,6 +228588,7 @@ ${prefix}
       attachLinkInputHandlers();
       attachModeToolbarHandlers();
       attachTableMenuHandlers();
+      attachTableContextMenuHandlers();
       updateFormatToolbarPressedState();
       editor.on("selectionUpdate", () => updateFormatToolbarPressedState());
       editor.on("transaction", () => updateFormatToolbarPressedState());
@@ -228839,6 +228841,30 @@ ${prefix}
     updateTableMenuState();
     document.getElementById("table-menu-panel")?.classList.remove("hidden");
   }
+  function closeTableContextMenu() {
+    document.getElementById("table-context-menu")?.classList.add("hidden");
+  }
+  function openTableContextMenu(clientX, clientY) {
+    const menu = document.getElementById("table-context-menu");
+    if (!menu) {
+      return;
+    }
+    menu.classList.remove("hidden");
+    const menuWidth = menu.offsetWidth || 180;
+    const menuHeight = menu.offsetHeight || 220;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    let left3 = clientX;
+    let top2 = clientY;
+    if (left3 + menuWidth > viewportWidth) {
+      left3 = Math.max(0, viewportWidth - menuWidth - 8);
+    }
+    if (top2 + menuHeight > viewportHeight) {
+      top2 = Math.max(0, viewportHeight - menuHeight - 8);
+    }
+    menu.style.left = `${left3}px`;
+    menu.style.top = `${top2}px`;
+  }
   function updateTableMenuState() {
     const panel = document.getElementById("table-menu-panel");
     if (!panel) {
@@ -228896,6 +228922,7 @@ ${prefix}
       return;
     }
     closeTableMenuPanel();
+    closeTableContextMenu();
     switch (op2) {
       case "insert":
         editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
@@ -229003,6 +229030,54 @@ ${prefix}
           updateTableMenuState();
         }
       });
+    }
+  }
+  function attachTableContextMenuHandlers() {
+    const menu = document.getElementById("table-context-menu");
+    if (!menu || menu.dataset.bound === "1") {
+      return;
+    }
+    menu.dataset.bound = "1";
+    menu.querySelectorAll("[data-table-op]").forEach((item) => {
+      item.addEventListener("click", (event3) => {
+        event3.stopPropagation();
+        const op2 = item.getAttribute("data-table-op");
+        closeTableContextMenu();
+        if (op2) {
+          handleTableOperation(op2);
+        }
+      });
+    });
+    document.addEventListener("contextmenu", (event3) => {
+      if (readonly || editorMode !== "markdown" || !editor) {
+        return;
+      }
+      const target = event3.target;
+      const cell = target?.closest("td, th");
+      if (!cell) {
+        closeTableContextMenu();
+        return;
+      }
+      event3.preventDefault();
+      event3.stopPropagation();
+      const pos = editor.view.posAtCoords({ left: event3.clientX, top: event3.clientY });
+      if (pos) {
+        editor.chain().focus().setTextSelection(pos.pos).run();
+      } else {
+        editor.chain().focus().run();
+      }
+      openTableContextMenu(event3.clientX, event3.clientY);
+    });
+    if (!document.body.dataset.tableContextMenuBound) {
+      document.body.dataset.tableContextMenuBound = "1";
+      document.addEventListener("click", () => closeTableContextMenu());
+      document.addEventListener("keydown", (event3) => {
+        if (event3.key === "Escape") {
+          closeTableContextMenu();
+        }
+      });
+      window.addEventListener("resize", () => closeTableContextMenu());
+      window.addEventListener("scroll", () => closeTableContextMenu(), true);
     }
   }
   var pasteHandlerAttached = false;

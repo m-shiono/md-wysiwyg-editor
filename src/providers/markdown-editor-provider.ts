@@ -626,6 +626,17 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
   <div id="preview-marp-root" class="hidden" role="document" aria-readonly="true"></div>
   <div id="editor"></div>
   <textarea id="raw-editor" class="hidden" spellcheck="false" aria-label="Raw Markdown"></textarea>
+  <div id="table-context-menu" class="context-menu hidden" role="menu" aria-label="Table Context Menu">
+    <button type="button" data-table-op="addRowBefore" role="menuitem">Add row above</button>
+    <button type="button" data-table-op="addRowAfter" role="menuitem">Add row below</button>
+    <button type="button" data-table-op="deleteRow" role="menuitem">Delete row</button>
+    <hr class="toolbar-dropdown-sep" />
+    <button type="button" data-table-op="addColumnBefore" role="menuitem">Add column left</button>
+    <button type="button" data-table-op="addColumnAfter" role="menuitem">Add column right</button>
+    <button type="button" data-table-op="deleteColumn" role="menuitem">Delete column</button>
+    <hr class="toolbar-dropdown-sep" />
+    <button type="button" data-table-op="deleteTable" role="menuitem">Delete table</button>
+  </div>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;

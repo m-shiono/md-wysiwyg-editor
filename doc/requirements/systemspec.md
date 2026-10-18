@@ -376,21 +376,40 @@ Table ボタン（▼ ドロップダウン）の構成:
 
 Table ボタンの色は **セッション挿入デフォルト**（`insertTableFormat`）を反映する。GFM = 通常ツールバースタイル、HTML = アクセント色。カーソルが表内にあるときはドロップダウン内チェックマークで **当該表の `tableFormat`** を示し、ボタン色とは分離する。
 
+#### Table 右クリックメニュー（コンテキストメニュー）UI
+
+Visual（Markdown）モードにおいて、表（`td` / `th` / `table`）要素上で右クリック（`contextmenu` イベント）した際、ポインター位置に対象セルをターゲットとするコンテキストメニュー（`#table-context-menu`）を表示する。
+
+- **メニュー項目構成（英語表記・UD-1 A / UD-2 A）:**
+  1. **Add row above**（行を上に追加）
+  2. **Add row below**（行を下に追加）
+  3. **Delete row**（行を削除）
+  4. （セパレータ）
+  5. **Add column left**（列を左に追加）
+  6. **Add column right**（列を右に追加）
+  7. **Delete column**（列を削除）
+  8. （セパレータ）
+  9. **Delete table**（表を削除）
+- **セル選択とフォーカス同期:** 右クリック時にポインター直下のセルにエディタのカーソル/選択を同期させ、クリックされたセルに対して操作を正確に適用する。
+- **メニュー非表示条件:** 項目選択時、メニュー外クリック時、`Escape` キー押下時、スクロールまたはリサイズ時にメニューを閉じる。
+- **配置境界調整:** 画面端（右端・下端）付近で開かれた場合、ビューポート内に収まるよう座標を調整する。
+
 #### 正常系
 
-1. 表の挿入、行/列の追加・削除、セル編集ができる
+1. 表の挿入、行/列の追加・削除、セル編集ができる（ツールバー Table メニューおよび表セルの右クリックコンテキストメニューから実行可能）
 2. `tableFormat: 'html'` の表では、セル内に複数行テキスト、箇条書き、チェックボックスを入力できる（HTML リッチセルの既存仕様は変更しない）
 3. `tableFormat: 'gfm'` の表では、セル内容はインラインマーク・プレーンテキストに制限する。**セル内改行**はソース上 `<br />`（または同等 hard break）として永続化し、Markdown 面では単一改行として表示・編集する。Raw の `<br />` を Markdown へ投影するときも単一改行とする（空行相当の多重改行は作らない）。リスト・複数段落などのブロック構造は不可
 4. 保存後の `.md` は当該表の `tableFormat` に応じて GFM パイプ表または HTML `<table>` として記録される。GFM 表セル内の改行はパイプ行内の `<br />`（または同等 hard break）として出力する
 5. 既存 GFM パイプ表の読込 → `tableFormat: 'gfm'`、既存 HTML `<table>` の読込 → `tableFormat: 'html'`（サニタイズ後）。属性欠落時は `gfmSource` / `html` 属性から推論する。GFM セル内の `<br />`（または同等）は単一改行として Document / Markdown 面へ復元する
 6. **GFM→HTML** 変換は確認なしで即時実行する。**HTML→GFM** 変換は実行前に確認ダイアログを表示する（例: 「リスト・チェックボックス等はプレーンテキストに flatten されます。セル内改行は `<br />` として保持されます。続行しますか？」）。flatten はブロックリッチの除去を指し、セル内改行は上記 GFM 改行契約に従い保持する。MVP に「今後表示しない」オプションは設けない
 7. 行数が 100 を超える、または列数が 20 を超える場合、エディタ内にソフト上限警告を表示する（保存は拒否しない）
+8. 表セル上で右クリックするとコンテキストメニューが表示され、選択した行列操作（追加・削除・表削除）が即座に対象セルに適用されてドキュメントが更新（dirty）される
 
 #### 例外系
 
 1. 外部 HTML 表の読込時、サニタイズ後に表示する（RK-003）
 2. 手書き GFM 表と HTML 表が同一リポジトリに混在しうる（RK-006 — スタイルガイド推奨）
-3. Readonly（§5）時は Table メニュー全項目を無効化する
+3. Readonly（§5）時、または Visual 以外のモード（Preview / Raw）では右クリックコンテキストメニューを表示しない（ツールバー項目も無効化）
 
 #### 廃止（本機能以前の挙動）
 
@@ -399,13 +418,15 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 ### Non-Goals
 
 - 表内数式・ピボット等の Excel 高度機能
+- セル結合 / セル分割
+- 右クリックメニュー内での GFM/HTML 変換（ツールバー Table メニューで提供）
 - `insertTableFormat` のワークスペース / ユーザー設定への永続化（MVP）
 - HTML→GFM 変換確認ダイアログの「今後表示しない」オプション（MVP）
 - GFM セル内のリスト・複数段落などブロック構造、および連続 `<br />` による空行相当の保持（単一改行へ正規化）
 
 ### Related Tests
 
-- [doc/test/testspec-vsc-md-wysiwyg.md](../test/testspec-vsc-md-wysiwyg.md) — TC-016–024, TC-065（既存）。**要追記:** 挿入デフォルト GFM、HTML 挿入、HTML→GFM 確認付き変換・flatten、GFM→HTML 変換、メニュー行/列操作、ボタン色 / セッションデフォルト切替、Readonly 無効、GFM/HTML round-trip（`table-gfm-html-mode`）。**要追記（回帰）:** GFM セル内改行 ↔ Raw `<br />` 単一改行往復、連続 `<br />` の単一改行正規化（`gfm-table-linebreak-fix`）
+- [doc/test/testspec-vsc-md-wysiwyg.md](../test/testspec-vsc-md-wysiwyg.md) — TC-016–024, TC-065（既存）。**要追記:** 挿入デフォルト GFM、HTML 挿入、HTML→GFM 確認付き変換・flatten、GFM→HTML 変換、メニュー行/列操作、ボタン色 / セッションデフォルト切替、Readonly 無効、GFM/HTML round-trip（`table-gfm-html-mode`）。**要追記（回帰）:** GFM セル内改行 ↔ Raw `<br />` 単一改行往復、連続 `<br />` の単一改行正規化（`gfm-table-linebreak-fix`）。**右クリックコンテキストメニュー:** TC-160–165（`table-context-menu`）
 
 ---
 
@@ -1061,3 +1082,4 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | 2026-10-18 | §1 Preconditions, 改訂履歴 | SCM 差分フォールバック方式を `configurationDefaults` に移行（`scm-diff-config-defaults`）: `openCustomDocument` の throw 方式を撤回（VS Code が予期せぬエラーを表示するため）。`package.json` の `contributes.configurationDefaults` に `workbench.diffEditorAssociations`（`"*.md": "default"`）および `workbench.editorAssociations`（`"{git}:/**/*.md": "default"`）を定義し、標準テキスト Diff Editor への安全・確実な自動フォールバックを契約化 |
 | 2026-10-18 | §1 mode-toolbar, 改訂履歴 | mode-toolbar UIの整理・コンパクト化（案1・パターン2）: 編集モードを Visual (markdown) / Source (raw) のセグメントコントロールに集約し、Preview (preview) および Default Preview (native-preview) を分離配置。表示ラベル短縮。三点モード id や Document 同期契約は不変 |
 | 2026-10-19 | §1, §5, Spec Gaps, Related Tests, 改訂履歴 | Preview Mermaid ソース非表示化: Preview モード（`preview`）では `body[data-mode='preview'] .mermaid-source { display: none; }` により `.mermaid-source` を非表示とし、図のみを表示。Visual（`markdown`）モードでは図下ソース併記を維持 |
+| 2026-10-19 | §3, Spec Gaps, Related Tests, 改訂履歴 | 表の右クリックコンテキストメニュー追加（`table-context-menu`）: Visual（`markdown`）モードの表セル（`td`/`th`）右クリック時に、ポインター位置に対象セル操作（行/列の追加・削除、表削除）のコンテキストメニューを表示する仕様を契約化（UD-1 A / UD-2 A）。ツールバー機能は維持。Readonly / Visual 以外では非表示 |

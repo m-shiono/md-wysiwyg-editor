@@ -22,3 +22,4 @@ import './suite/unit/fix-mermaid-edge-styles.test';
 import './suite/unit/mermaid-redux-elk-fidelity.test';
 import './suite/unit/mermaid-readable-viewport.test';
 import './suite/unit/native-preview-side-and-default-raw.test';
+import './suite/unit/table-context-menu.test';
