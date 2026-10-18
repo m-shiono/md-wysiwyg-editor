@@ -275,11 +275,11 @@ suite('preview-rich-embed (TC-124–142)', () => {
 
   // --- Preview Mermaid CSS (TC-130–132) — snap-style: source visible in Preview ---
 
-  test('TC-130: Preview mode shows mermaid-source and mermaid-preview', () => {
+  test('TC-130: Preview mode hides mermaid-source and shows mermaid-preview', () => {
     const css = readRepoFile('media/editor.css');
     assert.ok(
-      !/body\[data-mode=['"]preview['"]\][\s\S]*\.mermaid-source[\s\S]*display:\s*none/.test(css),
-      'Preview must not hide .mermaid-source via CSS (source co-display; old hide withdrawn)',
+      /body\[data-mode=['"]preview['"]\][\s\S]*\.mermaid-source[\s\S]*display:\s*none/.test(css),
+      'Preview must hide .mermaid-source via CSS',
     );
     assert.ok(
       !/body\[data-mode=['"]preview['"]\][\s\S]*\.mermaid-preview[\s\S]*display:\s*none/.test(css),
@@ -301,11 +301,11 @@ suite('preview-rich-embed (TC-124–142)', () => {
     assert.ok(editorSrc.includes('mermaid-preview'), 'NodeView must render mermaid-preview');
   });
 
-  test('TC-132: Preview mermaid syntax error shows preview error while source stays visible', () => {
+  test('TC-132: Preview mermaid syntax error shows preview error while source is hidden via CSS', () => {
     const css = readRepoFile('media/editor.css');
     assert.ok(
-      !/body\[data-mode=['"]preview['"]\][\s\S]*\.mermaid-source[\s\S]*display:\s*none/.test(css),
-      'Preview must not hide mermaid-source on syntax error',
+      /body\[data-mode=['"]preview['"]\][\s\S]*\.mermaid-source[\s\S]*display:\s*none/.test(css),
+      'Preview must hide mermaid-source via CSS on syntax error',
     );
     const editorSrc = readRepoFile('media/editor.ts');
     assert.ok(editorSrc.includes('mermaid-error'), 'invalid mermaid must render error in preview area');

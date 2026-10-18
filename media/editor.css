@@ -521,6 +521,10 @@ body[data-readonly='true'] #link-input-bar {
   display: none;
 }
 
+body[data-mode='preview'] .mermaid-source {
+  display: none;
+}
+
 #preview-marp-root {
   overflow: auto;
   flex: 1;

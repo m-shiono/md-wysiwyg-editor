@@ -87,11 +87,11 @@ type MermaidThemeConfig = {
 suite('mermaid-snap-style-with-source', () => {
   // --- P0 ---
 
-  test('TC-001: Preview shows mermaid-source and mermaid-preview (no hide CSS)', () => {
+  test('TC-001: Preview hides mermaid-source via CSS and shows mermaid-preview', () => {
     const css = readRepoFile('media/editor.css');
     assert.ok(
-      !hasPreviewMermaidSourceHideRule(css),
-      'Preview must not hide .mermaid-source via display:none (AD-001/003; old hide rule must be removed)',
+      hasPreviewMermaidSourceHideRule(css),
+      'Preview must hide .mermaid-source via display:none (AD-001/003)',
     );
     assert.ok(
       !hasPreviewMermaidPreviewHideRule(css),
@@ -102,18 +102,11 @@ suite('mermaid-snap-style-with-source', () => {
     assert.ok(editorSrc.includes('mermaid-preview'), 'NodeView must render mermaid-preview');
   });
 
-  test('TC-002: Preview-only mermaid-source hide CSS rule is absent', () => {
+  test('TC-002: Preview-only mermaid-source hide CSS rule is present', () => {
     const css = readRepoFile('media/editor.css');
     assert.ok(
-      !hasPreviewMermaidSourceHideRule(css),
-      "body[data-mode='preview'] .mermaid-source { display: none } must not exist (AD-003)",
-    );
-    // 同等: visibility:hidden / 専用 hide クラスも禁止の近似
-    assert.ok(
-      !/body\[data-mode=['"]preview['"]\]\s+\.mermaid-source\s*\{[^}]*visibility\s*:\s*hidden/.test(
-        css,
-      ),
-      'Preview must not hide .mermaid-source via visibility:hidden',
+      hasPreviewMermaidSourceHideRule(css),
+      "body[data-mode='preview'] .mermaid-source { display: none } must exist (AD-003)",
     );
   });
 
@@ -179,11 +172,11 @@ suite('mermaid-snap-style-with-source', () => {
     );
   });
 
-  test('TC-007: Preview syntax error keeps mermaid-source visible', () => {
+  test('TC-007: Preview syntax error hides mermaid-source via CSS', () => {
     const css = readRepoFile('media/editor.css');
     assert.ok(
-      !hasPreviewMermaidSourceHideRule(css),
-      'Preview must not hide .mermaid-source on syntax error (AD-010)',
+      hasPreviewMermaidSourceHideRule(css),
+      'Preview must hide .mermaid-source on syntax error via CSS (AD-010)',
     );
     const editorSrc = readRepoFile('media/editor.ts');
     assert.ok(
@@ -293,34 +286,29 @@ suite('mermaid-snap-style-with-source', () => {
     );
   });
 
-  test('TC-013: wysiwyg TC-130–132 Expected align with source-visible contract', () => {
+  test('TC-013: wysiwyg TC-130–132 Expected align with preview-source-hidden contract', () => {
     const wysiwyg = readRepoFile('doc/test/testspec-vsc-md-wysiwyg.md');
     assert.ok(
-      /TC-130[\s\S]*?両方が表示|TC-130[\s\S]*?source.*visible|TC-130[\s\S]*?ソース併記/i.test(
+      /TC-130[\s\S]*?ソース非表示|TC-130[\s\S]*?source-hidden/i.test(
         wysiwyg,
       ),
-      'TC-130 Expected must require source visible (not hidden)',
+      'TC-130 Expected must require source hidden in preview',
     );
     assert.ok(
-      !/\|\s*TC-130\s*\|[^\n]*非表示/.test(wysiwyg) ||
-        /旧.*非表示.*撤回/.test(wysiwyg),
-      'TC-130 must not keep old Preview-hide Expected without withdrawal note',
-    );
-    assert.ok(
-      /TC-132[\s\S]*?表示したまま|TC-132[\s\S]*?source\s*\*\*表示|TC-132[\s\S]*?source \*\*visible/i.test(
+      /TC-132[\s\S]*?ソース非表示|TC-132[\s\S]*?source-hidden/i.test(
         wysiwyg,
       ),
-      'TC-132 Expected must keep source visible on error',
+      'TC-132 Expected must require source hidden on error in preview',
     );
-    // テストコード側も旧「hides」断言を残さない
+    // テストコード側も整合
     const richEmbed = readRepoFile('src/test/suite/unit/preview-rich-embed.test.ts');
     assert.ok(
-      !/TC-130:[\s\S]*?hides mermaid-source/.test(richEmbed),
-      'preview-rich-embed TC-130 title/assert must not expect hide',
+      /TC-130:[\s\S]*?hides mermaid-source/.test(richEmbed),
+      'preview-rich-embed TC-130 must expect source hidden',
     );
     assert.ok(
-      !/TC-132:[\s\S]*?source stays hidden/.test(richEmbed),
-      'preview-rich-embed TC-132 must not expect source hidden',
+      /TC-132:[\s\S]*?source is hidden/.test(richEmbed),
+      'preview-rich-embed TC-132 must expect source hidden',
     );
   });
 

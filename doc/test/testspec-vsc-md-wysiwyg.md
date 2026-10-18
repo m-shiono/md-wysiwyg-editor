@@ -80,7 +80,7 @@
 | 画像表示投影成功 | TipTap `image.src` / Marp HTML `<img src>` が webview URI | Host `asWebviewUri` rewrite。Document / serialize は相対パス維持 | §7, §9 |
 | 画像 URI 解決不可 | broken image + Output debug ログ（通知なし） | `img/` 外・`..` 含む・ワークスペース外は rewrite しない | §7, §9 |
 | Preview 内 Marp 描画成功 | `#preview-marp-root` にスライド HTML RO 表示、`#editor` 非表示 | `previewMarpHtml` postMessage。入力は `markdownText` | §1, §6 |
-| Preview Mermaid 表示 | `.mermaid-preview` と `.mermaid-source` の両方を表示（図の下にソース）。旧「Preview ソース非表示」は撤回。Preview は厳密 RO | NodeView DOM + CSS（非表示ルール撤廃） | §5, `mermaid-snap-style-with-source` |
+| Preview Mermaid 表示 | `.mermaid-preview` 表示、`.mermaid-source` は非表示（`display: none`）。Preview は厳密 RO | NodeView DOM + CSS（Preview 非表示ルール） | §5 |
 | Mermaid frontmatter 全文 render | YAML frontmatter 含むソースで SVG 表示。`mermaid.render` に全文渡し | Document / serialize はフェンス全文維持 | §5 正常系 6, AD-003 |
 | `themeUpdated` 受信 | `mermaid.initialize` 更新 + 表示中 NodeView 再 render（debounce） | payload は `kind` 列挙のみ | §1 postMessage, §5 正常系 8, AD-005 |
 | Preview 可読性 CSS | `body[data-mode='preview']` スコープで `line-height: 1.6`、`.ProseMirror[contenteditable='false']` の `opacity: 1` | Markdown / Raw スタイル不変、`--vscode-*` トークン使用 | §1 Preview 可読性, AD-006 |
@@ -240,9 +240,9 @@
 | TC-127 | Corner | image-uri-skip-unsafe | P1 | `docJson` 内 `image.src` が `assets/logo.png`（`img/` 外）の Document を投影 | Host は rewrite しない（broken image 許容）。Document / serialize は相対パス維持 | 非 `img/` パスは解決しない | §7 Outputs, §9 例外系 |
 | TC-128 | Happy | marp-html-image-rewrite | P1 | Marp 出力 HTML に `<img src="img/slide.png">` を含む `previewMarpHtml` | Host が `<img src>` を `asWebviewUri` 済み URL に rewrite して送信 | Marp HTML 画像 rewrite | §6 正常系 6, §9 |
 | TC-129 | Corner | image-https-data-pass-through | P1 | `docJson` 内 `image.src` が `https://example.com/a.png` または `data:image/png;base64,...` | Host rewrite なし。src はそのまま Webview へ（CSP 既存どおり） | 外部/data URI は従来挙動 | §7 正常系 9 |
-| TC-130 | Happy | preview-mermaid-source-visible | P0 | Preview モード（`body[data-mode="preview"]`）で Mermaid ブロックを含む doc を表示 | `.mermaid-preview` と `.mermaid-source` の**両方が表示**される（`display: none` 等でソースを隠さない）。ブロック内順は図 → ソース。詳細・CSS 撤廃は [testspec-mermaid.md](mermaid/testspec-mermaid.md#suite-snap-style-with-source) TC-001–003 | Preview でもソース併記（旧非表示撤回） | §5 正常系 4, `mermaid-snap-style-with-source` |
+| TC-130 | Happy | preview-mermaid-source-hidden | P0 | Preview モード（`body[data-mode="preview"]`）で Mermaid ブロックを含む doc を表示 | `.mermaid-preview` が表示され、`.mermaid-source` は非表示（`display: none`）。詳細・CSS は [testspec-mermaid.md](mermaid/testspec-mermaid.md#suite-snap-style-with-source) TC-001–003 | Preview ではソース非表示 | §5 正常系 4 |
 | TC-131 | Happy | markdown-mermaid-source-visible | P1 | Markdown モードで同一 Mermaid ブロックを表示 | `.mermaid-source` と `.mermaid-preview` の両方が表示される。DOM 順は preview → source | Markdown は図下ソース併記 | §5 正常系 5, `mermaid-snap-style-with-source` |
-| TC-132 | Corner | preview-mermaid-error-source-visible | P1 | Preview モードで不正 Mermaid 構文を含む doc | `.mermaid-preview`（または同等）にエラー表示。`.mermaid-source` は**表示したまま**。Document ソースは保持 | Preview エラー時もソース表示 | §5 Outputs, `mermaid-snap-style-with-source` |
+| TC-132 | Corner | preview-mermaid-error-source-hidden | P1 | Preview モードで不正 Mermaid 構文を含む doc | `.mermaid-preview`（または同等）にエラー表示。`.mermaid-source` は非表示（`display: none`）。Document ソースは保持 | Preview エラー時もソース非表示 | §5 Outputs |
 | TC-133 | Structural | is-marp-document-shared | P0 | Preview 分岐と Marp Preview パネルが参照する `isMarpDocument` の export 元を検証 | 同一関数（`src/commands/marp-preview.ts` export または `src/utils/` 共有）を両経路が使用 | Marp 検出の単一正本 | §1, §6 |
 | TC-134 | Happy | preview-marp-swap | P0 | Marp front matter + `---` スライドを含む doc を Preview モードで表示 | `#editor`（TipTap）非表示、`#preview-marp-root` にスライド HTML が RO 表示（縦スクロール一覧） | Preview Marp コンテナ切替 | §1 Preview 分岐, §6 |
 | TC-135 | Happy | preview-non-marp-tiptap | P0 | 通常 Markdown（非 Marp）を Preview モードで表示 | `#editor`（TipTap RO）表示、`#preview-marp-root` は空 | 非 Marp は TipTap RO | §1 Preview 分岐 |
@@ -393,7 +393,7 @@ P0 + P1 の机上トレース（実装前）。
 | TC-124 | `img/image-0001.png` docJson → Host rewrite → webview URI 投影、Document 相対パス維持 | ✅ Pass — `image-uri-rewrite.ts` |
 | TC-125 | rewrite 投影後 serialize → ディスクは `img/...` 相対パス | ✅ Pass |
 | TC-126 | `isSafeImagePath`: `img/` のみ許可、`..` / 非 `img/` 拒否 | ✅ Pass |
-| TC-130 | Preview: `.mermaid-source` **visible**、`.mermaid-preview` visible（図下ソース） | ❌ Fail（2026-09-05）— hide CSS 残存。`preview-rich-embed` 新 Expected |
+| TC-130 | Preview: `.mermaid-preview` visible、`.mermaid-source` hidden（`display: none`） | ✅ Pass |
 | TC-134 | Marp doc + Preview → `#editor` hidden、`#preview-marp-root` にスライド | ✅ Pass — `preview-projection.ts` |
 | TC-136 | `previewMarpHtml` → `#preview-marp-root` innerHTML 注入 | ✅ Pass — `messages.ts` / `editor.ts` |
 | TC-143 | Valid frontmatter fixture → `mermaid.render` に全文（strip なし）→ SVG | ✅ 期待どおり（未実装 — Red 予定） |
@@ -562,9 +562,9 @@ P0 + P1 の机上トレース（実装前）。
 | TC-127 | `assets/logo.png` は rewrite しない | ✅ Pass |
 | TC-128 | Marp HTML `<img src>` rewrite | ✅ Pass — `rewriteImageUrisInHtml` |
 | TC-129 | `https:` / `data:` pass-through | ✅ Pass |
-| TC-130 | Preview: `.mermaid-source` **visible**（旧 hidden 撤回） | ❌ Fail（2026-09-05）— hide CSS。build-agent Green |
+| TC-130 | Preview: `.mermaid-source` hidden（`display: none`） | ✅ Pass |
 | TC-131 | Markdown: source + preview 両方表示（順 preview→source） | ✅ Pass |
-| TC-132 | Preview エラー時も source **visible** | ❌ Fail（2026-09-05）— 同上 |
+| TC-132 | Preview エラー時も source hidden | ✅ Pass |
 | TC-133 | `isMarpDocument` 共有 export | ✅ Pass — `is-marp-document.ts` |
 | TC-134 | Preview + Marp → `#preview-marp-root` | ✅ Pass — `preview-projection.ts` |
 | TC-135 | Preview + 非 Marp → TipTap RO | ✅ Pass |
@@ -710,7 +710,7 @@ P0 + P1 の机上トレース（実装前）。
 - [x] Marp Preview パネル ≠ 三点 Preview UI インスタンス；三点 Preview は Marp 検出時 `#preview-marp-root` 描画可（TC-077 — RK-017）
 - [x] 画像 URI Host rewrite + serialize 相対パス（TC-124–125）
 - [x] `isSafeImagePath` / `localResourceRoots` 整合（TC-060, TC-126–127）
-- [x] Preview / Markdown Mermaid ソース併記（TC-130–132 — 旧非表示撤回。詳細は [testspec-mermaid.md](mermaid/testspec-mermaid.md#suite-snap-style-with-source)）
+- [x] Preview Mermaid ソース非表示・Markdown ソース併記（TC-130–132。詳細は [testspec-mermaid.md](mermaid/testspec-mermaid.md#suite-snap-style-with-source)）
 - [x] Preview 内 Marp 分岐・`previewMarpHtml`・`isMarpDocument` 共用（TC-133–142）
 - [x] Mermaid frontmatter 全文 render（TC-143）、`themeUpdated` + 再描画（TC-013 拡張, TC-144–145）
 - [x] Preview 可読性 CSS スコープ（TC-146–148）、Mermaid VS Code themeVariables（TC-149）
@@ -790,3 +790,4 @@ P0 + P1 の机上トレース（実装前）。
 | 2026-09-29 | Trace Results: TC-070 / TC-153–156 を Pass に同期（Quality Gate green 後。Expected 不変） | `rename-md-wysiwyg` |
 | 2026-10-17 | TC-157 追加（SCM 差分フォールバックのための selector スキーム明示設計） | `scm-diff-fallback` |
 | 2026-10-18 | TC-158（configurationDefaults の diff 関連付け検証）および TC-159（openCustomDocument の安全初期化検証）を更新 | `scm-diff-config-defaults` |
+| 2026-10-19 | TC-130 / TC-132 Expected 更新 | Preview モードでの Mermaid ソース非表示化（`body[data-mode='preview'] .mermaid-source { display: none; }`）。Markdown ではソース併記を維持 |

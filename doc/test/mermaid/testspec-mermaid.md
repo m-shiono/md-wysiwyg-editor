@@ -508,19 +508,19 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 
 | ID | Category | Domain Tag | Priority | Input | Expected | Rationale | Spec Ref |
 |----|----------|------------|----------|-------|----------|-----------|----------|
-| TC-MSS-001 | Happy | preview-source-visible | P0 | Preview（`body[data-mode="preview"]`）で有効 Mermaid ブロックを表示 | `.mermaid-source` が表示される（`display: none` / `visibility: hidden` 等で隠さない）。`.mermaid-preview` も表示 | 旧「Preview ソース非表示」撤回（AD-001）。TC-MSS-130 新契約 | §5 正常系 4、AD-001/003 |
-| TC-MSS-002 | Structural | preview-hide-css-removed | P0 | `media/editor.css`（または同等）を検査 | `body[data-mode='preview'] .mermaid-source { display: none }`（および同等の Preview 専用ソース非表示ルール）が**存在しない** | CSS 撤廃の静的検知（AD-003） | §5 正常系 4、AD-003 |
+| TC-MSS-001 | Happy | preview-source-hidden | P0 | Preview（`body[data-mode="preview"]`）で有効 Mermaid ブロックを表示 | `.mermaid-preview` が表示され、`.mermaid-source` は非表示（`display: none`） | Preview ではソース非表示（図のみ表示） | §5 正常系 4 |
+| TC-MSS-002 | Structural | preview-hide-css-present | P0 | `media/editor.css`（または同等）を検査 | `body[data-mode='preview'] .mermaid-source { display: none; }`（Preview 専用ソース非表示ルール）が存在する | CSS 非表示ルールの存在検知 | §5 正常系 4 |
 | TC-MSS-003 | Structural | source-below-preview-order | P0 | Mermaid NodeView のブロック内 DOM（Preview または Markdown） | `.mermaid-preview` が `.mermaid-source` より**先**（図の下にソース） | Snap 風上下併記・DOM 再発明禁止（AD-002） | §5 正常系 4、AD-002 |
 | TC-MSS-004 | Happy | markdown-source-visible | P0 | Markdown モードで同一 Mermaid ブロック | `.mermaid-preview` と `.mermaid-source` の両方が表示。DOM 順は preview → source | Markdown 併記維持・強化（TC-MSS-131 整合） | §5 正常系 5、AD-002 |
 | TC-MSS-005 | Happy | kind-theme-redux-map | P0 | kind `light` / `dark` / `highContrast` それぞれで `buildMermaidThemeConfig`（または同等） | light→`redux`、dark→`redux-dark`、highContrast→`redux-dark`。全 kind で `themeVariables.fontSize === '16px'`。`themeVariables` に `var(--vscode-...)` なし。`securityLevel: 'strict'`。classic `default`/`dark` マップは Fail | redux kind マップ＋表示密度 | §5 正常系 7 / 7a、`mermaid-display-density` |
 | TC-MSS-006 | Structural | no-island-light-forced | P0 | `.mermaid-preview` / `.mermaid-block` の CSS | 明るい固定サーフェス強制（例: `background-color: white`）が**存在しない** | 島ライト撤回。エッジ可視は `mermaid-redux-elk-fidelity` | §5 正常系 11、AD-005 |
-| TC-MSS-007 | Corner | preview-error-source-still-visible | P0 | Preview で不正 Mermaid 構文 | preview 領域に `.mermaid-error`（または同等）。`.mermaid-source` は**表示のまま**。Document ソース保持 | エラー時も非表示に戻さない（AD-010）。TC-MSS-132 新契約 | §5 Outputs、AD-010 |
+| TC-MSS-007 | Corner | preview-error-source-hidden | P0 | Preview で不正 Mermaid 構文 | preview 領域に `.mermaid-error`（または同等）。`.mermaid-source` は非表示（`display: none`）。Document ソース保持 | Preview エラー時もソース非表示 | §5 Outputs |
 | TC-MSS-008 | Corner | preview-source-readonly | P0 | Preview 表示中にソース領域へ編集イベント相当を送る / contenteditable 検査 | Document へ編集が反映されない。ソースは RO（`contenteditable=false` またはイベント非送出） | Preview 厳密 RO 維持（AD-004） | §1、§5 正常系 5、AD-004 |
 | TC-MSS-009 | Structural | hip-strict-regression | P0 | sanitize options / `securityLevel` を検査（または contrast-readable TC-MSS-002 / TC-MSS-003 相当を再確認） | `HTML_INTEGRATION_POINTS: { foreignobject: true }`（または同等）あり。`securityLevel: 'strict'`。Snap 参考の sanitize なしは不採用 | セキュリティ不変（AD-008） | §5 正常系 10、§9、AD-008 |
 | TC-MSS-010 | Structural | editor-wide-bg-unchanged | P1 | `#editor` / 広い Preview 面の背景ルール | Mermaid 島以外で明るい固定背景を新設していない | 面全体統一は Out（AD-006） | §5 Non-Goals、RK-001 |
 | TC-MSS-011 | Structural | document-untouched | P1 | 表示層変更範囲（CSS / NodeView 表示 / theme）をソースまたは契約検査 | `docJson` / `markdownText` / serialize / dirty / Host / Marp / 画像 rewrite に触れない | 最小 diff・正本非接触（AD-001/012） | §1 表示層、AD-012 |
 | TC-MSS-012 | Happy | theme-updated-follows-redux-map | P1 | Preview 表示中に `themeUpdated` で kind を切替 | 再描画経路は維持。更新後も redux マップ（dark→`redux-dark` 等）＋strict。Document 不変 | §5 正常系 9 | §5 正常系 9、`mermaid-redux-elk-fidelity` AD-004 |
-| TC-MSS-013 | Corner | tc130-132-expected-aligned | P1 | wysiwyg TC-MSS-130–132 の Expected 文言と本 suite TC-MSS-001/004/007 を照合 | 旧「非表示」期待が残っていない。両所の Expected がソース表示で一致 | RK-006 防止 | AD-011 |
+| TC-MSS-013 | Corner | tc130-132-expected-aligned | P1 | wysiwyg TC-MSS-130–132 の Expected 文言と本 suite TC-MSS-001/004/007 を照合 | 両所の Expected が Preview ソース非表示・Markdown ソース表示で一致 | 整合性維持 | §5 |
 | TC-MSS-014 | Corner | hip-strict-no-island-regression | P1 | HIP option / `securityLevel: 'strict'` / 島ライト不在を検査（contrast-readable / `fix-mermaid-edge-styles` と整合） | HIP あり・strict・島ライト強制なし。sanitize を緩めない | 前回＋本タスク回帰 | AD-006/008 |
 
 ### Category Coverage
@@ -658,6 +658,7 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 | 2026-09-05 | testspec-implementation: suite + TC-MSS-130–132 Red。Trace 更新（TC-MSS-001/002/007 Fail） |
 | 2026-09-05 | 初版 — Snap 風（島ライト＋全 kind default）・両モード図下ソース併記・Preview RO・HIP/strict 回帰。TC-MSS-130–132 関係明示 |
 | 2026-09-06 | ノード寸法 polish（choice B）: Expected のグローバル `fontSize` を `'10px'` → `'12px'` に更新 |
+| 2026-10-19 | Preview Mermaid ソース非表示化: TC-MSS-001/002/007/013 Expected を更新。Preview では `.mermaid-source` を `display: none` で非表示、Markdown では図下ソース併記を維持 |
 
 ## Suite: fix-mermaid-edge-styles {#suite-fix-mermaid-edge-styles}
 
