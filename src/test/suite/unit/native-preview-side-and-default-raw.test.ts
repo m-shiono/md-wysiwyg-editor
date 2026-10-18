@@ -125,11 +125,11 @@ suite('native-preview-side-and-default-raw (TC-001–021)', () => {
       );
     } else {
       assert.ok(/data-mode="raw"/.test(providerSrc), 'body[data-mode="raw"] required');
-      assert.ok(rawActive, 'Edit Raw Text button must be active initially');
-      assert.ok(!markdownActive, 'Edit Rich Editor must not be the initial active mode');
+      assert.ok(rawActive, 'Source button must be active initially');
+      assert.ok(!markdownActive, 'Visual must not be the initial active mode');
     }
 
-    assert.ok(toolbar.includes('Edit Raw Text'), 'Raw display label Edit Raw Text required');
+    assert.ok(toolbar.includes('Source'), 'Raw display label Source required');
   });
 
   // --- TC-002 / TC-020: mode round-trip, no I/O ---
@@ -174,25 +174,26 @@ suite('native-preview-side-and-default-raw (TC-001–021)', () => {
 
   // --- TC-003 / TC-015 / TC-018: Default Preview non-mode UI ---
 
-  test('TC-003: Default Preview is first peer button without data-mode', () => {
+  test('TC-003: Default Preview is peer button without data-mode in mode-toolbar', () => {
     const providerSrc = readRepoFile('src/providers/markdown-editor-provider.ts');
     const toolbar = extractModeToolbarHtml(providerSrc);
 
     assert.ok(
-      /Default Preview[\s\S]*Editor Preview[\s\S]*Edit Rich Editor[\s\S]*Edit Raw Text/.test(
+      /Visual[\s\S]*Source[\s\S]*Preview[\s\S]*Default Preview/.test(
         toolbar,
       ),
-      'left→right order: Default Preview | Editor Preview | Edit Rich Editor | Edit Raw Text',
+      'order: Visual | Source | Preview | Default Preview',
     );
     assert.ok(
-      /data-action="native-preview"[\s\S]*data-mode="preview"[\s\S]*data-mode="markdown"[\s\S]*data-mode="raw"/.test(
+      /data-mode="markdown"[\s\S]*data-mode="raw"[\s\S]*data-mode="preview"[\s\S]*data-action="native-preview"/.test(
         toolbar,
       ),
-      'Default Preview (data-action=native-preview) must precede the three data-mode buttons',
+      'Visual (markdown) and Source (raw) precede Preview (preview) and Default Preview (native-preview)',
     );
+    assert.ok(/Visual/.test(toolbar), 'mode label Visual required');
+    assert.ok(/Source/.test(toolbar), 'mode label Source required');
+    assert.ok(/>\s*Preview\s*</.test(toolbar), 'mode label Preview required');
     assert.ok(/Default Preview/.test(toolbar), 'button label Default Preview required');
-    assert.ok(/Editor Preview/.test(toolbar), 'preview mode label Editor Preview required');
-    assert.ok(!/>\s*Preview\s*</.test(toolbar), 'legacy Preview label must not remain');
     assert.ok(!/Side Preview/.test(toolbar), 'legacy Side Preview label must not remain');
     assert.ok(
       !/native-preview-to-side/.test(toolbar),
@@ -262,7 +263,7 @@ suite('native-preview-side-and-default-raw (TC-001–021)', () => {
     assert.strictEqual(state.mode, before, 'invalid fourth mode id must be rejected');
   });
 
-  test('TC-018: Default Preview a11y labels and Editor Preview mode label', () => {
+  test('TC-018: Default Preview a11y labels and Preview mode label', () => {
     const providerSrc = readRepoFile('src/providers/markdown-editor-provider.ts');
     const toolbar = extractModeToolbarHtml(providerSrc);
     const previewBtnMatch = toolbar.match(/<button[^>]*data-action="native-preview"[^>]*>/);
@@ -282,10 +283,10 @@ suite('native-preview-side-and-default-raw (TC-001–021)', () => {
     );
 
     const previewModeMatch = toolbar.match(/<button[^>]*data-mode="preview"[^>]*>[\s\S]*?<\/button>/);
-    assert.ok(previewModeMatch, 'Editor Preview mode button required');
+    assert.ok(previewModeMatch, 'Preview mode button required');
     assert.ok(
-      /Editor Preview/.test(previewModeMatch[0]),
-      'mode id preview display label must be Editor Preview',
+      />\s*Preview\s*</.test(previewModeMatch[0]),
+      'mode id preview display label must be Preview',
     );
   });
 

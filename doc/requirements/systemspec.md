@@ -57,7 +57,7 @@ AD-* の HOW 境界・レイヤ方針の正本は [architecture.md](../design/ar
 
 | 条件 | 戻り値 / ステータス | 備考 |
 |------|-------------------|------|
-| 成功（オープン） | Custom Editor タブ表示、Webview ロード完了、初期モード **Raw**（表示ラベル Edit Raw Text） | AD-016 |
+| 成功（オープン） | Custom Editor タブ表示、Webview ロード完了、初期モード **Raw**（表示ラベル Source） | AD-016 |
 | 成功（モード切替） | 対象面を表示、Document 内容は維持、**ディスク未書込** | dirty 状態も変更しない（内容未変更時）。三点往復可（下記受け入れ） |
 | 成功（Default Preview・clean） | 現在面不変のまま `markdown.showPreview` で標準 Preview を開き、**アクティブ WYSIWYG と同一 editor group** に配置する | Host コマンド §10。Beside（新規グループ）を作らない。`editorMode` は変更しない |
 | 成功（Default Preview・dirty→Save） | Save 成功後のみ標準 Preview を同一グループに開く | Cancel / 閉じる / save 失敗時は開かない |
@@ -92,20 +92,18 @@ AD-* の HOW 境界・レイヤ方針の正本は [architecture.md](../design/ar
 
 ##### mode-toolbar 表示ラベル（UI）
 
-Webview `#mode-toolbar`（`role="toolbar"`）の**左から右**のボタン順・表示文言は次と一致させる（表示のみ。mode id / `editorMode` は変更しない）。**Default Preview は 4 つ目の `editorMode` ではない。**
+Webview `#mode-toolbar`（`role="toolbar"`）は、編集モード（Visual / Source）をセグメントコントロールに集約し、プレビューモード（Preview）および外部プレビュー起動（Default Preview）を整理して一覧をコンパクトにする（表示・レイアウトのみ。mode id / `editorMode` は変更しない）。**Default Preview は 4 つ目の `editorMode` ではない。**
 
-| 順序 | 種別 | mode id / action | 表示ラベル（ボタン文言） | `title` / `aria-label` |
-|------|------|------------------|-------------------------|------------------------|
-| 1 | 非モード | `data-action="native-preview"`（**`data-mode` なし**） | `Default Preview` | `Open Default Markdown Preview` |
-| 2 | モード | `preview` | `Editor Preview` | `Editor Preview` |
-| 3 | モード | `markdown` | `Edit Rich Editor` | `Edit Rich Editor` |
-| 4 | モード | `raw` | `Edit Raw Text` | `Edit Raw Text` |
-
-セパレータは任意・最小限（視覚的には四ボタンを同等に並べることを優先。縦線セパレータは必須としない）。
+| 区分 / 順序 | 種別 | mode id / action | 表示ラベル（ボタン文言） | `title` / `aria-label` | 備考 |
+|---|---|---|---|---|---|
+| セグメント 1 | モード | `markdown` | `Visual` | `Visual Editor` | WYSIWYG 編集 |
+| セグメント 2 | モード | `raw` | `Source` | `Source Editor` | Markdown ソース直接編集（初期アクティブ） |
+| 単独 3 | モード | `preview` | `Preview` | `Editor Preview` | Read-only 表示（非編集） |
+| アクション 4 | 非モード | `data-action="native-preview"`（**`data-mode` なし**） | `Default Preview` | `Open Default Markdown Preview` | VS Code 標準プレビュー（同一グループ） |
 
 ##### mode-toolbar — Default Preview（非モード導線）
 
-ツールバー**先頭**の **Default Preview** は **モードボタンではない**（同一 `#mode-toolbar`）。押下は `editorMode` を変更せず、VS Code 標準 `markdown.showPreview` を開き、Host 補償で **同一 editor group** に配置する（§10）。Beside（横分割・新規グループ）は作らない。
+ツールバー内の **Default Preview** は **モードボタンではない**（同一 `#mode-toolbar`）。押下は `editorMode` を変更せず、VS Code 標準 `markdown.showPreview` を開き、Host 補償で **同一 editor group** に配置する（§10）。Beside（横分割・新規グループ）は作らない。
 
 | 項目 | 契約 |
 |------|------|
@@ -117,7 +115,7 @@ Webview `#mode-toolbar`（`role="toolbar"`）の**左から右**のボタン順�
 | Host | dirty 判定・Save/Cancel・`markdown.showPreview`・同一グループ補償（§10）はすべて Host（§8 / §10） |
 | editor/title | Default Preview 用アイコンを **出さない**（Webview バー + Command Palette） |
 
-**受け入れ（モード切替・P0）:** mode-toolbar の三点モードボタン（Editor Preview / Edit Rich Editor / Edit Raw Text）で `preview` ↔ `markdown` ↔ `raw` が往復できること。初期 HTML の `active` / `body[data-mode]` は `DEFAULT_EDITOR_MODE = 'raw'` と一致させる。Default Preview 押下では mode id が変わらないこと。
+**受け入れ（モード切替・P0）:** mode-toolbar の三点モードボタン（Visual / Source / Preview）で `preview` ↔ `markdown` ↔ `raw` が往復できること。初期 HTML の `active` / `body[data-mode]` は `DEFAULT_EDITOR_MODE = 'raw'`（Source が active）と一致させる。Default Preview 押下では mode id が変わらないこと。
 
 #### 三者同期（正本: `MarkdownDocument`）
 
@@ -173,7 +171,7 @@ Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdow
 
 #### 正常系
 
-1. ユーザーが `.md` を開くと Custom Editor が起動し、ディスク内容を `MarkdownDocument` に読み込み、初期モード **Raw**（表示ラベル Edit Raw Text）で Webview に表示する（`DEFAULT_EDITOR_MODE = 'raw'` / AD-016）。セッション永続モードは本タスクで新設しない
+1. ユーザーが `.md` を開くと Custom Editor が起動し、ディスク内容を `MarkdownDocument` に読み込み、初期モード **Raw**（表示ラベル Source）で Webview に表示する（`DEFAULT_EDITOR_MODE = 'raw'` / AD-016）。セッション永続モードは本タスクで新設しない
 2. **Markdown ↔ Raw 相互リアルタイム同期:** 一方の編集は postMessage 経由で Document に反映され、他方面も Document から再投影される。正本は常に Extension Host の `MarkdownDocument`
 3. **Preview** は Document の現在内容を **厳密 RO** で描画する一方通行。Preview 表示中に Document が更新されれば描画を追随する。**Preview への切替時**は Host が Document 最新を再投影する（Raw 離脱時の flush 後を含む）。非 Marp は rewrite 済み `docJson`、Marp 検出時は `previewMarpHtml` で `#preview-marp-root` を更新
 4. **モード切替**（Preview ↔ Markdown ↔ Raw）は表示面の切替のみであり、**ディスクへの書き込みを行わない**。内容に差分がなければ `dirty` も変化しない。Preview / Markdown への切替時は Document から視覚面を refresh する。Preview 離脱時は `#preview-marp-root` を空にし `#editor` を復帰
@@ -873,7 +871,7 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 3. `Reopen Editor With…` でビルトイン Markdown エディタへ切替可能とする（AD-014）
 4. **Pattern A（IDE タイトルバー切替の検知）:** Custom Editor（`md-wysiwyg-editor.wysiwyg`）が dispose された直後、同一 `.md` URI がアクティブタブに残り、かつ WYSIWYG Custom Editor ではない場合（`TabInputText` または `TabInputCustom` で viewType が `md-wysiwyg-editor.wysiwyg` 以外）を「ビルトインへ切替」と判定する
    - 設定 `md-wysiwyg-editor.autoRestoreOnBuiltinSwitch`（boolean、**既定 `false`**）が `true` のとき: `vscode.openWith` で WYSIWYG を自動再オープン
-   - 既定 `false` のとき: 日本語 `InformationMessage` を表示し、エディタ内 **Default Preview / Editor Preview / Edit Rich Editor / Edit Raw Text** ツールバーの利用を案内。ボタン **「WYSIWYG Editor で開く」** で `md-wysiwyg-editor.openWithWysiwyg` を実行
+   - 既定 `false` のとき: 日本語 `InformationMessage` を表示し、エディタ内 **Visual / Source / Preview / Default Preview** ツールバーの利用を案内。ボタン **「WYSIWYG Editor で開く」** で `md-wysiwyg-editor.openWithWysiwyg` を実行
    - タブが閉じられた、または別ファイルがアクティブの場合は何もしない
    - **Default Preview 非干渉:** `markdown.showPreview`（および Host の同一グループ補償）による標準 Markdown Preview タブのオープンは Custom Editor を dispose せず、Pattern A の「ビルトイン Text への切替」と **誤判定してはならない**。必要なら Pattern A 判定から Markdown Preview タブ種別（`TabInputWebview` 等）を明示除外する。本コマンドは `openWith` / Reopen Editor With の代替ではない
 5. コマンド `md-wysiwyg-editor.openWithWysiwyg`: 引数 URI またはアクティブ `.md` に対し `vscode.openWith`（viewType `md-wysiwyg-editor.wysiwyg`）を実行。ビルトイン Markdown エディタの editor/title に表示（`resourceExtname == .md` かつ Custom Editor 非アクティブ時）
@@ -1061,3 +1059,4 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | 2026-10-03 | 概要, §10 Non-Goals, 改訂履歴 | doc 整理: Marketplace 記述全廃。識別子統一方針（package.json name のみ vsc-md-editor、他は md-wysiwyg-editor 統一）を記録 |
 | 2026-10-17 | §1 Preconditions, 改訂履歴 | SCM 差分フォールバック（`scm-diff-fallback`）: `package.json` の `contributes.customEditors[0].selector` を `scheme: "file"`, `scheme: "untitled"`, `scheme: "vscode-remote"` に限定し、`git:` 等の仮想スキーム（Source Control diff）では VS Code 標準テキスト Diff Editor にフォールバックする契約を明記 |
 | 2026-10-18 | §1 Preconditions, 改訂履歴 | SCM 差分フォールバック方式を `configurationDefaults` に移行（`scm-diff-config-defaults`）: `openCustomDocument` の throw 方式を撤回（VS Code が予期せぬエラーを表示するため）。`package.json` の `contributes.configurationDefaults` に `workbench.diffEditorAssociations`（`"*.md": "default"`）および `workbench.editorAssociations`（`"{git}:/**/*.md": "default"`）を定義し、標準テキスト Diff Editor への安全・確実な自動フォールバックを契約化 |
+| 2026-10-18 | §1 mode-toolbar, 改訂履歴 | mode-toolbar UIの整理・コンパクト化（案1・パターン2）: 編集モードを Visual (markdown) / Source (raw) のセグメントコントロールに集約し、Preview (preview) および Default Preview (native-preview) を分離配置。表示ラベル短縮。三点モード id や Document 同期契約は不変 |

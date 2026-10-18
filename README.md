@@ -9,12 +9,12 @@ Extension ID: `mshiono.vsc-md-editor`
 
 ## Key Features
 
-### 1. Three Flexible Modes
-You can easily switch between three viewing and editing modes from the top toolbar at any time. For safety, files open in Edit Raw Text mode by default.
+### 1. Flexible Editing & Viewing Modes
+You can easily switch between modes from the top toolbar at any time. For safety, files open in Source mode by default.
 
-- Editor Preview: A read-only preview that renders your Markdown, including real-time Mermaid diagrams and Marp slides.
-- Edit Rich Editor: A visual WYSIWYG editor where you can format headings (H1-H6), italics, strikethrough, bullet lists, task lists, blockquotes, links, code blocks, and horizontal rules in real time.
-- Edit Raw Text: A plain-text editor to view and edit raw Markdown source code directly.
+- Visual: A visual WYSIWYG editor where you can format headings (H1-H6), italics, strikethrough, bullet lists, task lists, blockquotes, links, code blocks, and horizontal rules in real time.
+- Source: A plain-text editor to view and edit raw Markdown source code directly.
+- Preview: A read-only preview that renders your Markdown, including real-time Mermaid diagrams and Marp slides.
 
 ### 2. Seamless Integration with VS Code Default Preview
 Clicking the Default Preview button on the toolbar opens the built-in VS Code Markdown preview in the same tab group. If there are unsaved changes, it prompts you to save before displaying the preview.

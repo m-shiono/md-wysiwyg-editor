@@ -16,31 +16,89 @@ body {
 
 #mode-toolbar {
   display: flex;
-  gap: 0;
-  padding: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
   border-bottom: 1px solid var(--vscode-panel-border);
   background: var(--vscode-editorWidget-background);
 }
 
-#mode-toolbar button {
+.mode-segment-group {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.35));
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--vscode-editor-background);
+}
+
+.mode-segment-group button {
   background: transparent;
   color: var(--vscode-foreground);
   border: none;
-  border-bottom: 2px solid transparent;
-  padding: 8px 12px;
+  border-right: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.25));
+  padding: 4px 12px;
   cursor: pointer;
   font-size: inherit;
   white-space: nowrap;
+  outline: none;
+  transition: background-color 0.12s ease, color 0.12s ease;
 }
 
-#mode-toolbar button:hover {
+.mode-segment-group button:last-child {
+  border-right: none;
+}
+
+.mode-segment-group button:hover {
   background: var(--vscode-list-hoverBackground);
 }
 
-#mode-toolbar button.active {
-  border-bottom-color: var(--vscode-focusBorder);
-  color: var(--vscode-foreground);
+.mode-segment-group button.active {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
   font-weight: 600;
+}
+
+#mode-toolbar button[data-mode="preview"] {
+  background: transparent;
+  color: var(--vscode-foreground);
+  border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.35));
+  border-radius: 4px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: inherit;
+  white-space: nowrap;
+  outline: none;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+#mode-toolbar button[data-mode="preview"]:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+#mode-toolbar button[data-mode="preview"].active {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  font-weight: 600;
+}
+
+#mode-toolbar button[data-action="native-preview"] {
+  margin-left: auto;
+  background: transparent;
+  color: var(--vscode-textLink-foreground, var(--vscode-foreground));
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: inherit;
+  white-space: nowrap;
+  outline: none;
+  opacity: 0.9;
+}
+
+#mode-toolbar button[data-action="native-preview"]:hover {
+  background: var(--vscode-list-hoverBackground);
+  opacity: 1;
 }
 
 /* Mode toolbar stays clickable under file RO (mode switch / Preview viewing). */

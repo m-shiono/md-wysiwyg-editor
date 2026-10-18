@@ -2,7 +2,7 @@
 
 ## 概要
 
-- **対象:** 初期 `editorMode` を Raw に変更、mode-toolbar の非モード **Default Preview**（標準 Markdown Preview を **同一 editor group** に開く）、dirty Save/Cancel ゲート、三点モード往復回帰、Pattern A / Marp 非干渉、表示ラベル（Default Preview \| Editor Preview \| Edit Rich Editor \| Edit Raw Text）、Host 同一グループ補償（preferred `activeIndex+1` best-effort）
+- **対象:** 初期 `editorMode` を Raw に変更、mode-toolbar の非モード **Default Preview**（標準 Markdown Preview を **同一 editor group** に開く）、dirty Save/Cancel ゲート、三点モード往復回帰、Pattern A / Marp 非干渉、表示ラベル（Visual \| Source \| Preview \| Default Preview）、Host 同一グループ補償（preferred `activeIndex+1` best-effort）
 - **対応仕様:** [doc/requirements/systemspec.md](../requirements/systemspec.md) §1（初期 Raw・Default Preview・三点往復・表示ラベル）、§8（dirty Save/Cancel ゲート）、§10（`showNativeMarkdownPreview`・同一グループ補償・Pattern A / Marp 非干渉）、アーキテクチャ AD-016
 - **Requirements Brief:** `temporary/requirements-brief-native-preview-side-and-default-raw.md`（AD-001–014）; `temporary/requirements-brief-default-preview-same-tab-group.md`（AD-001–010 — オープン API / 同一グループ / コマンド ID / ラベル）
 - **テストコード:** `src/test/suite/unit/native-preview-side-and-default-raw.test.ts`（mocha + vscode mock）。関連回帰は既存三点モード suite と併用可。`default-preview-same-tab-group` の Expected 更新分は **TDD Red 実装済み**（2026-09-06）
@@ -30,7 +30,7 @@
 
 | 条件 | 戻り値 / ステータス | 仕様根拠 |
 |------|-------------------|---------|
-| オープン成功 | 初期 `editorMode === "raw"`、`body[data-mode="raw"]`、Raw 三点ボタン `active`、表示ラベル Edit Raw Text | §1 Outputs |
+| オープン成功 | 初期 `editorMode === "raw"`、`body[data-mode="raw"]`、Raw 三点ボタン `active`、表示ラベル Source | §1 Outputs |
 | 三点往復成功 | `preview` ↔ `markdown` ↔ `raw` が mode-toolbar で切替可。Document / ディスク不変（内容未変更時） | §1 受け入れ P0 |
 | Default Preview・clean | 現在面不変のまま `markdown.showPreview` 実行。Preview はアクティブ WYSIWYG と **同一 editor group**。Beside 新規グループなし。ダイアログなし | §1 Outputs, §10 |
 | Default Preview・dirty→Save 成功 | save 成功後のみ `markdown.showPreview` + 同一グループ補償。dirty 解除 | §8 正常系 8 |
@@ -67,9 +67,9 @@
 
 | ID | Category | Domain Tag | Priority | Input | Expected | Rationale | Spec Ref |
 |----|----------|------------|----------|-------|----------|-----------|----------|
-| TC-001 | Happy | default-raw-open | P0 | Custom Editor で保存済み `.md` を開く（セッション永続モードなし） | `DEFAULT_EDITOR_MODE === 'raw'`。初期 `editorMode` / `body[data-mode]` / 三点 toolbar `active` が `raw`。表示ラベル Edit Raw Text | 初期面が Raw であること | §1 正常系 1, AD-016 |
+| TC-001 | Happy | default-raw-open | P0 | Custom Editor で保存済み `.md` を開く（セッション永続モードなし） | `DEFAULT_EDITOR_MODE === 'raw'`。初期 `editorMode` / `body[data-mode]` / 三点 toolbar `active` が `raw`。表示ラベル Source | 初期面が Raw であること | §1 正常系 1, AD-016 |
 | TC-002 | Happy | mode-round-trip | P0 | mode-toolbar 三点で `preview` → `markdown` → `raw` → `preview` を往復（内容未変更） | 各 mode id へ切替成功。`body[data-mode]` / toolbar `active` が一致。ディスク書込なし・dirty 不変 | モード切替バグ回帰（P0） | §1 受け入れ |
-| TC-003 | Happy | default-preview-non-mode | P0 | `#mode-toolbar` 内 Default Preview ボタンを検査し、任意の三点面で押下 | 左から `Default Preview` \| `Editor Preview` \| `Edit Rich Editor` \| `Edit Raw Text`。文言 `Default Preview`。`data-action="native-preview"`・**`data-mode` なし**。セパレータ必須ではない。押下後 `editorMode` / `body[data-mode]` / 三点 `active` 不変 | 第4モード化防止・面不変・表示ラベル | §1 mode-toolbar Default Preview |
+| TC-003 | Happy | default-preview-non-mode | P0 | `#mode-toolbar` 内 Default Preview ボタンを検査し、任意の三点面で押下 | セグメント `Visual` \| `Source`、単独 `Preview`、アクション `Default Preview`。文言 `Default Preview`。`data-action="native-preview"`・**`data-mode` なし**。押下後 `editorMode` / `body[data-mode]` / 三点 `active` 不変 | 第4モード化防止・面不変・表示ラベル | §1 mode-toolbar Default Preview |
 | TC-004 | Happy | default-preview-clean | P0 | Document clean で Default Preview 押下（または同等 Host コマンド） | ダイアログなし。`markdown.showPreview` が対象 URI で 1 回実行。**`showPreviewToSide` 非実行**。現在面不変。Preview は同一 editor group（Beside 新規グループなし） | clean 即オープン + 同 group | §1 Outputs, §10 |
 | TC-005 | Happy | default-preview-dirty-save | P0 | Document dirty で Default Preview → ダイアログで **Save**（save 成功） | Save/Cancel 二択のみ（Don't Save なし）。警告文言に `to the side` を含めない。save 成功後のみ `showPreview`（+ 同一グループ補償）。dirty 解除 | 保存成功ゲート | §8 正常系 8 |
 | TC-006 | Corner | default-preview-dirty-cancel | P0 | Document dirty で Default Preview → **Cancel** | `showPreview` 非実行。`showPreviewToSide` も非実行。Document / dirty 不変。現在面不変 | Cancel で開かない | §8 |
@@ -84,7 +84,7 @@
 | TC-015 | Corner | no-fourth-mode-id | P1 | `EditorMode` 型・`applyMode` / `setMode` 対象・`body[data-mode]` 許容値を検査 | 許容は `preview` \| `markdown` \| `raw` のみ。`native-preview` 等の第4 id なし。Default Preview は `applyMode` 非経由 | Explicit Out | §1 Non-Goals |
 | TC-016 | Boundary | default-preview-empty-clean | P1 | 空（0 B 相当）の clean `.md` で Default Preview | ダイアログなしで `showPreview` 成功（内容空でも clean 契約）。同 group 配置 | 空ファイル境界 | §1 Inputs fileContent min |
 | TC-017 | Corner | show-preview-command-missing | P1 | `markdown.showPreview` 失敗 / 欠如を mock | ErrorMessage + Output。プレビュー非オープン。現在面不変。**`markdown.showPreviewToSide` は呼ばれない**（フォールバック禁止） | ホスト差・欠如・Beside 非フォールバック | §10, Non-Goals |
-| TC-018 | Happy | default-preview-a11y-labels | P1 | Default Preview ボタンの文言 / `title` / `aria-label`。三点モードの表示ラベル | 文言 `Default Preview`。`title`/`aria-label` は `Open Default Markdown Preview`（**`to the Side` を含めない**）。mode id `preview` の表示は `Editor Preview` | ラベル契約 | §1 mode-toolbar |
+| TC-018 | Happy | default-preview-a11y-labels | P1 | Default Preview ボタンの文言 / `title` / `aria-label`。三点モードの表示ラベル | 文言 `Default Preview`。`title`/`aria-label` は `Open Default Markdown Preview`（**`to the Side` を含めない**）。mode id `preview` の表示は `Preview`、`markdown` は `Visual`、`raw` は `Source` | ラベル契約 | §1 mode-toolbar |
 | TC-019 | Corner | no-dont-save-option | P1 | dirty 時 Default Preview の `showWarningMessage` 選択肢と文言を列挙 | **Save** と **Cancel** のみ。Don't Save なし。文言は `Document has unsaved changes. Save before opening the Markdown Preview?`（`to the side` なし） | Don't Save Out + Side 文言除去 | §8 Non-Goals |
 | TC-020 | Happy | mode-switch-still-no-io | P1 | TC-002 往復中に FS write / dirty を監視（内容未変更） | モード切替 alone でディスク書込なし（既存 TC-073 と同契約の回帰） | 切替≠保存 | §1 正常系 4, §8 正常系 7 |
 | TC-021 | Happy | same-group-move-compensation | P0 | Custom Editor フォーカス（`activeTextEditor === undefined` 想定）で clean Default Preview。open 前 group / activeIndex を記録し、open 後の `moveActiveEditor`（または同等の安定 API）を観測 | `markdown.showPreview` 1 回。**必須:** Preview が記録した同一 `viewColumn` / editor group に存在する（Beside 新規グループなし）。**推奨観測:** `moveActiveEditor` が group `position`=viewColumn と tab preferred（1-based `activeIndex+2`）で呼ばれる（exact index 不可時は同 group 内配置で Pass）。`showTextDocument` による `activeTextEditor` 捏造なし。`showPreviewToSide` 非実行 | 同一グループ補償の可観測契約（RK-018/019） | §10 正常系 7 |
@@ -127,8 +127,8 @@
 |------|----------------|-------|
 | Input | 保存済み `sample.md` を Custom Editor で開く | viewType `md-wysiwyg-editor.wysiwyg` |
 | 1 | 定数 / Host 初期 mode | `DEFAULT_EDITOR_MODE === 'raw'` |
-| 2 | Webview 初期 HTML | `body[data-mode="raw"]`、Raw ボタン `active` |
-| Output | 初期面 | Edit Raw Text / mode id `raw` |
+| 2 | Webview 初期 HTML | `body[data-mode="raw"]`、Source ボタン `active` |
+| Output | 初期面 | Source / mode id `raw` |
 
 **Result:** ✅ Pass（2026-09-06 unit — 契約不変）
 
@@ -140,8 +140,8 @@
 |------|----------------|-------|
 | Input | 初期 `raw` | — |
 | 1 | Preview ボタン | `editorMode === 'preview'` |
-| 2 | Edit Rich Editor | `editorMode === 'markdown'` |
-| 3 | Edit Raw Text | `editorMode === 'raw'` |
+| 2 | Visual | `editorMode === 'markdown'` |
+| 3 | Source | `editorMode === 'raw'` |
 | 4 | 再度 Preview | `editorMode === 'preview'` |
 | Output | 往復成功・ディスク未書込 | dirty 不変 |
 
@@ -155,7 +155,7 @@
 |------|----------------|-------|
 | Input | `#mode-toolbar` DOM + 押下前 `editorMode` | 例: `markdown` |
 | 1 | 属性 | `data-action="native-preview"`、`data-mode` なし |
-| 2 | 文言 | `Default Preview`（先頭ボタン） |
+| 2 | 文言 | `Default Preview` |
 | 3 | 押下 | `openNativePreview` postMessage のみ |
 | Output | 面 | `editorMode` / `active` 不変 |
 
