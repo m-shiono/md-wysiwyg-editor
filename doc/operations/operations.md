@@ -6,7 +6,7 @@
 
 1. VS Code / Cursor でワークスペースを開く
 2. `.md` を開き、Custom Editor（`md-wysiwyg-editor.wysiwyg`）で編集する
-3. mode-toolbar: **Default Preview**｜**Editor Preview**｜**Edit Rich Editor**｜**Edit Raw Text**
+3. mode-toolbar: **Visual**｜**Source**｜**Preview**｜**Default Preview**
 
 詳細な起動手順（F5 Extension Development Host）は [.cursor/development.md](../../.cursor/development.md) を参照。
 
@@ -15,7 +15,7 @@
 | 症状 | 切り分け |
 |------|----------|
 | 拡張が開かない / Custom Editor にならない | 拡張が有効か、`viewType` 関連付け（`md-wysiwyg-editor.wysiwyg`）、ウィンドウ再読み込み（`md-wysiwyg-editor.reloadExtension` / Reload Window）を確認。「Open With」で Custom Editor を選べるかも確認 |
-| Preview（Editor Preview）が出ない・崩れる | Output チャンネル `MD WYSIWYG Editor` のエラー、Webview 再読込、テーマ切替後の再描画 |
+| Preview が出ない・崩れる | Output チャンネル `MD WYSIWYG Editor` のエラー、Webview 再読込、テーマ切替後の再描画 |
 | Mermaid が描画されない / エッジが見えない | Output ログ、CSP／nonce 関連エラー、図ソース構文。契約は [test/mermaid/testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) |
 | Default Preview が開かない | dirty 時は Save/Cancel ゲート。同一グループ配置の契約は requirements §1 / §10。コマンド ID は `md-wysiwyg-editor.showNativeMarkdownPreview` |
 | 画像が表示されない | `img/` 配下の相対パスか、Host rewrite 対象外パスでないか |

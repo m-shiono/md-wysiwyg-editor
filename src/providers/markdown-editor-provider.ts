@@ -569,10 +569,12 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
 </head>
 <body data-readonly="${readonly}" data-mode="${DEFAULT_EDITOR_MODE}" data-csp-nonce="${nonce}" data-elk-chunk-uri="${elkChunkUri}">
   <div id="mode-toolbar" role="toolbar" aria-label="Editor mode">
+    <span class="mode-segment-group" role="group" aria-label="Mode selection">
+      <button type="button" data-mode="markdown" title="Visual Editor (WYSIWYG)" aria-label="Visual Editor">Visual</button>
+      <button type="button" data-mode="raw" class="active" title="Source Editor (Markdown)" aria-label="Source Editor">Source</button>
+    </span>
+    <button type="button" data-mode="preview" title="Editor Preview" aria-label="Editor Preview">Preview</button>
     <button type="button" data-action="native-preview" title="Open Default Markdown Preview" aria-label="Open Default Markdown Preview">Default Preview</button>
-    <button type="button" data-mode="preview" title="Editor Preview" aria-label="Editor Preview">Editor Preview</button>
-    <button type="button" data-mode="markdown" title="Edit Rich Editor" aria-label="Edit Rich Editor">Edit Rich Editor</button>
-    <button type="button" data-mode="raw" class="active" title="Edit Raw Text" aria-label="Edit Raw Text">Edit Raw Text</button>
   </div>
   <div id="toolbar" role="toolbar" aria-label="Formatting">
     <button type="button" data-cmd="bold" title="Bold" aria-pressed="false"><b>B</b></button>
