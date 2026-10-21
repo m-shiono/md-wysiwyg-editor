@@ -276,6 +276,13 @@
 | TC-163 | Happy | table-context-menu-dismiss | P1 | コンテキストメニュー表示中にメニュー外をクリック、または `Escape` キーを押下 | コンテキストメニューが非表示（`hidden`）になる | メニューのキャンセル・非表示 | §3 表編集 UI |
 | TC-164 | Corner | table-context-menu-readonly-guard | P1 | Readonly（`readonly: true`）モードで表セル上を右クリック | コンテキストメニューは表示されない | Readonly 編集保護 | §3 例外系 3 |
 | TC-165 | Corner | table-context-menu-non-markdown-guard | P1 | Preview モードまたは Raw モードで右クリック | 表のコンテキストメニューは表示されない | 非 Visual モード保護 | §3 例外系 3 |
+| TC-170 | Happy | find-widget-open-and-dismiss | P0 | Visual / Source / Preview モードで `Cmd+F` / `Ctrl+F` 押下、および `Escape` 押下 | `#find-widget` が表示されて検索入力にフォーカス。`Escape` でウィジェットが閉じ元の要素にフォーカス復帰 | 検索ウィジェットの表示と開閉 | §11 検索・置換機能 |
+| TC-171 | Happy | find-and-navigate-raw | P0 | Source（Raw）モードで検索クエリを入力し、次へ/前へナビゲーション | マッチ件数が表示され、`textarea` の `selectionStart`/`selectionEnd` が該当箇所へ移動する | Source モードでの検索ナビゲーション | §11 検索・置換機能 |
+| TC-172 | Happy | find-and-navigate-visual | P0 | Visual（Markdown）モードで検索クエリを入力し、次へ/前へナビゲーション | ProseMirror Decoration（`.find-highlight`）が付与され、選択が該当ノードへ移動する | Visual モードでの検索ナビゲーション | §11 検索・置換機能 |
+| TC-173 | Happy | replace-single-and-all-raw | P0 | Source（Raw）モードで単一置換および全置換を実行 | テキストが置換され、`input` イベントが発火してドキュメントが更新される | Source モードでの置換・全置換 | §11 検索・置換機能 |
+| TC-174 | Happy | replace-single-and-all-visual | P0 | Visual（Markdown）モードで単一置換および全置換を実行 | ドキュメントノード内のテキストが置換され、Undo 履歴と連動する | Visual モードでの置換・全置換 | §11 検索・置換機能 |
+| TC-175 | Corner | find-search-options-and-regex-safety | P1 | Match Case、Match Whole Word、Regex オプション切替、および不正な正規表現入力 | 各オプション通りにフィルタされ、不正な正規表現でもクラッシュせず 0 件として安全に扱われる | 検索オプションと正規表現安全ガード | §11 検索・置換機能 |
+| TC-176 | Corner | find-replace-readonly-and-preview-guard | P1 | Preview モードまたは `readonly: true` の状態で検索ウィジェットを起動 | 置換 UI（トグル・置換入力・置換ボタン）は非表示となり、検索のみ動作する | 閲覧専用・Readonly 保護 | §11 検索・置換機能 |
 
 ### Fixtures — preview-mode-quality
 
@@ -798,3 +805,4 @@ P0 + P1 の机上トレース（実装前）。
 | 2026-10-18 | TC-158（configurationDefaults の diff 関連付け検証）および TC-159（openCustomDocument の安全初期化検証）を更新 | `scm-diff-config-defaults` |
 | 2026-10-19 | TC-130 / TC-132 Expected 更新 | Preview モードでの Mermaid ソース非表示化（`body[data-mode='preview'] .mermaid-source { display: none; }`）。Markdown ではソース併記を維持 |
 | 2026-10-19 | TC-160–165 追加 | 表の右クリックコンテキストメニュー（`table-context-menu`）: Visualモードでの表セル右クリック表示、行列操作・表削除、Escape/外部クリックでのキャンセル、Readonly/非Visualモードでのガード |
+| 2026-10-21 | TC-170–176 追加 | 検索・置換機能（`search-replace-widget`）: Visual・Source・Preview でのウィジェット開閉・キーバインド（Cmd+F/Cmd+H/Escape）、Source/Visual での検索ナビゲーション・置換・全置換、検索オプション（Case/Word/Regex）と正規表現安全性、Preview/Readonly での置換ガード |

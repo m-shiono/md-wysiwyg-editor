@@ -4630,7 +4630,7 @@
     const originalDocument = document2;
     const currentScript = originalDocument.currentScript;
     window3.DocumentFragment;
-    const HTMLTemplateElement = window3.HTMLTemplateElement, Node6 = window3.Node, Element3 = window3.Element, NodeFilter = window3.NodeFilter;
+    const HTMLTemplateElement = window3.HTMLTemplateElement, Node6 = window3.Node, Element3 = window3.Element, NodeFilter2 = window3.NodeFilter;
     window3.NamedNodeMap === void 0 && (window3.NamedNodeMap || window3.MozNamedAttrMap);
     window3.HTMLFormElement;
     const DOMParser2 = window3.DOMParser, trustedTypes = window3.trustedTypes;
@@ -5166,7 +5166,7 @@
     };
     const _createNodeIterator = function _createNodeIterator2(root4) {
       const doc3 = getOwnerDocument ? getOwnerDocument(root4) : root4.ownerDocument;
-      return createNodeIterator.call(doc3 || root4, root4, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_TEXT | NodeFilter.SHOW_PROCESSING_INSTRUCTION | NodeFilter.SHOW_CDATA_SECTION, null);
+      return createNodeIterator.call(doc3 || root4, root4, NodeFilter2.SHOW_ELEMENT | NodeFilter2.SHOW_COMMENT | NodeFilter2.SHOW_TEXT | NodeFilter2.SHOW_PROCESSING_INSTRUCTION | NodeFilter2.SHOW_CDATA_SECTION, null);
     };
     const _stripTemplateExpressions = function _stripTemplateExpressions2(value2) {
       value2 = stringReplace(value2, MUSTACHE_EXPR$1, " ");
@@ -5178,7 +5178,7 @@
       var _node$querySelectorAl;
       node2.normalize();
       const doc3 = getOwnerDocument ? getOwnerDocument(node2) : node2.ownerDocument;
-      const walker = createNodeIterator.call(doc3 || node2, node2, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_CDATA_SECTION | NodeFilter.SHOW_PROCESSING_INSTRUCTION, null);
+      const walker = createNodeIterator.call(doc3 || node2, node2, NodeFilter2.SHOW_TEXT | NodeFilter2.SHOW_COMMENT | NodeFilter2.SHOW_CDATA_SECTION | NodeFilter2.SHOW_PROCESSING_INSTRUCTION, null);
       let currentNode = walker.nextNode();
       while (currentNode) {
         currentNode.data = _stripTemplateExpressions(currentNode.data);
@@ -70776,7 +70776,7 @@ ${lines.join("\n")}`);
       keys: [type3, name, moduleType, moduleName]
     });
   }
-  var _window, navigator2, typeofstr, typeofobj, typeoffn, typeofhtmlele, instanceStr, string, fn$6, array2, plainObject, object, number$1, integer, htmlElement, elementOrCollection, element, collection, core2, stylesheet, event, emptyString, domElement, boundingBox, promise, ms, memoize3, camel2dash, dash2camel, prependCamel, capitalize, endsWith, number6, rgba3, rgbaNoBackRefs, hsla2, hslaNoBackRefs, hex3, hex6, ascending3, descending2, extend2, hex2tuple, hsl2tuple, rgb2tuple, colorname2tuple, color2tuple, colors, setMap, getMap, commonjsGlobal, isObject_1, hasRequiredIsObject, _freeGlobal, hasRequired_freeGlobal, _root, hasRequired_root, now_1, hasRequiredNow, _trimmedEndIndex, hasRequired_trimmedEndIndex, _baseTrim, hasRequired_baseTrim, _Symbol, hasRequired_Symbol, _getRawTag, hasRequired_getRawTag, _objectToString, hasRequired_objectToString, _baseGetTag, hasRequired_baseGetTag, isObjectLike_1, hasRequiredIsObjectLike, isSymbol_1, hasRequiredIsSymbol, toNumber_1, hasRequiredToNumber, debounce_1, hasRequiredDebounce, debounceExports, debounce, performance$1, pnow, raf, requestAnimationFrame2, performanceNow, DEFAULT_HASH_SEED, K4, DEFAULT_HASH_SEED_ALT, hashIterableInts, hashInt, hashIntAlt, combineHashes, combineHashesArray, hashArrays, hashIntsArray, hashString2, hashStrings, hashStringsArray, movePointByBoxAspect, warningsEnabled, warnSupported, traceSupported, MAX_INT$1, trueify, falsify, zeroify, noop$1, error, warnings, warn2, clone4, copy4, copyArray2, uuid, _staticEmptyObject, staticEmptyObject, defaults$g, removeFromArray, clearArray, push, getPrefixedProperty, setPrefixedProperty, ObjectMap, Map$1, undef, ObjectSet, Set$1, Element, defineSearch, elesfn$v, heap$2, heap$1, hasRequiredHeap$1, heap, hasRequiredHeap, heapExports, Heap, dijkstraDefaults, elesfn$u, elesfn$t, aStarDefaults, elesfn$s, floydWarshallDefaults, elesfn$r, bellmanFordDefaults, elesfn$q, sqrt2, collapse, contractUntil, elesfn$p, _Math$hypot, copyPosition, modelToRenderedPosition$1, renderedToModelPosition, array2point, min5, max5, mean, median2, _gcd, gcdMultipleZeroIfNonInt, deg2rad, getAngleFromDisp, log22, signum, dist, sqdist, inPlaceSumNormalize, qbezierAt, qbezierPtAt, lineAt, bound, makeBoundingBox, copyBoundingBox, clearBoundingBox, updateBoundingBox, expandBoundingBoxByPoint, expandBoundingBox, expandBoundingBoxSides, assignBoundingBox, boundingBoxesIntersect, inBoundingBox, pointInBoundingBox, boundingBoxInBoundingBox, hypot, roundRectangleIntersectLine, inLineVicinity, inBezierVicinity, solveQuadratic, solveCubic, sqdistToQuadraticBezier, sqdistToFiniteLine, pointInsidePolygonPoints, pointInsidePolygon, pointInsideRoundPolygon, joinLines, expandPolygon, intersectLineEllipse, checkInEllipse, intersectLineCircle, midOfThree, finiteLinesIntersect, transformPoints, polygonIntersectLine, roundPolygonIntersectLine, shortenIntersection, generateUnitNgonPointsFitToSquare, fitPolygonToSquare, generateUnitNgonPoints, getRoundRectangleRadius, getRoundPolygonRadius, getCutRectangleCornerLength, bezierPtsToQuadCoeff, getBarrelCurveConstants, pageRankDefaults, elesfn$o, defaults$f, elesfn$n, defaults$e, elesfn$m, defaults$d, elesfn$l, defaults$c, setOptions$3, getSimilarity$1, addLoops, normalize3, mmult, expand, inflate, hasConverged, assign$2, isDuplicate, removeDuplicates2, markovClustering, markovClustering$1, identity$1, absDiff, addAbsDiff, addSquaredDiff, sqrt3, maxAbsDiff, getDistance, distances, defaults$b, setOptions$2, getDist, randomCentroids, classify, buildCluster, haveValuesConverged, haveMatricesConverged, seenBefore, randomMedoids, findCost, kMeans, kMedoids, updateCentroids, updateMembership, assign$1, fuzzyCMeans, kClustering, defaults$a, linkageAliases, setOptions$1, mergeClosest, _getAllChildren, _buildDendrogram, _buildClustersFromTree, hierarchicalClustering, hierarchicalClustering$1, defaults$9, setOptions4, getSimilarity2, getPreference, findExemplars, assignClusters, assign3, affinityPropagation, affinityPropagation$1, hierholzerDefaults, elesfn$k, hopcroftTarjanBiconnected, hopcroftTarjanBiconnected$1, tarjanStronglyConnected, tarjanStronglyConnected$1, elesfn$j, STATE_PENDING, STATE_FULFILLED, STATE_REJECTED, _api, deliver, execute, execute_handlers, resolver, _resolve, Promise$1, Animation, anifn, define$3, isArray_1, hasRequiredIsArray, _isKey, hasRequired_isKey, isFunction_1, hasRequiredIsFunction, _coreJsData, hasRequired_coreJsData, _isMasked, hasRequired_isMasked, _toSource, hasRequired_toSource, _baseIsNative, hasRequired_baseIsNative, _getValue, hasRequired_getValue, _getNative, hasRequired_getNative, _nativeCreate, hasRequired_nativeCreate, _hashClear, hasRequired_hashClear, _hashDelete, hasRequired_hashDelete, _hashGet, hasRequired_hashGet, _hashHas, hasRequired_hashHas, _hashSet, hasRequired_hashSet, _Hash, hasRequired_Hash, _listCacheClear, hasRequired_listCacheClear, eq_1, hasRequiredEq, _assocIndexOf, hasRequired_assocIndexOf, _listCacheDelete, hasRequired_listCacheDelete, _listCacheGet, hasRequired_listCacheGet, _listCacheHas, hasRequired_listCacheHas, _listCacheSet, hasRequired_listCacheSet, _ListCache, hasRequired_ListCache, _Map, hasRequired_Map, _mapCacheClear, hasRequired_mapCacheClear, _isKeyable, hasRequired_isKeyable, _getMapData, hasRequired_getMapData, _mapCacheDelete, hasRequired_mapCacheDelete, _mapCacheGet, hasRequired_mapCacheGet, _mapCacheHas, hasRequired_mapCacheHas, _mapCacheSet, hasRequired_mapCacheSet, _MapCache, hasRequired_MapCache, memoize_1, hasRequiredMemoize, _memoizeCapped, hasRequired_memoizeCapped, _stringToPath, hasRequired_stringToPath, _arrayMap, hasRequired_arrayMap, _baseToString, hasRequired_baseToString, toString_1, hasRequiredToString, _castPath, hasRequired_castPath, _toKey, hasRequired_toKey, _baseGet, hasRequired_baseGet, get_1, hasRequiredGet, getExports, get5, _defineProperty, hasRequired_defineProperty, _baseAssignValue, hasRequired_baseAssignValue, _assignValue, hasRequired_assignValue, _isIndex, hasRequired_isIndex, _baseSet, hasRequired_baseSet, set_1, hasRequiredSet2, setExports, set4, _copyArray, hasRequired_copyArray, toPath_1, hasRequiredToPath, toPathExports, toPath, define$2, define$1, define2, elesfn$i, elesfn$h, tokens, newQuery, Type3, stateSelectors, lookup, stateSelectorMatches, stateSelectorRegex, cleanMetaChars, replaceLastQuery, exprs, consumeExpr, consumeWhitespace, parse, toString2, parse$1, valCmp, boolCmp, existCmp, data$1, meta, match, matches$1, filter3, matches32, matching, Selector, selfn, elesfn$g, cache, elesfn$f, fn$5, elesfn$e, data3, elesfn$d, fn$4, elesfn$c, beforePositionSet, positionDef, position2, labelHalign, labelValign, labelJustification, fn$3, elesfn$b, noninf, updateBounds, updateBoundsFromBox, prefixedProperty, updateBoundsFromArrow, updateBoundsFromLabel, updateBoundsFromOutline, updateBoundsFromMiter, updateBoundsFromMiterBorder, boundingBoxImpl, getKey, getBoundingBoxPosKey, cachedBoundingBoxImpl, defBbOpts, defBbOptsKey, filledBbOpts, bounds, fn$2, elesfn$a, defineDimFns, widthHeight, ifEdge, ifEdgeRenderedPosition, ifEdgeRenderedPositions, controlPoints2, segmentPoints, sourceEndpoint, targetEndpoint, midpoint, pts, renderedName, edgePoints, dimensions, Event, eventRegex, universalNamespace, defaults$8, defaultsKeys, emptyOpts, p2, forEachEvent, makeEventObj, forEachEventObj, emitterOptions$1, argSelector$1, elesfn$9, elesfn$8, fn$1, elesfn$7, zIndexSort, elesfn$6, defineSymbolIterator, getLayoutDimensionOptions, elesfn$5, elesfn$4, eleTakesUpSpace, eleInteractive, parentInteractive, eleVisible, edgeVisibleViaNode, elesfn$3, elesfn$2, defineDagExtremity, defineDagOneHop, defineDagAllHops, Collection, elesfn$1, corefn$9, generateSpringRK4, cubicBezier, easings, corefn$8, emitterOptions, argSelector2, elesfn, corefn$7, corefn$6, corefn$5, rendererDefaults, corefn$4, corefn$3, styfn$8, TRUE, FALSE, styfn$7, styfn$6, styfn$5, styfn$4, styfn$3, styfn$2, styfn$1, _Style, styfn, corefn$2, defaultSelectionType, corefn$1, fn2, Core, corefn, defaults$7, deprecatedOptionDefaults, getInfo, setInfo, defaults$6, defaults$5, DEBUG, defaults$4, createLayoutInfo, findLCA, _findLCA_aux, printLayoutInfo, randomizePositions, getScaleInBoundsFn, refreshPositions, step, calculateNodeForces, randomDistance, nodeRepulsion2, nodesOverlap, findClippingPoint, calculateEdgeForces, calculateGravityForces, propagateForces, updatePositions, limitForce, _updateAncestryBoundaries, separateComponents, defaults$3, defaults$2, defaults$1, defaults4, layout4, noop6, throwImgErr, BRp$f, BRp$e, BRp$d, x4, y4, v1, v22, sinA, sinA90, radDirection, drawDirection, angle, halfAngle, cRadius, lenOut, radius, limit, startX, startY, stopX, stopY, lastPoint, asVec, invertVec, calcCornerArc, AVOID_IMPOSSIBLE_BEZIER_CONSTANT, AVOID_IMPOSSIBLE_BEZIER_CONSTANT_L, BRp$c, BRp$b, BRp$a, BRp$9, lineAngleFromDelta, lineAngle, bezierAngle, BRp$8, TOO_SMALL_CUT_RECT, warnedCutRect, BRp$7, BRp$6, BRp$5, BRp$4, setGrabState, setGrabbed, setFreed, BRp$3, BRp$2, BRp$1, beforeRenderCallbacks, BaseRenderer, BR, BRp, fullFpsTime, defs, ElementTextureCacheLookup, minTxrH, txrStepH, minLvl$1, maxLvl$1, maxZoom$1, eleTxrSpacing, defTxrWidth, maxTxrW, maxTxrH, minUtility, maxFullness, maxFullnessChecks, deqCost$1, deqAvgCost$1, deqNoDrawCost$1, deqFastCost$1, deqRedrawThreshold$1, maxDeqSize$1, getTxrReasons, initDefaults, ElementTextureCache, ETCp, defNumLayers, minLvl, maxLvl, maxZoom2, deqRedrawThreshold, refineEleDebounceTime, deqCost, deqAvgCost, deqNoDrawCost, deqFastCost, maxDeqSize, invalidThreshold, maxLayerArea, maxLayerDim, useHighQualityEleTxrReqs, LayeredTextureCache, LTCp, layerIdPool, MAX_INT, CRp$b, impl, CRp$a, getZeroRotation, getLabelRotation, getSourceLabelRotation, getTargetLabelRotation, getOpacity, getTextOpacity, CRp$9, drawEdgeOverlayUnderlay, CRp$8, CRp$7, CRp$6, drawNodeOverlayUnderlay, CRp$5, motionBlurDelay, fpsHeight, ARRAY_TYPE, Atlas, AtlasCollection, AtlasManager, AtlasBatchManager, circleSD, rectangleSD, roundRectangleSD, ellipseSD, RENDER_TARGET, TEX_PICKING_MODE, TEXTURE, EDGE_STRAIGHT, EDGE_CURVE_SEGMENT, EDGE_ARROW, RECTANGLE, ROUND_RECTANGLE, BOTTOM_ROUND_RECTANGLE, ELLIPSE, ElementDrawingWebGL, CRp$4, getStyleKeysForLabel, getBoundingBoxForLabel, CRp$3, sin0, cos0, sin2, cos2, ellipseStepSize, i2, CRp$2, CRp$1, CR2, CRp, pathsImpld, renderer2, incExts, extensions, modules, extension2, _Stylesheet, sheetfn, version2, cytoscape2;
+  var _window, navigator2, typeofstr, typeofobj, typeoffn, typeofhtmlele, instanceStr, string, fn$6, array2, plainObject, object, number$1, integer, htmlElement, elementOrCollection, element, collection, core2, stylesheet, event, emptyString, domElement, boundingBox, promise, ms, memoize3, camel2dash, dash2camel, prependCamel, capitalize, endsWith, number6, rgba3, rgbaNoBackRefs, hsla2, hslaNoBackRefs, hex3, hex6, ascending3, descending2, extend2, hex2tuple, hsl2tuple, rgb2tuple, colorname2tuple, color2tuple, colors, setMap, getMap, commonjsGlobal, isObject_1, hasRequiredIsObject, _freeGlobal, hasRequired_freeGlobal, _root, hasRequired_root, now_1, hasRequiredNow, _trimmedEndIndex, hasRequired_trimmedEndIndex, _baseTrim, hasRequired_baseTrim, _Symbol, hasRequired_Symbol, _getRawTag, hasRequired_getRawTag, _objectToString, hasRequired_objectToString, _baseGetTag, hasRequired_baseGetTag, isObjectLike_1, hasRequiredIsObjectLike, isSymbol_1, hasRequiredIsSymbol, toNumber_1, hasRequiredToNumber, debounce_1, hasRequiredDebounce, debounceExports, debounce, performance$1, pnow, raf, requestAnimationFrame2, performanceNow, DEFAULT_HASH_SEED, K4, DEFAULT_HASH_SEED_ALT, hashIterableInts, hashInt, hashIntAlt, combineHashes, combineHashesArray, hashArrays, hashIntsArray, hashString2, hashStrings, hashStringsArray, movePointByBoxAspect, warningsEnabled, warnSupported, traceSupported, MAX_INT$1, trueify, falsify, zeroify, noop$1, error, warnings, warn2, clone4, copy4, copyArray2, uuid, _staticEmptyObject, staticEmptyObject, defaults$g, removeFromArray, clearArray, push, getPrefixedProperty, setPrefixedProperty, ObjectMap, Map$1, undef, ObjectSet, Set$1, Element, defineSearch, elesfn$v, heap$2, heap$1, hasRequiredHeap$1, heap, hasRequiredHeap, heapExports, Heap, dijkstraDefaults, elesfn$u, elesfn$t, aStarDefaults, elesfn$s, floydWarshallDefaults, elesfn$r, bellmanFordDefaults, elesfn$q, sqrt2, collapse, contractUntil, elesfn$p, _Math$hypot, copyPosition, modelToRenderedPosition$1, renderedToModelPosition, array2point, min5, max5, mean, median2, _gcd, gcdMultipleZeroIfNonInt, deg2rad, getAngleFromDisp, log22, signum, dist, sqdist, inPlaceSumNormalize, qbezierAt, qbezierPtAt, lineAt, bound, makeBoundingBox, copyBoundingBox, clearBoundingBox, updateBoundingBox, expandBoundingBoxByPoint, expandBoundingBox, expandBoundingBoxSides, assignBoundingBox, boundingBoxesIntersect, inBoundingBox, pointInBoundingBox, boundingBoxInBoundingBox, hypot, roundRectangleIntersectLine, inLineVicinity, inBezierVicinity, solveQuadratic, solveCubic, sqdistToQuadraticBezier, sqdistToFiniteLine, pointInsidePolygonPoints, pointInsidePolygon, pointInsideRoundPolygon, joinLines, expandPolygon, intersectLineEllipse, checkInEllipse, intersectLineCircle, midOfThree, finiteLinesIntersect, transformPoints, polygonIntersectLine, roundPolygonIntersectLine, shortenIntersection, generateUnitNgonPointsFitToSquare, fitPolygonToSquare, generateUnitNgonPoints, getRoundRectangleRadius, getRoundPolygonRadius, getCutRectangleCornerLength, bezierPtsToQuadCoeff, getBarrelCurveConstants, pageRankDefaults, elesfn$o, defaults$f, elesfn$n, defaults$e, elesfn$m, defaults$d, elesfn$l, defaults$c, setOptions$3, getSimilarity$1, addLoops, normalize3, mmult, expand, inflate, hasConverged, assign$2, isDuplicate, removeDuplicates2, markovClustering, markovClustering$1, identity$1, absDiff, addAbsDiff, addSquaredDiff, sqrt3, maxAbsDiff, getDistance, distances, defaults$b, setOptions$2, getDist, randomCentroids, classify, buildCluster, haveValuesConverged, haveMatricesConverged, seenBefore, randomMedoids, findCost, kMeans, kMedoids, updateCentroids, updateMembership, assign$1, fuzzyCMeans, kClustering, defaults$a, linkageAliases, setOptions$1, mergeClosest, _getAllChildren, _buildDendrogram, _buildClustersFromTree, hierarchicalClustering, hierarchicalClustering$1, defaults$9, setOptions4, getSimilarity2, getPreference, findExemplars, assignClusters, assign3, affinityPropagation, affinityPropagation$1, hierholzerDefaults, elesfn$k, hopcroftTarjanBiconnected, hopcroftTarjanBiconnected$1, tarjanStronglyConnected, tarjanStronglyConnected$1, elesfn$j, STATE_PENDING, STATE_FULFILLED, STATE_REJECTED, _api, deliver, execute, execute_handlers, resolver, _resolve, Promise$1, Animation, anifn, define$3, isArray_1, hasRequiredIsArray, _isKey, hasRequired_isKey, isFunction_1, hasRequiredIsFunction, _coreJsData, hasRequired_coreJsData, _isMasked, hasRequired_isMasked, _toSource, hasRequired_toSource, _baseIsNative, hasRequired_baseIsNative, _getValue, hasRequired_getValue, _getNative, hasRequired_getNative, _nativeCreate, hasRequired_nativeCreate, _hashClear, hasRequired_hashClear, _hashDelete, hasRequired_hashDelete, _hashGet, hasRequired_hashGet, _hashHas, hasRequired_hashHas, _hashSet, hasRequired_hashSet, _Hash, hasRequired_Hash, _listCacheClear, hasRequired_listCacheClear, eq_1, hasRequiredEq, _assocIndexOf, hasRequired_assocIndexOf, _listCacheDelete, hasRequired_listCacheDelete, _listCacheGet, hasRequired_listCacheGet, _listCacheHas, hasRequired_listCacheHas, _listCacheSet, hasRequired_listCacheSet, _ListCache, hasRequired_ListCache, _Map, hasRequired_Map, _mapCacheClear, hasRequired_mapCacheClear, _isKeyable, hasRequired_isKeyable, _getMapData, hasRequired_getMapData, _mapCacheDelete, hasRequired_mapCacheDelete, _mapCacheGet, hasRequired_mapCacheGet, _mapCacheHas, hasRequired_mapCacheHas, _mapCacheSet, hasRequired_mapCacheSet, _MapCache, hasRequired_MapCache, memoize_1, hasRequiredMemoize, _memoizeCapped, hasRequired_memoizeCapped, _stringToPath, hasRequired_stringToPath, _arrayMap, hasRequired_arrayMap, _baseToString, hasRequired_baseToString, toString_1, hasRequiredToString, _castPath, hasRequired_castPath, _toKey, hasRequired_toKey, _baseGet, hasRequired_baseGet, get_1, hasRequiredGet, getExports, get5, _defineProperty, hasRequired_defineProperty, _baseAssignValue, hasRequired_baseAssignValue, _assignValue, hasRequired_assignValue, _isIndex, hasRequired_isIndex, _baseSet, hasRequired_baseSet, set_1, hasRequiredSet2, setExports, set4, _copyArray, hasRequired_copyArray, toPath_1, hasRequiredToPath, toPathExports, toPath, define$2, define$1, define2, elesfn$i, elesfn$h, tokens, newQuery, Type3, stateSelectors, lookup, stateSelectorMatches, stateSelectorRegex, cleanMetaChars, replaceLastQuery, exprs, consumeExpr, consumeWhitespace, parse, toString2, parse$1, valCmp, boolCmp, existCmp, data$1, meta, match, matches$1, filter3, matches32, matching, Selector, selfn, elesfn$g, cache, elesfn$f, fn$5, elesfn$e, data3, elesfn$d, fn$4, elesfn$c, beforePositionSet, positionDef, position2, labelHalign, labelValign, labelJustification, fn$3, elesfn$b, noninf, updateBounds, updateBoundsFromBox, prefixedProperty, updateBoundsFromArrow, updateBoundsFromLabel, updateBoundsFromOutline, updateBoundsFromMiter, updateBoundsFromMiterBorder, boundingBoxImpl, getKey, getBoundingBoxPosKey, cachedBoundingBoxImpl, defBbOpts, defBbOptsKey, filledBbOpts, bounds, fn$2, elesfn$a, defineDimFns, widthHeight, ifEdge, ifEdgeRenderedPosition, ifEdgeRenderedPositions, controlPoints2, segmentPoints, sourceEndpoint, targetEndpoint, midpoint, pts, renderedName, edgePoints, dimensions, Event2, eventRegex, universalNamespace, defaults$8, defaultsKeys, emptyOpts, p2, forEachEvent, makeEventObj, forEachEventObj, emitterOptions$1, argSelector$1, elesfn$9, elesfn$8, fn$1, elesfn$7, zIndexSort, elesfn$6, defineSymbolIterator, getLayoutDimensionOptions, elesfn$5, elesfn$4, eleTakesUpSpace, eleInteractive, parentInteractive, eleVisible, edgeVisibleViaNode, elesfn$3, elesfn$2, defineDagExtremity, defineDagOneHop, defineDagAllHops, Collection, elesfn$1, corefn$9, generateSpringRK4, cubicBezier, easings, corefn$8, emitterOptions, argSelector2, elesfn, corefn$7, corefn$6, corefn$5, rendererDefaults, corefn$4, corefn$3, styfn$8, TRUE, FALSE, styfn$7, styfn$6, styfn$5, styfn$4, styfn$3, styfn$2, styfn$1, _Style, styfn, corefn$2, defaultSelectionType, corefn$1, fn2, Core, corefn, defaults$7, deprecatedOptionDefaults, getInfo, setInfo, defaults$6, defaults$5, DEBUG, defaults$4, createLayoutInfo, findLCA, _findLCA_aux, printLayoutInfo, randomizePositions, getScaleInBoundsFn, refreshPositions, step, calculateNodeForces, randomDistance, nodeRepulsion2, nodesOverlap, findClippingPoint, calculateEdgeForces, calculateGravityForces, propagateForces, updatePositions, limitForce, _updateAncestryBoundaries, separateComponents, defaults$3, defaults$2, defaults$1, defaults4, layout4, noop6, throwImgErr, BRp$f, BRp$e, BRp$d, x4, y4, v1, v22, sinA, sinA90, radDirection, drawDirection, angle, halfAngle, cRadius, lenOut, radius, limit, startX, startY, stopX, stopY, lastPoint, asVec, invertVec, calcCornerArc, AVOID_IMPOSSIBLE_BEZIER_CONSTANT, AVOID_IMPOSSIBLE_BEZIER_CONSTANT_L, BRp$c, BRp$b, BRp$a, BRp$9, lineAngleFromDelta, lineAngle, bezierAngle, BRp$8, TOO_SMALL_CUT_RECT, warnedCutRect, BRp$7, BRp$6, BRp$5, BRp$4, setGrabState, setGrabbed, setFreed, BRp$3, BRp$2, BRp$1, beforeRenderCallbacks, BaseRenderer, BR, BRp, fullFpsTime, defs, ElementTextureCacheLookup, minTxrH, txrStepH, minLvl$1, maxLvl$1, maxZoom$1, eleTxrSpacing, defTxrWidth, maxTxrW, maxTxrH, minUtility, maxFullness, maxFullnessChecks, deqCost$1, deqAvgCost$1, deqNoDrawCost$1, deqFastCost$1, deqRedrawThreshold$1, maxDeqSize$1, getTxrReasons, initDefaults, ElementTextureCache, ETCp, defNumLayers, minLvl, maxLvl, maxZoom2, deqRedrawThreshold, refineEleDebounceTime, deqCost, deqAvgCost, deqNoDrawCost, deqFastCost, maxDeqSize, invalidThreshold, maxLayerArea, maxLayerDim, useHighQualityEleTxrReqs, LayeredTextureCache, LTCp, layerIdPool, MAX_INT, CRp$b, impl, CRp$a, getZeroRotation, getLabelRotation, getSourceLabelRotation, getTargetLabelRotation, getOpacity, getTextOpacity, CRp$9, drawEdgeOverlayUnderlay, CRp$8, CRp$7, CRp$6, drawNodeOverlayUnderlay, CRp$5, motionBlurDelay, fpsHeight, ARRAY_TYPE, Atlas, AtlasCollection, AtlasManager, AtlasBatchManager, circleSD, rectangleSD, roundRectangleSD, ellipseSD, RENDER_TARGET, TEX_PICKING_MODE, TEXTURE, EDGE_STRAIGHT, EDGE_CURVE_SEGMENT, EDGE_ARROW, RECTANGLE, ROUND_RECTANGLE, BOTTOM_ROUND_RECTANGLE, ELLIPSE, ElementDrawingWebGL, CRp$4, getStyleKeysForLabel, getBoundingBoxForLabel, CRp$3, sin0, cos0, sin2, cos2, ellipseStepSize, i2, CRp$2, CRp$1, CR2, CRp, pathsImpld, renderer2, incExts, extensions, modules, extension2, _Stylesheet, sheetfn, version2, cytoscape2;
   var init_cytoscape_esm = __esm({
     "node_modules/cytoscape/dist/cytoscape.esm.mjs"() {
       _window = typeof window === "undefined" ? null : window;
@@ -78705,10 +78705,10 @@ ${lines.join("\n")}`);
         return obj;
       }, {});
       dimensions = extend2({}, position2, bounds, widthHeight, edgePoints);
-      Event = function Event2(src, props) {
+      Event2 = function Event3(src, props) {
         this.recycle(src, props);
       };
-      Event.prototype = {
+      Event2.prototype = {
         instanceString: function instanceString2() {
           return "event";
         },
@@ -78831,7 +78831,7 @@ ${lines.join("\n")}`);
       };
       makeEventObj = function makeEventObj2(self2, obj) {
         self2.addEventFields(self2.context, obj);
-        return new Event(obj.type, obj);
+        return new Event2(obj.type, obj);
       };
       forEachEventObj = function forEachEventObj2(self2, handler, events) {
         if (event(events)) {
@@ -119172,14 +119172,14 @@ For Further details.`;
           Object.defineProperty(exports2, "__esModule", { value: true });
           exports2.Emitter = exports2.Event = void 0;
           var ral_1 = require_ral();
-          var Event3;
+          var Event4;
           (function(Event22) {
             const _disposable = { dispose() {
             } };
             Event22.None = function() {
               return _disposable;
             };
-          })(Event3 || (exports2.Event = Event3 = {}));
+          })(Event4 || (exports2.Event = Event4 = {}));
           var CallbackList = (_a211 = class {
             add(callback, context = null, bucket2) {
               if (!this._callbacks) {
@@ -227511,6 +227511,885 @@ ${prefix}
     runtime.scheduleRerender();
   }
 
+  // media/extensions/search-and-replace.ts
+  var searchPluginKey = new PluginKey("searchAndReplace");
+  function buildRegex(searchTerm, matchCase, matchWholeWord, useRegex) {
+    if (!searchTerm) {
+      return null;
+    }
+    let pattern = searchTerm;
+    if (!useRegex) {
+      pattern = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+    if (matchWholeWord) {
+      pattern = `\\b${pattern}\\b`;
+    }
+    const flags = matchCase ? "gu" : "gui";
+    try {
+      return new RegExp(pattern, flags);
+    } catch {
+      return null;
+    }
+  }
+  function findMatchesInDoc(doc3, regex2) {
+    if (!regex2) {
+      return [];
+    }
+    const matches34 = [];
+    doc3.descendants((node2, pos) => {
+      if (node2.isText && node2.text) {
+        regex2.lastIndex = 0;
+        let match3 = null;
+        while ((match3 = regex2.exec(node2.text)) !== null) {
+          if (match3[0].length === 0) {
+            regex2.lastIndex++;
+            continue;
+          }
+          const from3 = pos + match3.index;
+          const to = from3 + match3[0].length;
+          matches34.push({ from: from3, to });
+        }
+      }
+    });
+    return matches34;
+  }
+  function createDecorations(doc3, matches34, currentIndex) {
+    if (matches34.length === 0) {
+      return DecorationSet.empty;
+    }
+    const decos = matches34.map((m3, index) => {
+      const isCurrent = index === currentIndex;
+      return Decoration.inline(m3.from, m3.to, {
+        class: isCurrent ? "find-highlight-current" : "find-highlight"
+      });
+    });
+    return DecorationSet.create(doc3, decos);
+  }
+  var SearchAndReplace = Extension.create({
+    name: "searchAndReplace",
+    addOptions() {
+      return {
+        searchTerm: "",
+        replaceTerm: "",
+        matchCase: false,
+        matchWholeWord: false,
+        useRegex: false,
+        results: [],
+        currentIndex: -1
+      };
+    },
+    addStorage() {
+      return {
+        results: [],
+        currentIndex: -1
+      };
+    },
+    addProseMirrorPlugins() {
+      const extension4 = this;
+      return [
+        new Plugin({
+          key: searchPluginKey,
+          state: {
+            init: () => ({
+              results: [],
+              currentIndex: -1,
+              decorations: DecorationSet.empty
+            }),
+            apply: (tr2, prevValue, _oldState, newState2) => {
+              const meta3 = tr2.getMeta(searchPluginKey);
+              if (meta3) {
+                return meta3;
+              }
+              if (tr2.docChanged && prevValue.results.length > 0) {
+                const regex2 = buildRegex(
+                  extension4.options.searchTerm,
+                  extension4.options.matchCase,
+                  extension4.options.matchWholeWord,
+                  extension4.options.useRegex
+                );
+                const results = findMatchesInDoc(newState2.doc, regex2);
+                let currentIndex = prevValue.currentIndex;
+                if (currentIndex >= results.length) {
+                  currentIndex = results.length - 1;
+                }
+                extension4.storage.results = results;
+                extension4.storage.currentIndex = currentIndex;
+                return {
+                  results,
+                  currentIndex,
+                  decorations: createDecorations(newState2.doc, results, currentIndex)
+                };
+              }
+              return prevValue;
+            }
+          },
+          props: {
+            decorations: (state4) => {
+              return searchPluginKey.getState(state4)?.decorations ?? DecorationSet.empty;
+            }
+          }
+        })
+      ];
+    }
+  });
+
+  // media/find-widget.ts
+  function compileRegex(query) {
+    if (!query.term) {
+      return null;
+    }
+    let pattern = query.term;
+    if (!query.useRegex) {
+      pattern = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+    if (query.matchWholeWord) {
+      pattern = `\\b${pattern}\\b`;
+    }
+    const flags = query.matchCase ? "gu" : "gui";
+    try {
+      return new RegExp(pattern, flags);
+    } catch {
+      return null;
+    }
+  }
+  function escapeHtml(text4) {
+    return text4.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  var RawSearchAdapter = class {
+    constructor(textarea) {
+      __publicField(this, "textarea");
+      __publicField(this, "backdrop", null);
+      __publicField(this, "matches", []);
+      __publicField(this, "currentIndex", -1);
+      __publicField(this, "currentQuery", null);
+      __publicField(this, "scrollHandler", null);
+      __publicField(this, "inputHandler", null);
+      __publicField(this, "resizeObserver", null);
+      this.textarea = textarea;
+      this.backdrop = document.getElementById("raw-search-backdrop");
+      this.scrollHandler = () => this.syncScroll();
+      this.textarea.addEventListener("scroll", this.scrollHandler);
+      this.inputHandler = () => {
+        if (this.currentQuery && this.currentQuery.term) {
+          this.find(this.currentQuery, false);
+        } else {
+          this.clear();
+        }
+      };
+      this.textarea.addEventListener("input", this.inputHandler);
+      if (typeof ResizeObserver !== "undefined") {
+        this.resizeObserver = new ResizeObserver(() => this.syncScroll());
+        this.resizeObserver.observe(this.textarea);
+      }
+    }
+    syncScroll() {
+      if (this.backdrop) {
+        if (this.textarea.clientWidth > 0) {
+          this.backdrop.style.width = `${this.textarea.clientWidth}px`;
+          this.backdrop.style.height = `${this.textarea.clientHeight}px`;
+        }
+        this.backdrop.scrollTop = this.textarea.scrollTop;
+        this.backdrop.scrollLeft = this.textarea.scrollLeft;
+      }
+    }
+    find(query, jumpToMatch = false) {
+      this.currentQuery = query;
+      this.matches = [];
+      this.currentIndex = -1;
+      const regex2 = compileRegex(query);
+      if (!regex2) {
+        this.renderBackdrop();
+        return { total: 0, current: 0 };
+      }
+      const text4 = this.textarea.value;
+      let match3 = null;
+      while ((match3 = regex2.exec(text4)) !== null) {
+        if (match3[0].length === 0) {
+          regex2.lastIndex++;
+          continue;
+        }
+        this.matches.push({
+          start: match3.index,
+          end: match3.index + match3[0].length
+        });
+      }
+      if (this.matches.length > 0) {
+        const selStart = this.textarea.selectionStart;
+        let nextIdx = this.matches.findIndex((m3) => m3.start >= selStart);
+        if (nextIdx === -1) {
+          nextIdx = 0;
+        }
+        this.currentIndex = nextIdx;
+        this.renderBackdrop();
+        if (jumpToMatch) {
+          this.highlightCurrent();
+        }
+      } else {
+        this.renderBackdrop();
+      }
+      return {
+        total: this.matches.length,
+        current: this.currentIndex >= 0 ? this.currentIndex + 1 : 0
+      };
+    }
+    next() {
+      if (this.matches.length === 0) {
+        return { total: 0, current: 0 };
+      }
+      this.currentIndex = (this.currentIndex + 1) % this.matches.length;
+      this.renderBackdrop();
+      this.highlightCurrent();
+      return {
+        total: this.matches.length,
+        current: this.currentIndex + 1
+      };
+    }
+    previous() {
+      if (this.matches.length === 0) {
+        return { total: 0, current: 0 };
+      }
+      this.currentIndex = (this.currentIndex - 1 + this.matches.length) % this.matches.length;
+      this.renderBackdrop();
+      this.highlightCurrent();
+      return {
+        total: this.matches.length,
+        current: this.currentIndex + 1
+      };
+    }
+    renderBackdrop() {
+      if (!this.backdrop) {
+        this.backdrop = document.getElementById("raw-search-backdrop");
+        if (!this.backdrop) {
+          return;
+        }
+      }
+      if (this.matches.length === 0) {
+        this.backdrop.innerHTML = "";
+        return;
+      }
+      const text4 = this.textarea.value;
+      let html2 = "";
+      let lastIndex = 0;
+      for (let i2 = 0; i2 < this.matches.length; i2++) {
+        const m3 = this.matches[i2];
+        if (m3.start > lastIndex) {
+          html2 += escapeHtml(text4.slice(lastIndex, m3.start));
+        }
+        const matchText = escapeHtml(text4.slice(m3.start, m3.end));
+        const isCurrent = i2 === this.currentIndex;
+        const cls = isCurrent ? "find-highlight-current" : "find-highlight";
+        html2 += `<mark class="${cls}">${matchText}</mark>`;
+        lastIndex = m3.end;
+      }
+      if (lastIndex < text4.length) {
+        html2 += escapeHtml(text4.slice(lastIndex));
+      }
+      if (text4.endsWith("\n")) {
+        html2 += "\n ";
+      }
+      this.backdrop.innerHTML = html2;
+      this.syncScroll();
+    }
+    highlightCurrent() {
+      if (this.currentIndex < 0 || this.currentIndex >= this.matches.length) {
+        return;
+      }
+      const m3 = this.matches[this.currentIndex];
+      this.textarea.setSelectionRange(m3.start, m3.end);
+      const currentMark = this.backdrop?.querySelector(
+        "mark.find-highlight-current"
+      );
+      if (currentMark) {
+        const markTop = currentMark.offsetTop;
+        const targetScrollTop = Math.max(
+          0,
+          markTop - this.textarea.clientHeight / 2
+        );
+        this.textarea.scrollTop = targetScrollTop;
+      } else {
+        const textUpToMatch = this.textarea.value.substring(0, m3.start);
+        const lineCount = textUpToMatch.split("\n").length;
+        const cs = window.getComputedStyle(this.textarea);
+        const lineHeight = parseFloat(cs.lineHeight) || 20;
+        const targetScrollTop = Math.max(
+          0,
+          (lineCount - 1) * lineHeight - this.textarea.clientHeight / 2
+        );
+        this.textarea.scrollTop = targetScrollTop;
+      }
+      this.syncScroll();
+    }
+    replace(replaceText) {
+      if (this.currentIndex < 0 || this.currentIndex >= this.matches.length) {
+        return false;
+      }
+      const m3 = this.matches[this.currentIndex];
+      const val = this.textarea.value;
+      const newVal = val.slice(0, m3.start) + replaceText + val.slice(m3.end);
+      this.textarea.value = newVal;
+      this.textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      if (this.currentQuery) {
+        this.find(this.currentQuery, false);
+      }
+      return true;
+    }
+    replaceAll(replaceText) {
+      if (this.matches.length === 0) {
+        return 0;
+      }
+      let val = this.textarea.value;
+      for (let i2 = this.matches.length - 1; i2 >= 0; i2--) {
+        const m3 = this.matches[i2];
+        val = val.slice(0, m3.start) + replaceText + val.slice(m3.end);
+      }
+      const count2 = this.matches.length;
+      this.textarea.value = val;
+      this.textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      this.matches = [];
+      this.currentIndex = -1;
+      this.renderBackdrop();
+      return count2;
+    }
+    clear() {
+      this.matches = [];
+      this.currentIndex = -1;
+      this.currentQuery = null;
+      if (this.backdrop) {
+        this.backdrop.innerHTML = "";
+      }
+    }
+    destroy() {
+      if (this.scrollHandler) {
+        this.textarea.removeEventListener("scroll", this.scrollHandler);
+      }
+      if (this.inputHandler) {
+        this.textarea.removeEventListener("input", this.inputHandler);
+      }
+      if (this.resizeObserver) {
+        this.resizeObserver.disconnect();
+      }
+      this.clear();
+    }
+  };
+  var TipTapSearchAdapter = class {
+    constructor(editor2) {
+      __publicField(this, "editor");
+      __publicField(this, "matches", []);
+      __publicField(this, "currentIndex", -1);
+      __publicField(this, "currentQuery", null);
+      this.editor = editor2;
+    }
+    find(query, jumpToMatch = false) {
+      this.currentQuery = query;
+      this.matches = [];
+      this.currentIndex = -1;
+      const regex2 = compileRegex(query);
+      if (!regex2) {
+        this.updateDecorations();
+        return { total: 0, current: 0 };
+      }
+      const doc3 = this.editor.state.doc;
+      doc3.descendants((node2, pos) => {
+        if (node2.isText && node2.text) {
+          regex2.lastIndex = 0;
+          let match3 = null;
+          while ((match3 = regex2.exec(node2.text)) !== null) {
+            if (match3[0].length === 0) {
+              regex2.lastIndex++;
+              continue;
+            }
+            const from3 = pos + match3.index;
+            const to = from3 + match3[0].length;
+            this.matches.push({ from: from3, to });
+          }
+        }
+      });
+      if (this.matches.length > 0) {
+        const currentPos = this.editor.state.selection.from;
+        let nextIdx = this.matches.findIndex((m3) => m3.from >= currentPos);
+        if (nextIdx === -1) {
+          nextIdx = 0;
+        }
+        this.currentIndex = nextIdx;
+        this.updateDecorations();
+        if (jumpToMatch) {
+          this.scrollCurrentIntoView();
+        }
+      } else {
+        this.updateDecorations();
+      }
+      return {
+        total: this.matches.length,
+        current: this.currentIndex >= 0 ? this.currentIndex + 1 : 0
+      };
+    }
+    next() {
+      if (this.matches.length === 0) {
+        return { total: 0, current: 0 };
+      }
+      this.currentIndex = (this.currentIndex + 1) % this.matches.length;
+      this.updateDecorations();
+      this.scrollCurrentIntoView();
+      return {
+        total: this.matches.length,
+        current: this.currentIndex + 1
+      };
+    }
+    previous() {
+      if (this.matches.length === 0) {
+        return { total: 0, current: 0 };
+      }
+      this.currentIndex = (this.currentIndex - 1 + this.matches.length) % this.matches.length;
+      this.updateDecorations();
+      this.scrollCurrentIntoView();
+      return {
+        total: this.matches.length,
+        current: this.currentIndex + 1
+      };
+    }
+    scrollCurrentIntoView() {
+      if (this.currentIndex < 0 || this.currentIndex >= this.matches.length) {
+        return;
+      }
+      const m3 = this.matches[this.currentIndex];
+      this.updateDecorations();
+      try {
+        const tr2 = this.editor.state.tr.setSelection(TextSelection.create(this.editor.state.doc, m3.from, m3.to)).scrollIntoView();
+        this.editor.view.dispatch(tr2);
+      } catch {
+      }
+      requestAnimationFrame(() => {
+        const currentEl = document.querySelector(".find-highlight-current");
+        if (currentEl) {
+          currentEl.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      });
+    }
+    updateDecorations() {
+      const { state: state4, view } = this.editor;
+      const { doc: doc3 } = state4;
+      let decorations = DecorationSet.empty;
+      if (this.matches.length > 0) {
+        const decos = this.matches.map((m3, index) => {
+          const isCurrent = index === this.currentIndex;
+          return Decoration.inline(m3.from, m3.to, {
+            class: isCurrent ? "find-highlight-current" : "find-highlight"
+          });
+        });
+        decorations = DecorationSet.create(doc3, decos);
+      }
+      const tr2 = state4.tr.setMeta(searchPluginKey, {
+        results: this.matches,
+        currentIndex: this.currentIndex,
+        decorations
+      });
+      view.dispatch(tr2);
+    }
+    replace(replaceText) {
+      if (this.currentIndex < 0 || this.currentIndex >= this.matches.length) {
+        return false;
+      }
+      const m3 = this.matches[this.currentIndex];
+      const tr2 = this.editor.state.tr.insertText(replaceText, m3.from, m3.to);
+      this.editor.view.dispatch(tr2);
+      if (this.currentQuery) {
+        this.find(this.currentQuery, false);
+      }
+      return true;
+    }
+    replaceAll(replaceText) {
+      if (this.matches.length === 0) {
+        return 0;
+      }
+      const count2 = this.matches.length;
+      let tr2 = this.editor.state.tr;
+      for (let i2 = this.matches.length - 1; i2 >= 0; i2--) {
+        const m3 = this.matches[i2];
+        tr2 = tr2.insertText(replaceText, m3.from, m3.to);
+      }
+      this.editor.view.dispatch(tr2);
+      this.matches = [];
+      this.currentIndex = -1;
+      this.updateDecorations();
+      return count2;
+    }
+    clear() {
+      this.matches = [];
+      this.currentIndex = -1;
+      this.currentQuery = null;
+      this.updateDecorations();
+    }
+  };
+  var MarpSearchAdapter = class {
+    constructor(container2) {
+      __publicField(this, "container");
+      __publicField(this, "matches", []);
+      __publicField(this, "currentIndex", -1);
+      this.container = container2;
+    }
+    find(query, jumpToMatch = false) {
+      this.clear();
+      const regex2 = compileRegex(query);
+      if (!regex2 || !this.container) {
+        return { total: 0, current: 0 };
+      }
+      const walker = document.createTreeWalker(
+        this.container,
+        NodeFilter.SHOW_TEXT,
+        null
+      );
+      const textNodes2 = [];
+      let currentNode = walker.nextNode();
+      while (currentNode) {
+        if (currentNode.textContent && currentNode.textContent.trim()) {
+          textNodes2.push(currentNode);
+        }
+        currentNode = walker.nextNode();
+      }
+      for (const node2 of textNodes2) {
+        const text4 = node2.textContent ?? "";
+        regex2.lastIndex = 0;
+        let match3 = null;
+        let lastIndex = 0;
+        const fragments = [];
+        while ((match3 = regex2.exec(text4)) !== null) {
+          if (match3[0].length === 0) {
+            regex2.lastIndex++;
+            continue;
+          }
+          if (match3.index > lastIndex) {
+            fragments.push(document.createTextNode(text4.slice(lastIndex, match3.index)));
+          }
+          const mark = document.createElement("mark");
+          mark.className = "find-highlight";
+          mark.textContent = match3[0];
+          fragments.push(mark);
+          this.matches.push(mark);
+          lastIndex = match3.index + match3[0].length;
+        }
+        if (fragments.length > 0) {
+          if (lastIndex < text4.length) {
+            fragments.push(document.createTextNode(text4.slice(lastIndex)));
+          }
+          const parent4 = node2.parentNode;
+          if (parent4) {
+            for (const frag of fragments) {
+              parent4.insertBefore(frag, node2);
+            }
+            parent4.removeChild(node2);
+          }
+        }
+      }
+      if (this.matches.length > 0) {
+        this.currentIndex = 0;
+        if (jumpToMatch) {
+          this.highlightCurrent();
+        } else {
+          this.matches.forEach((el, idx) => {
+            el.classList.toggle("find-highlight-current", idx === 0);
+          });
+        }
+      }
+      return {
+        total: this.matches.length,
+        current: this.currentIndex >= 0 ? this.currentIndex + 1 : 0
+      };
+    }
+    next() {
+      if (this.matches.length === 0) {
+        return { total: 0, current: 0 };
+      }
+      this.currentIndex = (this.currentIndex + 1) % this.matches.length;
+      this.highlightCurrent();
+      return {
+        total: this.matches.length,
+        current: this.currentIndex + 1
+      };
+    }
+    previous() {
+      if (this.matches.length === 0) {
+        return { total: 0, current: 0 };
+      }
+      this.currentIndex = (this.currentIndex - 1 + this.matches.length) % this.matches.length;
+      this.highlightCurrent();
+      return {
+        total: this.matches.length,
+        current: this.currentIndex + 1
+      };
+    }
+    highlightCurrent() {
+      this.matches.forEach((el, idx) => {
+        el.classList.toggle("find-highlight-current", idx === this.currentIndex);
+      });
+      if (this.currentIndex >= 0 && this.currentIndex < this.matches.length) {
+        this.matches[this.currentIndex].scrollIntoView({
+          behavior: "smooth",
+          block: "center"
+        });
+      }
+    }
+    replace() {
+      return false;
+    }
+    replaceAll() {
+      return 0;
+    }
+    clear() {
+      if (!this.container) {
+        return;
+      }
+      const marks = this.container.querySelectorAll("mark.find-highlight");
+      marks.forEach((mark) => {
+        const parent4 = mark.parentNode;
+        if (parent4) {
+          parent4.replaceChild(document.createTextNode(mark.textContent ?? ""), mark);
+          parent4.normalize();
+        }
+      });
+      this.matches = [];
+      this.currentIndex = -1;
+    }
+  };
+  var FindWidget = class {
+    constructor() {
+      __publicField(this, "widgetEl", null);
+      __publicField(this, "findInput", null);
+      __publicField(this, "replaceInput", null);
+      __publicField(this, "countLabel", null);
+      __publicField(this, "toggleReplaceBtn", null);
+      __publicField(this, "replaceRow", null);
+      __publicField(this, "adapter", null);
+      __publicField(this, "matchCase", false);
+      __publicField(this, "matchWholeWord", false);
+      __publicField(this, "useRegex", false);
+      __publicField(this, "isReplaceOpen", false);
+      __publicField(this, "isReadonly", false);
+      __publicField(this, "currentMode", "raw");
+      __publicField(this, "onClose");
+      this.initElements();
+      this.bindEvents();
+    }
+    initElements() {
+      this.widgetEl = document.getElementById("find-widget");
+      this.findInput = document.getElementById("find-input");
+      this.replaceInput = document.getElementById("replace-input");
+      this.countLabel = document.getElementById("find-count");
+      this.toggleReplaceBtn = document.getElementById("find-toggle-replace");
+      this.replaceRow = document.getElementById("replace-row");
+    }
+    bindEvents() {
+      if (!this.widgetEl) {
+        return;
+      }
+      this.findInput?.addEventListener("input", () => this.executeSearch(false));
+      this.findInput?.addEventListener("keydown", (e3) => {
+        if (e3.key === "Enter") {
+          e3.preventDefault();
+          if (e3.shiftKey) {
+            this.previous();
+          } else {
+            this.next();
+          }
+        } else if (e3.key === "Escape") {
+          e3.preventDefault();
+          this.close();
+        }
+      });
+      this.replaceInput?.addEventListener("keydown", (e3) => {
+        if (e3.key === "Enter") {
+          e3.preventDefault();
+          if (e3.altKey || e3.metaKey || e3.ctrlKey) {
+            this.replaceAll();
+          } else {
+            this.replace();
+          }
+        } else if (e3.key === "Escape") {
+          e3.preventDefault();
+          this.close();
+        }
+      });
+      this.widgetEl.querySelectorAll(".find-opt-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const opt = btn.getAttribute("data-option");
+          if (opt === "matchCase") {
+            this.matchCase = !this.matchCase;
+            btn.classList.toggle("active", this.matchCase);
+            btn.setAttribute("aria-pressed", String(this.matchCase));
+          } else if (opt === "matchWholeWord") {
+            this.matchWholeWord = !this.matchWholeWord;
+            btn.classList.toggle("active", this.matchWholeWord);
+            btn.setAttribute("aria-pressed", String(this.matchWholeWord));
+          } else if (opt === "useRegex") {
+            this.useRegex = !this.useRegex;
+            btn.classList.toggle("active", this.useRegex);
+            btn.setAttribute("aria-pressed", String(this.useRegex));
+          }
+          this.executeSearch(false);
+        });
+      });
+      const prevBtn = this.widgetEl.querySelector('[data-action="find-prev"]');
+      const nextBtn = this.widgetEl.querySelector('[data-action="find-next"]');
+      prevBtn?.addEventListener("mousedown", (e3) => e3.preventDefault());
+      prevBtn?.addEventListener("click", (e3) => {
+        e3.preventDefault();
+        this.previous();
+        this.findInput?.focus();
+      });
+      nextBtn?.addEventListener("mousedown", (e3) => e3.preventDefault());
+      nextBtn?.addEventListener("click", (e3) => {
+        e3.preventDefault();
+        this.next();
+        this.findInput?.focus();
+      });
+      this.widgetEl.querySelector('[data-action="find-close"]')?.addEventListener("click", () => this.close());
+      this.widgetEl.querySelector('[data-action="replace-one"]')?.addEventListener("click", () => this.replace());
+      this.widgetEl.querySelector('[data-action="replace-all"]')?.addEventListener("click", () => this.replaceAll());
+      this.toggleReplaceBtn?.addEventListener("click", () => {
+        this.toggleReplace(!this.isReplaceOpen);
+      });
+    }
+    setAdapter(adapter) {
+      if (this.adapter && this.adapter !== adapter) {
+        this.adapter.clear();
+      }
+      this.adapter = adapter;
+      if (this.isOpen() && this.findInput?.value) {
+        this.executeSearch(false);
+      }
+    }
+    setContext(mode, readonly2) {
+      this.currentMode = mode;
+      this.isReadonly = readonly2;
+      this.updateReadonlyState();
+    }
+    updateReadonlyState() {
+      const disableReplace = this.isReadonly || this.currentMode === "preview";
+      if (disableReplace) {
+        this.toggleReplace(false);
+        if (this.toggleReplaceBtn) {
+          this.toggleReplaceBtn.style.display = "none";
+        }
+      } else {
+        if (this.toggleReplaceBtn) {
+          this.toggleReplaceBtn.style.display = "";
+        }
+      }
+    }
+    toggleReplace(open2) {
+      if (this.isReadonly || this.currentMode === "preview") {
+        open2 = false;
+      }
+      this.isReplaceOpen = open2;
+      this.replaceRow?.classList.toggle("hidden", !open2);
+      this.toggleReplaceBtn?.setAttribute("aria-expanded", String(open2));
+      this.toggleReplaceBtn?.classList.toggle("active", open2);
+      const arrow3 = this.toggleReplaceBtn?.querySelector(".codicon-arrow");
+      if (arrow3) {
+        arrow3.textContent = open2 ? "\u25BE" : "\u25B8";
+      }
+    }
+    open(options2) {
+      if (!this.widgetEl) {
+        this.initElements();
+      }
+      this.widgetEl?.classList.remove("hidden");
+      this.updateReadonlyState();
+      if (options2?.showReplace && !this.isReadonly && this.currentMode !== "preview") {
+        this.toggleReplace(true);
+      }
+      if (options2?.initialQuery && this.findInput) {
+        this.findInput.value = options2.initialQuery;
+      }
+      this.findInput?.focus();
+      this.findInput?.select();
+      this.executeSearch(false);
+    }
+    close() {
+      this.widgetEl?.classList.add("hidden");
+      this.adapter?.clear();
+      if (this.countLabel) {
+        this.countLabel.textContent = "No results";
+      }
+      this.onClose?.();
+    }
+    isOpen() {
+      return !!this.widgetEl && !this.widgetEl.classList.contains("hidden");
+    }
+    executeSearch(jumpToMatch = false) {
+      if (!this.findInput || !this.adapter) {
+        return;
+      }
+      const query = {
+        term: this.findInput.value,
+        matchCase: this.matchCase,
+        matchWholeWord: this.matchWholeWord,
+        useRegex: this.useRegex
+      };
+      if (query.useRegex && query.term) {
+        try {
+          new RegExp(query.term);
+          this.findInput.classList.remove("input-error");
+        } catch {
+          this.findInput.classList.add("input-error");
+          if (this.countLabel) {
+            this.countLabel.textContent = "Invalid regex";
+          }
+          this.adapter.clear();
+          return;
+        }
+      } else {
+        this.findInput.classList.remove("input-error");
+      }
+      if (!query.term) {
+        this.adapter.clear();
+        if (this.countLabel) {
+          this.countLabel.textContent = "No results";
+        }
+        return;
+      }
+      const res = this.adapter.find(query, jumpToMatch);
+      this.updateCount(res);
+    }
+    next() {
+      if (this.adapter) {
+        const res = this.adapter.next();
+        this.updateCount(res);
+      }
+    }
+    previous() {
+      if (this.adapter) {
+        const res = this.adapter.previous();
+        this.updateCount(res);
+      }
+    }
+    replace() {
+      if (this.isReadonly || this.currentMode === "preview") {
+        return;
+      }
+      if (this.adapter && this.replaceInput) {
+        this.adapter.replace(this.replaceInput.value);
+      }
+    }
+    replaceAll() {
+      if (this.isReadonly || this.currentMode === "preview") {
+        return;
+      }
+      if (this.adapter && this.replaceInput) {
+        this.adapter.replaceAll(this.replaceInput.value);
+      }
+    }
+    updateCount(res) {
+      if (!this.countLabel) {
+        return;
+      }
+      if (res.total === 0) {
+        this.countLabel.textContent = "No results";
+      } else {
+        this.countLabel.textContent = `${res.current} of ${res.total}`;
+      }
+    }
+  };
+
   // media/editor.ts
   var MERMAID_MEASURE_FONT_STYLE_ID = "mermaid-density-measure-font";
   var StrikeWithoutShortcut = src_default3.extend({
@@ -227883,7 +228762,7 @@ ${prefix}
                   fit2();
                 });
               } catch (err) {
-                preview.innerHTML = `<div class="mermaid-error">${escapeHtml(String(err))}</div>`;
+                preview.innerHTML = `<div class="mermaid-error">${escapeHtml2(String(err))}</div>`;
                 setViewportUiEnabled(false);
                 applyViewportZoom(canvas, 1);
                 viewportScale = 1;
@@ -227952,7 +228831,7 @@ ${prefix}
     });
     return { type: "doc", content };
   }
-  function escapeHtml(text4) {
+  function escapeHtml2(text4) {
     return text4.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
   function sanitizeMermaidSvg(svg2) {
@@ -228339,7 +229218,8 @@ ${prefix}
       MermaidAwareCodeBlock,
       src_default11.configure({ inline: true, allowBase64: false }),
       HtmlTableExtension,
-      HtmlBlockNode
+      HtmlBlockNode,
+      SearchAndReplace
     ];
   }
   function getRawEditor() {
@@ -228501,6 +229381,10 @@ ${prefix}
     if (rawEl) {
       rawEl.classList.toggle("hidden", mode !== "raw");
     }
+    const rawContainer = document.getElementById("raw-editor-container");
+    if (rawContainer) {
+      rawContainer.classList.toggle("hidden", mode !== "raw");
+    }
     if (formatToolbar) {
       formatToolbar.classList.toggle("hidden", mode !== "markdown");
     }
@@ -228524,6 +229408,110 @@ ${prefix}
         }
       });
     }
+    updateFindWidgetAdapter(mode);
+  }
+  var findWidget;
+  var rawSearchAdapter = null;
+  var tipTapSearchAdapter = null;
+  function getFindWidget() {
+    if (!findWidget) {
+      findWidget = new FindWidget();
+      findWidget.onClose = () => {
+        if (editorMode === "markdown") {
+          editor?.commands.focus();
+        } else if (editorMode === "raw") {
+          getRawEditor()?.focus();
+        }
+      };
+    }
+    return findWidget;
+  }
+  function updateFindWidgetAdapter(mode) {
+    const fw = getFindWidget();
+    fw.setContext(mode, readonly);
+    if (mode === "raw") {
+      const raw = getRawEditor();
+      if (raw) {
+        if (!rawSearchAdapter) {
+          rawSearchAdapter = new RawSearchAdapter(raw);
+        }
+        fw.setAdapter(rawSearchAdapter);
+      } else {
+        fw.setAdapter(null);
+      }
+    } else if (mode === "markdown") {
+      if (editor) {
+        if (!tipTapSearchAdapter) {
+          tipTapSearchAdapter = new TipTapSearchAdapter(editor);
+        }
+        fw.setAdapter(tipTapSearchAdapter);
+      } else {
+        fw.setAdapter(null);
+      }
+    } else if (mode === "preview") {
+      if (previewSurface === "marp") {
+        const marpRoot = document.getElementById("preview-marp-root");
+        fw.setAdapter(marpRoot ? new MarpSearchAdapter(marpRoot) : null);
+      } else {
+        if (editor) {
+          if (!tipTapSearchAdapter) {
+            tipTapSearchAdapter = new TipTapSearchAdapter(editor);
+          }
+          fw.setAdapter(tipTapSearchAdapter);
+        } else {
+          fw.setAdapter(null);
+        }
+      }
+    }
+  }
+  function getSelectedText() {
+    if (editorMode === "markdown" && editor) {
+      const { from: from3, to } = editor.state.selection;
+      if (from3 !== to) {
+        return editor.state.doc.textBetween(from3, to, " ");
+      }
+    } else if (editorMode === "raw") {
+      const raw = getRawEditor();
+      if (raw && raw.selectionStart !== raw.selectionEnd) {
+        return raw.value.substring(raw.selectionStart, raw.selectionEnd);
+      }
+    } else {
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed) {
+        return sel.toString();
+      }
+    }
+    return "";
+  }
+  function attachFindWidgetShortcuts() {
+    if (document.body.dataset.findShortcutsBound === "1") {
+      return;
+    }
+    document.body.dataset.findShortcutsBound = "1";
+    document.addEventListener("keydown", (event3) => {
+      const isMod = event3.ctrlKey || event3.metaKey;
+      if (isMod && event3.key.toLowerCase() === "f") {
+        event3.preventDefault();
+        updateFindWidgetAdapter(editorMode);
+        const initialQuery = getSelectedText();
+        getFindWidget().open({ initialQuery });
+      } else if (isMod && event3.key.toLowerCase() === "h") {
+        event3.preventDefault();
+        updateFindWidgetAdapter(editorMode);
+        const initialQuery = getSelectedText();
+        getFindWidget().open({ showReplace: true, initialQuery });
+      } else if (event3.key === "Escape") {
+        if (findWidget?.isOpen()) {
+          event3.preventDefault();
+          findWidget.close();
+          if (editorMode === "markdown") {
+            editor?.commands.focus();
+          } else if (editorMode === "raw") {
+            getRawEditor()?.focus();
+          }
+        }
+      }
+    });
   }
   function flushPendingRawUpdate() {
     if (!rawUpdateTimer) {
@@ -229228,6 +230216,7 @@ ${prefix}
         break;
     }
   });
+  attachFindWidgetShortcuts();
   vscode.postMessage({ type: "ready" });
 })();
 /*! Bundled license information:

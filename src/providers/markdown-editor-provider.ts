@@ -621,11 +621,41 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
   <div id="link-input-bar" class="hidden" role="group" aria-label="Link URL">
     <input type="url" id="link-url-input" placeholder="https://example.com" spellcheck="false" aria-label="Link URL" />
   </div>
+  <div id="find-widget" class="hidden" role="dialog" aria-label="Find and Replace">
+    <div class="find-widget-row find-row">
+      <button type="button" id="find-toggle-replace" class="find-icon-btn" title="Toggle Replace" aria-label="Toggle Replace" aria-expanded="false">
+        <span class="codicon-arrow">▸</span>
+      </button>
+      <div class="find-input-wrapper">
+        <input type="text" id="find-input" placeholder="Find" spellcheck="false" aria-label="Find" />
+        <div class="find-options-group" role="group" aria-label="Find options">
+          <button type="button" class="find-opt-btn" data-option="matchCase" title="Match Case" aria-pressed="false" aria-label="Match Case">Aa</button>
+          <button type="button" class="find-opt-btn" data-option="matchWholeWord" title="Match Whole Word" aria-pressed="false" aria-label="Match Whole Word">\b</button>
+          <button type="button" class="find-opt-btn" data-option="useRegex" title="Use Regular Expression" aria-pressed="false" aria-label="Use Regular Expression">.*</button>
+        </div>
+      </div>
+      <span id="find-count" class="find-count-label" aria-live="polite">No results</span>
+      <button type="button" class="find-icon-btn" data-action="find-prev" title="Previous Match (Shift+Enter)" aria-label="Previous Match">▲</button>
+      <button type="button" class="find-icon-btn" data-action="find-next" title="Next Match (Enter)" aria-label="Next Match">▼</button>
+      <button type="button" class="find-icon-btn" data-action="find-close" title="Close (Escape)" aria-label="Close">✕</button>
+    </div>
+    <div id="replace-row" class="find-widget-row replace-row hidden">
+      <div class="find-replace-spacer"></div>
+      <div class="replace-input-wrapper">
+        <input type="text" id="replace-input" placeholder="Replace" spellcheck="false" aria-label="Replace" />
+      </div>
+      <button type="button" class="find-action-btn" data-action="replace-one" title="Replace (Enter)" aria-label="Replace">Replace</button>
+      <button type="button" class="find-action-btn" data-action="replace-all" title="Replace All" aria-label="Replace All">Replace All</button>
+    </div>
+  </div>
   <div id="table-warning" class="hidden"></div>
   <div id="raw-parse-banner" class="hidden" role="alert"></div>
   <div id="preview-marp-root" class="hidden" role="document" aria-readonly="true"></div>
   <div id="editor"></div>
-  <textarea id="raw-editor" class="hidden" spellcheck="false" aria-label="Raw Markdown"></textarea>
+  <div id="raw-editor-container" class="hidden">
+    <div id="raw-search-backdrop" aria-hidden="true"></div>
+    <textarea id="raw-editor" spellcheck="false" aria-label="Raw Markdown"></textarea>
+  </div>
   <div id="table-context-menu" class="context-menu hidden" role="menu" aria-label="Table Context Menu">
     <button type="button" data-table-op="addRowBefore" role="menuitem">Add row above</button>
     <button type="button" data-table-op="addRowAfter" role="menuitem">Add row below</button>

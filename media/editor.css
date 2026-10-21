@@ -301,18 +301,83 @@ body[data-readonly='true'] #link-input-bar {
   padding: 16px 24px;
 }
 
-#raw-editor {
+#raw-editor-container {
+  position: relative;
   flex: 1;
   width: 100%;
+  display: flex;
+  overflow: hidden;
+}
+
+#raw-editor-container.hidden {
+  display: none !important;
+}
+
+#raw-search-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   box-sizing: border-box;
+  margin: 0;
+  border: none;
+  padding: 16px 24px;
+  background: var(--vscode-editor-background);
+  color: transparent !important;
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+  font-weight: var(--vscode-editor-font-weight, normal);
+  line-height: 1.5;
+  letter-spacing: normal;
+  tab-size: 4;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+#raw-search-backdrop mark {
+  color: transparent !important;
+  text-shadow: none !important;
+  border-radius: 2px;
+}
+
+#raw-search-backdrop mark.find-highlight {
+  background-color: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33)) !important;
+}
+
+#raw-search-backdrop mark.find-highlight-current {
+  background-color: var(--vscode-editor-findMatchBackground, rgba(81, 92, 106, 0.8)) !important;
+  outline: 1px solid var(--vscode-editor-findMatchHighlightBorder, rgba(234, 92, 0, 0.8)) !important;
+}
+
+#raw-editor {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  margin: 0;
   border: none;
   resize: none;
   padding: 16px 24px;
-  background: var(--vscode-editor-background);
+  background: transparent;
   color: var(--vscode-editor-foreground);
   font-family: var(--vscode-editor-font-family);
   font-size: var(--vscode-editor-font-size);
+  font-weight: var(--vscode-editor-font-weight, normal);
+  line-height: 1.5;
+  letter-spacing: normal;
+  tab-size: 4;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
   outline: none;
+  overflow: auto;
 }
 
 #raw-editor:read-only {
@@ -598,3 +663,152 @@ body[data-mode='preview'] #link-input-bar,
 body[data-mode='raw'] #link-input-bar {
   display: none;
 }
+
+/* Find & Replace Widget */
+#find-widget {
+  position: fixed;
+  top: 45px;
+  right: 20px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  background: var(--vscode-editorWidget-background);
+  color: var(--vscode-editorWidget-foreground);
+  border: 1px solid var(--vscode-editorWidget-border);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+  font-family: var(--vscode-font-family);
+  font-size: 12px;
+}
+
+#find-widget.hidden {
+  display: none !important;
+}
+
+.find-widget-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.find-input-wrapper,
+.replace-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+#find-input,
+#replace-input {
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+  padding: 3px 6px;
+  font-size: 12px;
+  outline: none;
+  width: 170px;
+}
+
+#find-input {
+  padding-right: 68px;
+}
+
+#find-input:focus,
+#replace-input:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+#find-input.input-error {
+  border-color: var(--vscode-inputValidation-errorBorder);
+}
+
+.find-options-group {
+  position: absolute;
+  right: 2px;
+  display: flex;
+  gap: 1px;
+}
+
+.find-opt-btn {
+  background: transparent;
+  color: var(--vscode-input-foreground);
+  border: 1px solid transparent;
+  border-radius: 2px;
+  padding: 1px 3px;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.find-opt-btn:hover {
+  opacity: 1;
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+}
+
+.find-opt-btn.active {
+  opacity: 1;
+  background: var(--vscode-inputOption-activeBackground, rgba(0, 122, 204, 0.4));
+  border-color: var(--vscode-inputOption-activeBorder);
+  color: var(--vscode-inputOption-activeForeground);
+}
+
+.find-icon-btn {
+  background: transparent;
+  color: var(--vscode-icon-foreground);
+  border: 1px solid transparent;
+  border-radius: 2px;
+  padding: 2px 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+}
+
+.find-icon-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+}
+
+.find-count-label {
+  min-width: 65px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+}
+
+.find-replace-spacer {
+  width: 20px;
+}
+
+.find-action-btn {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border: none;
+  border-radius: 2px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.find-action-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* Find Highlight Styling */
+.find-highlight {
+  background-color: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33)) !important;
+  color: inherit !important;
+}
+
+.find-highlight-current {
+  background-color: var(--vscode-editor-findMatchBackground, rgba(81, 92, 106, 0.8)) !important;
+  outline: 1px solid var(--vscode-editor-findMatchHighlightBorder, rgba(234, 92, 0, 0.8)) !important;
+  color: inherit !important;
+}
+
+

@@ -963,6 +963,52 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 
 ---
 
+## §11 検索・置換機能（Find & Replace Widget）
+
+### 概要
+
+テキストエディタ（Source / Raw）、ビジュアルエディタ（Visual / Markdown）、プレビュー画面（Preview / Marp）の各面において、VS Code 標準エディタと同等の操作感を持つ検索・置換ウィジェット（Find Widget）を提供する。
+
+### Inputs & Types
+
+| 入力 | 型 | 必須 | 備考 |
+|------|-----|------|------|
+| `findQuery` | `string` | 任意 | 検索キーワード |
+| `replaceText` | `string` | 任意 | 置換後文字列（Visual / Source のみ） |
+| `matchCase` | `boolean` | いいえ | 大文字・小文字を区別（既定: `false`） |
+| `matchWholeWord` | `boolean` | いいえ | 単語単位で一致（既定: `false`） |
+| `useRegex` | `boolean` | いいえ | 正規表現を使用（既定: `false`） |
+
+### UI & キーバインド契約
+
+- **配置**: エディタ画面右上（モードツールバー直下）にフロート表示（`#find-widget`）。VS Code テーマ変数に対応。
+- **ショートカット**:
+  - `Cmd+F` / `Ctrl+F`: 検索ウィジェットを開く／フォーカス。選択テキストがあれば検索ボックスに入力。
+  - `Cmd+H` / `Ctrl+H`: 置換バーを展開して開く（Visual / Source のみ）。Preview / Readonly 時は検索のみ。
+  - `Escape`: ウィジェットを閉じ、直前のエディタ・プレビューにフォーカスを戻す。
+  - `Enter` / `Shift+Enter`: 次の一致へジャンプ／前の一致へジャンプ。
+  - 置換ボックスでの `Enter`: 現在の一致を置換して次へ移動。
+  - 置換ボックスでの `Cmd+Alt+Enter` / `Ctrl+Alt+Enter`: すべての一致を一括置換。
+- **UI 表示要素**:
+  - 検索ボックス、置換トグルボタン、オプションボタン（`[Aa]` / `[\b]` / `[.*]`）、マッチ件数（`X of Y` / `No results`）、前へ/次へボタン、閉じるボタン。
+  - 置換ボックス、置換実行ボタン、全置換実行ボタン（Preview / Readonly 時は非表示）。
+
+### モード別の振る舞い契約
+
+| モード | 検索ハイライト | 移動・スクロール | 置換動作 |
+|---|---|---|---|
+| **Visual (`markdown`)** | ProseMirror `Decoration` によるインラインハイライト（`.find-highlight`, `.find-highlight-current`）。DOM 構造を改変しない | 該当ノードの `from`/`to` へキャレット移動 ＋ `scrollIntoView` | `tr.insertText(replaceText, from, to)`。1つのトランザクションとして Undo 履歴と完全連動。全置換は末尾から逆順適用 |
+| **Source (`raw`)** | `textarea.value` のインデックス検索 | `setSelectionRange` で選択 ＋ スクロール | `setRangeText` 等で置換後 `input` イベント発火（Host 同期） |
+| **Preview (`preview`)** | 非 Marp: TipTap RO デコレーション。<br>Marp: CSS Custom Highlight API または DOM `<mark>` | `scrollIntoView` で該当要素へジャンプ | 不可（置換 UI は完全非表示） |
+
+### ガード条件 & 安全性
+
+- `readonly === true` または `editorMode === 'preview'` の場合、置換バーおよび置換実行ボタンは非表示とする。
+- 無効な正規表現が入力された場合、JavaScript エラーでクラッシュさせず、入力枠の警告表示（赤ボーダー等）を行い検索結果を 0 件として安全に処理する。
+- モード切替時は、現在の検索クエリを維持しつつ、切り替え先のモードで自動的に再検索およびハイライト再生成を行う。
+
+---
+
 ## リスク・制約（RK-*）
 
 | ID | 内容 | 本仕様での扱い |
@@ -1083,3 +1129,4 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | 2026-10-18 | §1 mode-toolbar, 改訂履歴 | mode-toolbar UIの整理・コンパクト化（案1・パターン2）: 編集モードを Visual (markdown) / Source (raw) のセグメントコントロールに集約し、Preview (preview) および Default Preview (native-preview) を分離配置。表示ラベル短縮。三点モード id や Document 同期契約は不変 |
 | 2026-10-19 | §1, §5, Spec Gaps, Related Tests, 改訂履歴 | Preview Mermaid ソース非表示化: Preview モード（`preview`）では `body[data-mode='preview'] .mermaid-source { display: none; }` により `.mermaid-source` を非表示とし、図のみを表示。Visual（`markdown`）モードでは図下ソース併記を維持 |
 | 2026-10-19 | §3, Spec Gaps, Related Tests, 改訂履歴 | 表の右クリックコンテキストメニュー追加（`table-context-menu`）: Visual（`markdown`）モードの表セル（`td`/`th`）右クリック時に、ポインター位置に対象セル操作（行/列の追加・削除、表削除）のコンテキストメニューを表示する仕様を契約化（UD-1 A / UD-2 A）。ツールバー機能は維持。Readonly / Visual 以外では非表示 |
+| 2026-10-21 | §11, 改訂履歴 | 検索・置換機能追加（`search-replace-widget`）: Visual・Source・Preview の各面で VS Code 標準準拠の検索・置換ウィジェットを提供。ProseMirror Decoration によるハイライト、Undo 統合置換、正規表現/単語単位/大文字小文字区別オプション、キーバインド（Cmd+F / Cmd+H / Escape / Enter）を契約化 |

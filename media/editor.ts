@@ -23,6 +23,13 @@ import {
   type MermaidThemeConfig,
 } from "../src/utils/mermaid-theme";
 import type { ThemeKind } from "../src/utils/theme-sync";
+import { SearchAndReplace } from "./extensions/search-and-replace";
+import {
+  FindWidget,
+  RawSearchAdapter,
+  TipTapSearchAdapter,
+  MarpSearchAdapter,
+} from "./find-widget";
 
 const MERMAID_MEASURE_FONT_STYLE_ID = "mermaid-density-measure-font";
 
@@ -1120,6 +1127,7 @@ function getEditorExtensions() {
     Image.configure({ inline: true, allowBase64: false }),
     HtmlTableExtension,
     HtmlBlockNode,
+    SearchAndReplace,
   ];
 }
 
@@ -1303,6 +1311,10 @@ function setModeUi(mode: EditorMode): void {
   if (rawEl) {
     rawEl.classList.toggle("hidden", mode !== "raw");
   }
+  const rawContainer = document.getElementById("raw-editor-container");
+  if (rawContainer) {
+    rawContainer.classList.toggle("hidden", mode !== "raw");
+  }
   if (formatToolbar) {
     // Format toolbar only for Markdown WYSIWYG (and hidden when file RO).
     formatToolbar.classList.toggle("hidden", mode !== "markdown");
@@ -1333,6 +1345,117 @@ function setModeUi(mode: EditorMode): void {
       }
     });
   }
+
+  updateFindWidgetAdapter(mode);
+}
+
+let findWidget: FindWidget | undefined;
+let rawSearchAdapter: RawSearchAdapter | null = null;
+let tipTapSearchAdapter: TipTapSearchAdapter | null = null;
+
+function getFindWidget(): FindWidget {
+  if (!findWidget) {
+    findWidget = new FindWidget();
+    findWidget.onClose = () => {
+      if (editorMode === "markdown") {
+        editor?.commands.focus();
+      } else if (editorMode === "raw") {
+        getRawEditor()?.focus();
+      }
+    };
+  }
+  return findWidget;
+}
+
+function updateFindWidgetAdapter(mode: EditorMode): void {
+  const fw = getFindWidget();
+  fw.setContext(mode, readonly);
+  if (mode === "raw") {
+    const raw = getRawEditor();
+    if (raw) {
+      if (!rawSearchAdapter) {
+        rawSearchAdapter = new RawSearchAdapter(raw);
+      }
+      fw.setAdapter(rawSearchAdapter);
+    } else {
+      fw.setAdapter(null);
+    }
+  } else if (mode === "markdown") {
+    if (editor) {
+      if (!tipTapSearchAdapter) {
+        tipTapSearchAdapter = new TipTapSearchAdapter(editor);
+      }
+      fw.setAdapter(tipTapSearchAdapter);
+    } else {
+      fw.setAdapter(null);
+    }
+  } else if (mode === "preview") {
+    if (previewSurface === "marp") {
+      const marpRoot = document.getElementById("preview-marp-root");
+      fw.setAdapter(marpRoot ? new MarpSearchAdapter(marpRoot) : null);
+    } else {
+      if (editor) {
+        if (!tipTapSearchAdapter) {
+          tipTapSearchAdapter = new TipTapSearchAdapter(editor);
+        }
+        fw.setAdapter(tipTapSearchAdapter);
+      } else {
+        fw.setAdapter(null);
+      }
+    }
+  }
+}
+
+function getSelectedText(): string {
+  if (editorMode === "markdown" && editor) {
+    const { from, to } = editor.state.selection;
+    if (from !== to) {
+      return editor.state.doc.textBetween(from, to, " ");
+    }
+  } else if (editorMode === "raw") {
+    const raw = getRawEditor();
+    if (raw && raw.selectionStart !== raw.selectionEnd) {
+      return raw.value.substring(raw.selectionStart, raw.selectionEnd);
+    }
+  } else {
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed) {
+      return sel.toString();
+    }
+  }
+  return "";
+}
+
+function attachFindWidgetShortcuts(): void {
+  if (document.body.dataset.findShortcutsBound === "1") {
+    return;
+  }
+  document.body.dataset.findShortcutsBound = "1";
+
+  document.addEventListener("keydown", (event: KeyboardEvent) => {
+    const isMod = event.ctrlKey || event.metaKey;
+    if (isMod && event.key.toLowerCase() === "f") {
+      event.preventDefault();
+      updateFindWidgetAdapter(editorMode);
+      const initialQuery = getSelectedText();
+      getFindWidget().open({ initialQuery });
+    } else if (isMod && event.key.toLowerCase() === "h") {
+      event.preventDefault();
+      updateFindWidgetAdapter(editorMode);
+      const initialQuery = getSelectedText();
+      getFindWidget().open({ showReplace: true, initialQuery });
+    } else if (event.key === "Escape") {
+      if (findWidget?.isOpen()) {
+        event.preventDefault();
+        findWidget.close();
+        if (editorMode === "markdown") {
+          editor?.commands.focus();
+        } else if (editorMode === "raw") {
+          getRawEditor()?.focus();
+        }
+      }
+    }
+  });
 }
 
 /** Flush pending Raw debounce before leaving Raw so edits are not dropped. */
@@ -2158,5 +2281,7 @@ window.addEventListener("message", (event) => {
       break;
   }
 });
+
+attachFindWidgetShortcuts();
 
 vscode.postMessage({ type: "ready" });
