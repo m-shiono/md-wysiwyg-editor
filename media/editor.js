@@ -242870,6 +242870,564 @@ ${prefix}
     }
   };
 
+  // src/utils/table-formatter.ts
+  function calculateStringWidth(str2) {
+    let width3 = 0;
+    let i2 = 0;
+    while (i2 < str2.length) {
+      const codePoint = str2.codePointAt(i2);
+      if (codePoint === void 0) {
+        break;
+      }
+      const charLen = codePoint >= 65536 ? 2 : 1;
+      i2 += charLen;
+      if (codePoint === 8203 || // Zero-width space
+      codePoint === 8204 || // Zero-width non-joiner
+      codePoint === 8205 || // Zero-width joiner
+      codePoint === 65279 || // BOM / Zero-width no-break space
+      codePoint >= 65024 && codePoint <= 65039 || // Variation Selectors 1-16
+      codePoint >= 917760 && codePoint <= 917999) {
+        continue;
+      }
+      if (codePoint >= 4352 && codePoint <= 4447 || codePoint >= 8986 && codePoint <= 8987 || codePoint >= 9193 && codePoint <= 9196 || codePoint >= 9200 && codePoint <= 9203 || codePoint >= 9725 && codePoint <= 9726 || codePoint >= 9748 && codePoint <= 9749 || codePoint >= 9800 && codePoint <= 9811 || codePoint >= 9855 && codePoint <= 9855 || codePoint >= 9875 && codePoint <= 9875 || codePoint >= 9889 && codePoint <= 9889 || codePoint >= 9898 && codePoint <= 9899 || codePoint >= 9917 && codePoint <= 9918 || codePoint >= 9924 && codePoint <= 9925 || codePoint >= 9934 && codePoint <= 9934 || codePoint >= 9940 && codePoint <= 9940 || codePoint >= 9962 && codePoint <= 9962 || codePoint >= 9970 && codePoint <= 9971 || codePoint >= 9973 && codePoint <= 9973 || codePoint >= 9978 && codePoint <= 9978 || codePoint >= 9981 && codePoint <= 9981 || codePoint >= 9989 && codePoint <= 9989 || codePoint >= 9994 && codePoint <= 9995 || codePoint >= 10024 && codePoint <= 10024 || codePoint >= 10060 && codePoint <= 10062 || codePoint >= 10067 && codePoint <= 10069 || codePoint >= 10071 && codePoint <= 10071 || codePoint >= 10133 && codePoint <= 10135 || codePoint >= 10160 && codePoint <= 10160 || codePoint >= 10175 && codePoint <= 10175 || codePoint >= 11035 && codePoint <= 11036 || codePoint >= 11088 && codePoint <= 11088 || codePoint >= 11093 && codePoint <= 11093 || codePoint >= 11904 && codePoint <= 42191 && codePoint !== 12351 || codePoint >= 44032 && codePoint <= 55203 || codePoint >= 63744 && codePoint <= 64255 || codePoint >= 65040 && codePoint <= 65049 || codePoint >= 65072 && codePoint <= 65135 || codePoint >= 65281 && codePoint <= 65376 || codePoint >= 65504 && codePoint <= 65510 || codePoint >= 126976 && codePoint <= 129535 || codePoint >= 131072 && codePoint <= 262143) {
+        width3 += 2;
+      } else {
+        width3 += 1;
+      }
+    }
+    return width3;
+  }
+  function parseDelimiterAlignment(cellText) {
+    const trimmed = cellText.trim();
+    const startsWithColon = trimmed.startsWith(":");
+    const endsWithColon = trimmed.endsWith(":");
+    if (startsWithColon && endsWithColon) {
+      return "center";
+    }
+    if (startsWithColon) {
+      return "left";
+    }
+    if (endsWithColon) {
+      return "right";
+    }
+    return "none";
+  }
+  function formatDelimiterCell(align, width3) {
+    const hyphensNeeded = Math.max(3, width3);
+    if (align === "center") {
+      return `:${"-".repeat(Math.max(1, hyphensNeeded - 2))}:`;
+    }
+    if (align === "left") {
+      return `:${"-".repeat(Math.max(2, hyphensNeeded - 1))}`;
+    }
+    if (align === "right") {
+      return `${"-".repeat(Math.max(2, hyphensNeeded - 1))}:`;
+    }
+    return "-".repeat(hyphensNeeded);
+  }
+  function padCell(content, targetWidth, align) {
+    const currentWidth = calculateStringWidth(content);
+    const paddingNeeded = Math.max(0, targetWidth - currentWidth);
+    if (paddingNeeded === 0) {
+      return content;
+    }
+    if (align === "right") {
+      return " ".repeat(paddingNeeded) + content;
+    }
+    if (align === "center") {
+      const leftPad = Math.floor(paddingNeeded / 2);
+      const rightPad = paddingNeeded - leftPad;
+      return " ".repeat(leftPad) + content + " ".repeat(rightPad);
+    }
+    return content + " ".repeat(paddingNeeded);
+  }
+  function isDelimiterRow(line2) {
+    const trimmed = line2.trim();
+    if (!trimmed.startsWith("|") && !trimmed.endsWith("|")) {
+      return false;
+    }
+    const cells = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c4) => c4.trim());
+    return cells.length > 0 && cells.every((c4) => /^:?-+:?$/.test(c4));
+  }
+  function isTableRow(line2) {
+    const trimmed = line2.trim();
+    return trimmed.includes("|");
+  }
+  function splitRowCells(row) {
+    const trimmed = row.trim();
+    let inner3 = trimmed;
+    if (inner3.startsWith("|")) {
+      inner3 = inner3.slice(1);
+    }
+    if (inner3.endsWith("|") && !inner3.endsWith("\\|")) {
+      inner3 = inner3.slice(0, -1);
+    }
+    const cells = [];
+    let current = "";
+    let escaped = false;
+    let inCodeSpan = false;
+    for (let i2 = 0; i2 < inner3.length; i2++) {
+      const char2 = inner3[i2];
+      if (escaped) {
+        current += char2;
+        escaped = false;
+      } else if (char2 === "\\") {
+        current += char2;
+        escaped = true;
+      } else if (char2 === "`") {
+        inCodeSpan = !inCodeSpan;
+        current += char2;
+      } else if (char2 === "|" && !inCodeSpan) {
+        cells.push(current.trim());
+        current = "";
+      } else {
+        current += char2;
+      }
+    }
+    cells.push(current.trim());
+    return cells;
+  }
+  function formatMarkdownTable(tableSource, alignment = "aligned") {
+    const lines = tableSource.split(/\r?\n/).filter((l4) => l4.trim().length > 0);
+    if (lines.length === 0) {
+      return tableSource;
+    }
+    const parsedRows = lines.map(splitRowCells);
+    const columnCount = Math.max(...parsedRows.map((r3) => r3.length), 1);
+    const normalizedRows = parsedRows.map((row) => {
+      const filled = [...row];
+      while (filled.length < columnCount) {
+        filled.push("");
+      }
+      return filled;
+    });
+    let delimiterIndex = -1;
+    for (let i2 = 0; i2 < lines.length; i2++) {
+      if (isDelimiterRow(lines[i2])) {
+        delimiterIndex = i2;
+        break;
+      }
+    }
+    const alignments = [];
+    if (delimiterIndex !== -1) {
+      const delimiterCells = normalizedRows[delimiterIndex];
+      for (let c4 = 0; c4 < columnCount; c4++) {
+        alignments.push(parseDelimiterAlignment(delimiterCells[c4] || "---"));
+      }
+    } else {
+      for (let c4 = 0; c4 < columnCount; c4++) {
+        alignments.push("none");
+      }
+    }
+    if (alignment === "compact") {
+      return normalizedRows.map((row, rIdx) => {
+        if (rIdx === delimiterIndex) {
+          const cells = row.map((_3, cIdx) => formatDelimiterCell(alignments[cIdx], 3));
+          return `| ${cells.join(" | ")} |`;
+        }
+        return `| ${row.join(" | ")} |`;
+      }).join("\n");
+    }
+    const colWidths = new Array(columnCount).fill(3);
+    for (let rIdx = 0; rIdx < normalizedRows.length; rIdx++) {
+      if (rIdx === delimiterIndex) {
+        continue;
+      }
+      const row = normalizedRows[rIdx];
+      for (let cIdx = 0; cIdx < columnCount; cIdx++) {
+        const w4 = calculateStringWidth(row[cIdx]);
+        if (w4 > colWidths[cIdx]) {
+          colWidths[cIdx] = w4;
+        }
+      }
+    }
+    return normalizedRows.map((row, rIdx) => {
+      if (rIdx === delimiterIndex) {
+        const cells2 = row.map((_3, cIdx) => formatDelimiterCell(alignments[cIdx], colWidths[cIdx]));
+        return `| ${cells2.join(" | ")} |`;
+      }
+      const cells = row.map((cell, cIdx) => padCell(cell, colWidths[cIdx], alignments[cIdx]));
+      return `| ${cells.join(" | ")} |`;
+    }).join("\n");
+  }
+  function findTableBlockAtCursor(text5, cursorOffset) {
+    const lines = text5.split("\n");
+    let currentOffset = 0;
+    let cursorLineIdx = -1;
+    let cursorColInLine = 0;
+    for (let i2 = 0; i2 < lines.length; i2++) {
+      const lineLen = lines[i2].length;
+      const lineEnd = currentOffset + lineLen;
+      if (cursorOffset >= currentOffset && cursorOffset <= lineEnd) {
+        cursorLineIdx = i2;
+        cursorColInLine = cursorOffset - currentOffset;
+        break;
+      }
+      currentOffset += lineLen + 1;
+    }
+    if (cursorLineIdx === -1 || !isTableRow(lines[cursorLineIdx])) {
+      return null;
+    }
+    let startLine = cursorLineIdx;
+    while (startLine > 0 && isTableRow(lines[startLine - 1])) {
+      startLine--;
+    }
+    let endLine = cursorLineIdx;
+    while (endLine < lines.length - 1 && isTableRow(lines[endLine + 1])) {
+      endLine++;
+    }
+    let startOffset = 0;
+    for (let i2 = 0; i2 < startLine; i2++) {
+      startOffset += lines[i2].length + 1;
+    }
+    let endOffset = startOffset;
+    for (let i2 = startLine; i2 <= endLine; i2++) {
+      endOffset += lines[i2].length + (i2 < lines.length - 1 ? 1 : 0);
+    }
+    const tableLines = lines.slice(startLine, endLine + 1);
+    const tableText = tableLines.join("\n");
+    const relativeRow = cursorLineIdx - startLine;
+    const cursorLineText = lines[cursorLineIdx];
+    let pipeCount = 0;
+    for (let i2 = 0; i2 < cursorColInLine; i2++) {
+      if (cursorLineText[i2] === "|" && (i2 === 0 || cursorLineText[i2 - 1] !== "\\")) {
+        pipeCount++;
+      }
+    }
+    const relativeCol = Math.max(0, pipeCount - 1);
+    const parsed = tableLines.map(splitRowCells);
+    const columnCount = Math.max(...parsed.map((r3) => r3.length), 1);
+    return {
+      startOffset,
+      endOffset,
+      tableText,
+      cursorRow: relativeRow,
+      cursorCol: relativeCol,
+      columnCount,
+      rowCount: tableLines.length
+    };
+  }
+  function navigateTable(text5, cursorOffset, direction2, alignment = "aligned") {
+    const block2 = findTableBlockAtCursor(text5, cursorOffset);
+    if (!block2) {
+      return null;
+    }
+    const formatted = formatMarkdownTable(block2.tableText, alignment);
+    const formattedLines = formatted.split("\n");
+    let targetRow = block2.cursorRow;
+    let targetCol = block2.cursorCol;
+    if (direction2 === "next") {
+      targetCol++;
+      if (targetCol >= block2.columnCount) {
+        targetCol = 0;
+        targetRow++;
+      }
+      if (targetRow < formattedLines.length && isDelimiterRow(formattedLines[targetRow])) {
+        targetRow++;
+      }
+      if (targetRow >= formattedLines.length) {
+        const emptyRow = `| ${new Array(block2.columnCount).fill(" ").join(" | ")} |`;
+        formattedLines.push(emptyRow);
+        targetRow = formattedLines.length - 1;
+        targetCol = 0;
+      }
+    } else {
+      targetCol--;
+      if (targetCol < 0) {
+        targetCol = block2.columnCount - 1;
+        targetRow--;
+      }
+      if (targetRow >= 0 && isDelimiterRow(formattedLines[targetRow])) {
+        targetRow--;
+      }
+      if (targetRow < 0) {
+        targetRow = 0;
+        targetCol = 0;
+      }
+    }
+    const finalTable = formatMarkdownTable(formattedLines.join("\n"), alignment);
+    const finalLines = finalTable.split("\n");
+    targetRow = Math.min(Math.max(0, targetRow), finalLines.length - 1);
+    const targetLine = finalLines[targetRow];
+    let pipesFound = 0;
+    let cellOffsetInLine = 0;
+    for (let i2 = 0; i2 < targetLine.length; i2++) {
+      if (targetLine[i2] === "|" && (i2 === 0 || targetLine[i2 - 1] !== "\\")) {
+        pipesFound++;
+        if (pipesFound === targetCol + 1) {
+          cellOffsetInLine = i2 + 2;
+          break;
+        }
+      }
+    }
+    let offsetBeforeTargetLine = block2.startOffset;
+    for (let i2 = 0; i2 < targetRow; i2++) {
+      offsetBeforeTargetLine += finalLines[i2].length + 1;
+    }
+    const newCursorOffset = offsetBeforeTargetLine + Math.min(cellOffsetInLine, targetLine.length);
+    const updatedText = text5.slice(0, block2.startOffset) + finalTable + text5.slice(block2.endOffset);
+    return {
+      updatedText,
+      newCursorOffset
+    };
+  }
+
+  // src/utils/editor-assist.ts
+  function handleListAutoContinue(text5, cursorOffset) {
+    const lineStart = text5.lastIndexOf("\n", cursorOffset - 1) + 1;
+    let lineEnd = text5.indexOf("\n", cursorOffset);
+    if (lineEnd === -1) {
+      lineEnd = text5.length;
+    }
+    const currentLine = text5.slice(lineStart, lineEnd);
+    const textBeforeCursorInLine = text5.slice(lineStart, cursorOffset);
+    const listMatch = currentLine.match(/^(\s*)([-*+]|\d+\.)(?:\s+(\[[ xX]\]))?(?:\s+(.*))?$/);
+    if (!listMatch) {
+      return null;
+    }
+    const indent = listMatch[1];
+    const marker = listMatch[2];
+    const hasCheckbox = Boolean(listMatch[3]);
+    const content = listMatch[4] || "";
+    if (content.trim().length === 0) {
+      const updatedText2 = text5.slice(0, lineStart) + indent + text5.slice(lineEnd);
+      const newPos2 = lineStart + indent.length;
+      return {
+        updatedText: updatedText2,
+        newSelectionStart: newPos2,
+        newSelectionEnd: newPos2,
+        handled: true
+      };
+    }
+    const markerLength = indent.length + marker.length + (hasCheckbox ? 5 : 1);
+    if (textBeforeCursorInLine.length < markerLength) {
+      return null;
+    }
+    let nextMarker = marker;
+    const numMatch = marker.match(/^(\d+)\.$/);
+    if (numMatch) {
+      const nextNum = parseInt(numMatch[1], 10) + 1;
+      nextMarker = `${nextNum}.`;
+    }
+    const nextCheckbox = hasCheckbox ? "[ ] " : "";
+    const continuation = `
+${indent}${nextMarker} ${nextCheckbox}`;
+    const updatedText = text5.slice(0, cursorOffset) + continuation + text5.slice(cursorOffset);
+    const newPos = cursorOffset + continuation.length;
+    return {
+      updatedText,
+      newSelectionStart: newPos,
+      newSelectionEnd: newPos,
+      handled: true
+    };
+  }
+  function handleListIndent(text5, cursorOffset, direction2) {
+    const lineStart = text5.lastIndexOf("\n", cursorOffset - 1) + 1;
+    let lineEnd = text5.indexOf("\n", cursorOffset);
+    if (lineEnd === -1) {
+      lineEnd = text5.length;
+    }
+    const currentLine = text5.slice(lineStart, lineEnd);
+    const isList2 = /^\s*([-*+]|\d+\.)\s+/.test(currentLine);
+    if (!isList2) {
+      return null;
+    }
+    if (direction2 === "indent") {
+      const updatedText = text5.slice(0, lineStart) + "  " + text5.slice(lineStart);
+      const newPos = cursorOffset + 2;
+      return {
+        updatedText,
+        newSelectionStart: newPos,
+        newSelectionEnd: newPos,
+        handled: true
+      };
+    } else {
+      const leadingSpaces = currentLine.match(/^ {1,2}/);
+      if (!leadingSpaces) {
+        return null;
+      }
+      const removedCount = leadingSpaces[0].length;
+      const updatedText = text5.slice(0, lineStart) + text5.slice(lineStart + removedCount);
+      const newPos = Math.max(lineStart, cursorOffset - removedCount);
+      return {
+        updatedText,
+        newSelectionStart: newPos,
+        newSelectionEnd: newPos,
+        handled: true
+      };
+    }
+  }
+  function toggleTaskList(text5, cursorOffset) {
+    const lineStart = text5.lastIndexOf("\n", cursorOffset - 1) + 1;
+    let lineEnd = text5.indexOf("\n", cursorOffset);
+    if (lineEnd === -1) {
+      lineEnd = text5.length;
+    }
+    const currentLine = text5.slice(lineStart, lineEnd);
+    if (/^(\s*[-*+]\s+)\[ \]/i.test(currentLine)) {
+      const updatedLine = currentLine.replace(/^(\s*[-*+]\s+)\[ \]/i, "$1[x]");
+      const updatedText = text5.slice(0, lineStart) + updatedLine + text5.slice(lineEnd);
+      return {
+        updatedText,
+        newSelectionStart: cursorOffset,
+        newSelectionEnd: cursorOffset,
+        handled: true
+      };
+    }
+    if (/^(\s*[-*+]\s+)\[[xX]\]/.test(currentLine)) {
+      const updatedLine = currentLine.replace(/^(\s*[-*+]\s+)\[[xX]\]/, "$1[ ]");
+      const updatedText = text5.slice(0, lineStart) + updatedLine + text5.slice(lineEnd);
+      return {
+        updatedText,
+        newSelectionStart: cursorOffset,
+        newSelectionEnd: cursorOffset,
+        handled: true
+      };
+    }
+    if (/^(\s*[-*+]\s+)(?!\[[ xX]\])/.test(currentLine)) {
+      const updatedLine = currentLine.replace(/^(\s*[-*+]\s+)/, "$1[ ] ");
+      const updatedText = text5.slice(0, lineStart) + updatedLine + text5.slice(lineEnd);
+      const newPos = cursorOffset + 4;
+      return {
+        updatedText,
+        newSelectionStart: newPos,
+        newSelectionEnd: newPos,
+        handled: true
+      };
+    }
+    return null;
+  }
+  function toggleFormatting(text5, selectionStart, selectionEnd, wrapper) {
+    const wrapLen = wrapper.length;
+    const isCollapsed = selectionStart === selectionEnd;
+    if (isCollapsed) {
+      const updatedText2 = text5.slice(0, selectionStart) + wrapper + wrapper + text5.slice(selectionEnd);
+      const newPos = selectionStart + wrapLen;
+      return {
+        updatedText: updatedText2,
+        newSelectionStart: newPos,
+        newSelectionEnd: newPos,
+        handled: true
+      };
+    }
+    const selectedText = text5.slice(selectionStart, selectionEnd);
+    if (selectedText.startsWith(wrapper) && selectedText.endsWith(wrapper) && selectedText.length >= wrapLen * 2) {
+      const unwrapped = selectedText.slice(wrapLen, -wrapLen);
+      const updatedText2 = text5.slice(0, selectionStart) + unwrapped + text5.slice(selectionEnd);
+      return {
+        updatedText: updatedText2,
+        newSelectionStart: selectionStart,
+        newSelectionEnd: selectionStart + unwrapped.length,
+        handled: true
+      };
+    }
+    const before = text5.slice(Math.max(0, selectionStart - wrapLen), selectionStart);
+    const after = text5.slice(selectionEnd, selectionEnd + wrapLen);
+    if (before === wrapper && after === wrapper) {
+      const updatedText2 = text5.slice(0, selectionStart - wrapLen) + selectedText + text5.slice(selectionEnd + wrapLen);
+      return {
+        updatedText: updatedText2,
+        newSelectionStart: selectionStart - wrapLen,
+        newSelectionEnd: selectionEnd - wrapLen,
+        handled: true
+      };
+    }
+    const wrapped = wrapper + selectedText + wrapper;
+    const updatedText = text5.slice(0, selectionStart) + wrapped + text5.slice(selectionEnd);
+    return {
+      updatedText,
+      newSelectionStart: selectionStart,
+      newSelectionEnd: selectionStart + wrapped.length,
+      handled: true
+    };
+  }
+  function handleSmartUrlPaste(selectedText, pastedText) {
+    const trimmedUrl = pastedText.trim();
+    const isUrl = /^https?:\/\/[^\s/$.?#].[^\s]*$/i.test(trimmedUrl);
+    if (!isUrl || selectedText.trim().length === 0) {
+      return null;
+    }
+    if (selectedText.includes("\n") || selectedText.includes("\r")) {
+      return null;
+    }
+    const existingLinkMatch = selectedText.match(/^\[(.*)\]\([^)]+\)$/);
+    if (existingLinkMatch) {
+      return `[${existingLinkMatch[1]}](${trimmedUrl})`;
+    }
+    return `[${selectedText}](${trimmedUrl})`;
+  }
+  function cleanHeadingForToc(heading) {
+    return heading.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/[*_~`]/g, "").trim();
+  }
+  function slugifyHeading(heading) {
+    const cleaned = cleanHeadingForToc(heading);
+    return cleaned.toLowerCase().trim().replace(/[^\p{L}\p{N}\s-]/gu, "").replace(/\s+/g, "-");
+  }
+  function extractHeadings(markdown2) {
+    const headings = [];
+    const lines = markdown2.split("\n");
+    let inCodeBlock = false;
+    const slugCounts = /* @__PURE__ */ new Map();
+    for (const line2 of lines) {
+      const trimmed = line2.trim();
+      if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
+        inCodeBlock = !inCodeBlock;
+        continue;
+      }
+      if (inCodeBlock) {
+        continue;
+      }
+      const match3 = line2.match(/^(#{1,6})\s+(.+)$/);
+      if (match3) {
+        const level = match3[1].length;
+        const rawHeading = match3[2].trim();
+        const headingText = cleanHeadingForToc(rawHeading);
+        let slug = slugifyHeading(rawHeading);
+        const count2 = slugCounts.get(slug) || 0;
+        slugCounts.set(slug, count2 + 1);
+        if (count2 > 0) {
+          slug = `${slug}-${count2}`;
+        }
+        headings.push({ level, text: headingText, slug });
+      }
+    }
+    return headings;
+  }
+  function generateTableOfContents(markdown2) {
+    const headings = extractHeadings(markdown2);
+    if (headings.length === 0) {
+      return "<!-- TOC -->\n<!-- /TOC -->";
+    }
+    const minLevel = Math.min(...headings.map((h3) => h3.level));
+    const listItems = headings.map((h3) => {
+      const indentLevel = Math.max(0, h3.level - minLevel);
+      const indent = "  ".repeat(indentLevel);
+      return `${indent}- [${h3.text}](#${h3.slug})`;
+    });
+    return `<!-- TOC -->
+
+${listItems.join("\n")}
+
+<!-- /TOC -->`;
+  }
+  function updateOrInsertTableOfContents(markdown2) {
+    const tocBlock = generateTableOfContents(markdown2);
+    const tocRegex = /<!--\s*TOC\s*-->[\s\S]*?<!--\s*\/TOC\s*-->/i;
+    if (tocRegex.test(markdown2)) {
+      return markdown2.replace(tocRegex, tocBlock);
+    }
+    if (markdown2.startsWith("---")) {
+      const secondFence = markdown2.indexOf("\n---", 3);
+      if (secondFence !== -1) {
+        const insertPos = secondFence + 4;
+        return markdown2.slice(0, insertPos) + "\n\n" + tocBlock + "\n" + markdown2.slice(insertPos);
+      }
+    }
+    return `${tocBlock}
+
+${markdown2}`;
+  }
+
   // media/editor.ts
   var MERMAID_MEASURE_FONT_STYLE_ID = "mermaid-density-measure-font";
   var StrikeWithoutShortcut = src_default3.extend({
@@ -243054,6 +243612,7 @@ ${prefix}
   });
   var editor;
   var insertTableFormat = "gfm";
+  var tablePipeAlignment = document.body?.dataset?.tablePipeAlignment || "aligned";
   var readonly = false;
   var editorMode = "raw";
   var previewSurface = "tiptap";
@@ -244279,7 +244838,7 @@ ${prefix}
       return;
     }
     raw.dataset.bound = "1";
-    raw.addEventListener("input", () => {
+    const triggerRawUpdate = (immediate = false) => {
       if (suppressRawUpdate || readonly || editorMode !== "raw") {
         return;
       }
@@ -244287,9 +244846,165 @@ ${prefix}
       if (rawUpdateTimer) {
         clearTimeout(rawUpdateTimer);
       }
-      rawUpdateTimer = setTimeout(() => {
+      if (immediate) {
         vscode.postMessage({ type: "updateRaw", markdown: value2 });
-      }, RAW_UPDATE_DEBOUNCE_MS);
+      } else {
+        rawUpdateTimer = setTimeout(() => {
+          vscode.postMessage({ type: "updateRaw", markdown: value2 });
+        }, RAW_UPDATE_DEBOUNCE_MS);
+      }
+    };
+    raw.addEventListener("input", () => {
+      triggerRawUpdate(false);
+    });
+    raw.addEventListener("keydown", (e3) => {
+      if (readonly || editorMode !== "raw") {
+        return;
+      }
+      if (e3.key === "Tab") {
+        const navResult = navigateTable(
+          raw.value,
+          raw.selectionStart,
+          e3.shiftKey ? "prev" : "next",
+          tablePipeAlignment
+        );
+        if (navResult) {
+          e3.preventDefault();
+          raw.value = navResult.updatedText;
+          raw.setSelectionRange(
+            navResult.newCursorOffset,
+            navResult.newCursorOffset
+          );
+          triggerRawUpdate(true);
+          return;
+        }
+        const listIndentResult = handleListIndent(
+          raw.value,
+          raw.selectionStart,
+          e3.shiftKey ? "outdent" : "indent"
+        );
+        if (listIndentResult) {
+          e3.preventDefault();
+          raw.value = listIndentResult.updatedText;
+          raw.setSelectionRange(
+            listIndentResult.newSelectionStart,
+            listIndentResult.newSelectionEnd
+          );
+          triggerRawUpdate(true);
+          return;
+        }
+        if (!e3.shiftKey && raw.selectionStart === raw.selectionEnd) {
+          e3.preventDefault();
+          const start2 = raw.selectionStart;
+          raw.value = raw.value.slice(0, start2) + "  " + raw.value.slice(start2);
+          raw.setSelectionRange(start2 + 2, start2 + 2);
+          triggerRawUpdate(true);
+          return;
+        }
+      }
+      if (e3.key === "Enter" && !e3.shiftKey && !e3.ctrlKey && !e3.metaKey && !e3.altKey) {
+        const continueResult = handleListAutoContinue(
+          raw.value,
+          raw.selectionStart
+        );
+        if (continueResult) {
+          e3.preventDefault();
+          raw.value = continueResult.updatedText;
+          raw.setSelectionRange(
+            continueResult.newSelectionStart,
+            continueResult.newSelectionEnd
+          );
+          triggerRawUpdate(true);
+          return;
+        }
+      }
+      if (e3.altKey && (e3.key === "c" || e3.key === "C")) {
+        const taskResult = toggleTaskList(raw.value, raw.selectionStart);
+        if (taskResult) {
+          e3.preventDefault();
+          raw.value = taskResult.updatedText;
+          raw.setSelectionRange(
+            taskResult.newSelectionStart,
+            taskResult.newSelectionEnd
+          );
+          triggerRawUpdate(true);
+          return;
+        }
+      }
+      const isMod = e3.metaKey || e3.ctrlKey;
+      if (isMod && (e3.key === "b" || e3.key === "B")) {
+        e3.preventDefault();
+        const res = toggleFormatting(
+          raw.value,
+          raw.selectionStart,
+          raw.selectionEnd,
+          "**"
+        );
+        raw.value = res.updatedText;
+        raw.setSelectionRange(res.newSelectionStart, res.newSelectionEnd);
+        triggerRawUpdate(true);
+        return;
+      }
+      if (isMod && (e3.key === "i" || e3.key === "I")) {
+        e3.preventDefault();
+        const res = toggleFormatting(
+          raw.value,
+          raw.selectionStart,
+          raw.selectionEnd,
+          "*"
+        );
+        raw.value = res.updatedText;
+        raw.setSelectionRange(res.newSelectionStart, res.newSelectionEnd);
+        triggerRawUpdate(true);
+        return;
+      }
+      if (e3.altKey && (e3.key === "s" || e3.key === "S")) {
+        e3.preventDefault();
+        const res = toggleFormatting(
+          raw.value,
+          raw.selectionStart,
+          raw.selectionEnd,
+          "~~"
+        );
+        raw.value = res.updatedText;
+        raw.setSelectionRange(res.newSelectionStart, res.newSelectionEnd);
+        triggerRawUpdate(true);
+        return;
+      }
+      if (isMod && (e3.key === "m" || e3.key === "M")) {
+        e3.preventDefault();
+        const res = toggleFormatting(
+          raw.value,
+          raw.selectionStart,
+          raw.selectionEnd,
+          "$"
+        );
+        raw.value = res.updatedText;
+        raw.setSelectionRange(res.newSelectionStart, res.newSelectionEnd);
+        triggerRawUpdate(true);
+        return;
+      }
+    });
+    raw.addEventListener("paste", (e3) => {
+      if (readonly || editorMode !== "raw") {
+        return;
+      }
+      const pasted = e3.clipboardData?.getData("text/plain");
+      if (!pasted) {
+        return;
+      }
+      if (raw.selectionStart !== raw.selectionEnd) {
+        const selected = raw.value.slice(raw.selectionStart, raw.selectionEnd);
+        const smartLink = handleSmartUrlPaste(selected, pasted);
+        if (smartLink) {
+          e3.preventDefault();
+          const start2 = raw.selectionStart;
+          raw.value = raw.value.slice(0, start2) + smartLink + raw.value.slice(raw.selectionEnd);
+          raw.setSelectionRange(start2 + smartLink.length, start2 + smartLink.length);
+          triggerRawUpdate(true);
+          return;
+        }
+      }
     });
   }
   function attachToolbarHandlers() {
@@ -244343,6 +245058,20 @@ ${prefix}
           case "horizontalRule":
             editor.chain().focus().setHorizontalRule().run();
             break;
+          case "insertToc": {
+            if (editorMode === "raw") {
+              const raw = getRawEditor();
+              if (raw) {
+                const updated = updateOrInsertTableOfContents(raw.value);
+                raw.value = updated;
+                vscode.postMessage({ type: "updateRaw", markdown: updated });
+              }
+            } else if (editorMode === "markdown" && editor) {
+              const updated = updateOrInsertTableOfContents(latestMarkdownText);
+              vscode.postMessage({ type: "updateRaw", markdown: updated });
+            }
+            break;
+          }
         }
         updateFormatToolbarPressedState();
       });
@@ -244524,11 +245253,42 @@ ${prefix}
     checkTableLimitsFromEditor(editor);
   }
   function handleTableOperation(op3) {
-    if (!editor || readonly || editorMode !== "markdown") {
-      return;
-    }
     closeTableMenuPanel();
     closeTableContextMenu();
+    if (readonly) {
+      return;
+    }
+    if (op3 === "setPipeAligned") {
+      tablePipeAlignment = "aligned";
+      document.body.dataset.tablePipeAlignment = "aligned";
+      vscode.postMessage({ type: "setTablePipeAlignment", alignment: "aligned" });
+      return;
+    }
+    if (op3 === "setPipeCompact") {
+      tablePipeAlignment = "compact";
+      document.body.dataset.tablePipeAlignment = "compact";
+      vscode.postMessage({ type: "setTablePipeAlignment", alignment: "compact" });
+      return;
+    }
+    if (op3 === "formatTable") {
+      if (editorMode === "raw") {
+        const raw = getRawEditor();
+        if (raw) {
+          const block2 = findTableBlockAtCursor(raw.value, raw.selectionStart);
+          if (block2) {
+            const formatted = formatMarkdownTable(block2.tableText, tablePipeAlignment);
+            raw.value = raw.value.slice(0, block2.startOffset) + formatted + raw.value.slice(block2.endOffset);
+            vscode.postMessage({ type: "updateRaw", markdown: raw.value });
+          }
+        }
+      } else if (editorMode === "markdown" && editor) {
+        postDocUpdate();
+      }
+      return;
+    }
+    if (!editor || editorMode !== "markdown") {
+      return;
+    }
     switch (op3) {
       case "insert":
         editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
@@ -244904,3 +245664,4 @@ mermaid/dist/mermaid.core.mjs:
    * Wait for document loaded before starting the execution
    *)
 */
+//# sourceMappingURL=editor.js.map

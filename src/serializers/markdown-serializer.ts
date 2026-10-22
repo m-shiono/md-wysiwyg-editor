@@ -13,6 +13,7 @@ import {
   convertTableToGfmAtIndex,
   flattenTipTapNodesToText,
 } from '../utils/table-convert';
+import { calculateStringWidth, TablePipeAlignment } from '../utils/table-formatter';
 
 /** mdast GFM delete node (strikethrough). */
 type DeleteNode = { type: 'delete'; children: PhrasingContent[] };
@@ -34,6 +35,7 @@ export type TableFormat = 'gfm' | 'html';
 
 export interface SerializeOptions {
   deterministic?: boolean;
+  tablePipeAlignment?: TablePipeAlignment;
 }
 
 export interface CreateInsertTableDocOptions {
@@ -45,6 +47,7 @@ export interface CreateInsertTableDocOptions {
 
 const DEFAULT_SERIALIZE_OPTIONS: SerializeOptions = {
   deterministic: true,
+  tablePipeAlignment: 'aligned',
 };
 
 let serializeFailureMock = false;
@@ -94,8 +97,16 @@ export function serializeMarkdown(
     throw new Error('Serialize failure (mocked)');
   }
   const mdast = tipTapToMdast(doc);
+  const pipeAlign = options.tablePipeAlignment !== 'compact';
   const result = toMarkdown(mdast, {
-    extensions: [gfmTableToMarkdown(), gfmStrikethroughToMarkdown(), gfmTaskListItemToMarkdown()],
+    extensions: [
+      gfmTableToMarkdown({
+        tablePipeAlign: pipeAlign,
+        stringLength: calculateStringWidth,
+      }),
+      gfmStrikethroughToMarkdown(),
+      gfmTaskListItemToMarkdown(),
+    ],
     bullet: '-',
     emphasis: '*',
     strong: '*',

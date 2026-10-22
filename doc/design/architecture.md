@@ -26,6 +26,8 @@
 | AD-014 | ビルトイン Markdown エディタとの共存（エディタ関連付けの切替可能） |
 | AD-015 | Output チャンネルで障害ログ。ユーザー向けはエディタ内インライン表示を優先 |
 | AD-016 | 同一 Custom Editor 内に **Preview / Markdown / Raw** 三点モード。初期モードは **Raw**（`DEFAULT_EDITOR_MODE = 'raw'`）。モード切替 alone ではディスク書き込みしない。**Default Preview**（§1 / §10・表示ラベル）は mode-toolbar の非モード導線であり、4 つ目の `editorMode` ではない |
+| AD-017 | GFM パイプ表フォーマットは設定 `md-wysiwyg-editor.table.pipeAlignment`（`'aligned'` \| `'compact'`）に基づき、列幅に合わせた固定長空白パディングまたは最小空白パディングを選択可能とする。全角文字（East Asian Width）を半角2幅として計算し、視覚的な垂直整列を保持する（§3） |
+| AD-018 | Source モード（textarea）での編集支援パイプライン。表内 Tab / Shift+Tab による自動整列・セル間移動・新規行自動追加、リスト自動継続（Enter でマーカー継続・解除、Tab でインデント）、書式トグルショートカット、スマート URL ペースト、目次（TOC）自動生成・同期を提供する（§3, §15） |
 
 ---
 
@@ -62,3 +64,4 @@
 | 2026-09-26 | AD-007 | Mermaid 既定 Preview 寄せ（`mermaid-default-preview-parity`）: グローバル `fontSize` / 測定用 `font-size` を `'12px'` → `'16px'`。fit／Fit／re-fit 後の中央寄せ・ズーム原点中央を明記。ズーム／パン／Fit は維持。systemspec §5 現行契約に追随 |
 | 2026-09-19 | doc-reorg layout | 旧 `doc/systemspec.md` から AD-* 要約を分割移設。契約内容不変 |
 | 2026-10-03 | 識別子・命名の統一方針 | 識別子統一方針（package.json name のみ vsc-md-editor、他は md-wysiwyg-editor 統一）を記録 |
+| 2026-10-23 | AD-017, AD-018 | 表フォーマット切替（Aligned vs Compact）およびエディタ入力支援（`table-format-and-editor-assist`）: AD-017（表フォーマット形式制御、East Asian Width 対応）および AD-018（Source モード編集支援パイプライン、表 Tab 整列・セル移動、リスト継続、ショートカット、スマート URL ペースト、TOC）を追加 |

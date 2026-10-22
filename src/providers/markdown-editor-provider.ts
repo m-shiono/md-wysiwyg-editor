@@ -483,6 +483,17 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
           });
         }
         break;
+      case 'setTablePipeAlignment':
+        if (message.alignment === 'aligned' || message.alignment === 'compact') {
+          document.setTablePipeAlignment(message.alignment);
+          try {
+            const config = vscode.workspace?.getConfiguration?.('md-wysiwyg-editor');
+            await config?.update?.('table.pipeAlignment', message.alignment, vscode.ConfigurationTarget.Global);
+          } catch {
+            // Ignore in mocked or test environment
+          }
+        }
+        break;
       case 'log':
         if (typeof message.message === 'string') {
           logInfo(message.message);
@@ -576,6 +587,8 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
       vscode.Uri.joinPath(this.context.extensionUri, 'media', 'katex.min.css'),
     );
     const nonce = getNonce();
+    const config = vscode.workspace.getConfiguration('md-wysiwyg-editor');
+    const tablePipeAlignment = config.get<string>('table.pipeAlignment', 'aligned');
 
     const csp = [
       "default-src 'none'",
@@ -596,7 +609,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
   <link rel="stylesheet" href="${katexStyleUri}" nonce="${nonce}" />
   <title>MD WYSIWYG Editor</title>
 </head>
-<body data-readonly="${readonly}" data-mode="${DEFAULT_EDITOR_MODE}" data-csp-nonce="${nonce}" data-elk-chunk-uri="${elkChunkUri}">
+<body data-readonly="${readonly}" data-mode="${DEFAULT_EDITOR_MODE}" data-csp-nonce="${nonce}" data-elk-chunk-uri="${elkChunkUri}" data-table-pipe-alignment="${tablePipeAlignment}">
   <div id="mode-toolbar" role="toolbar" aria-label="Editor mode">
     <span class="mode-segment-group" role="group" aria-label="Mode selection">
       <button type="button" data-mode="markdown" title="Visual Editor (WYSIWYG)" aria-label="Visual Editor">Visual</button>
@@ -626,6 +639,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     <button type="button" data-cmd="link" title="Link" aria-pressed="false">Link</button>
     <button type="button" data-cmd="codeBlock" title="Code Block" aria-pressed="false">Code</button>
     <button type="button" data-cmd="horizontalRule" title="Horizontal rule">―</button>
+    <button type="button" data-cmd="insertToc" title="Table of Contents">TOC</button>
     <div id="table-menu" class="toolbar-dropdown">
       <button type="button" id="table-menu-btn" title="Table">Table ▼</button>
       <div id="table-menu-panel" class="toolbar-dropdown-panel hidden" role="menu" aria-label="Table operations">
@@ -644,6 +658,10 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
         <hr class="toolbar-dropdown-sep" />
         <button type="button" data-table-op="setDefaultGfm" role="menuitem">New tables default: GFM</button>
         <button type="button" data-table-op="setDefaultHtml" role="menuitem">New tables default: HTML</button>
+        <hr class="toolbar-dropdown-sep" />
+        <button type="button" data-table-op="formatTable" role="menuitem">Format table</button>
+        <button type="button" data-table-op="setPipeAligned" role="menuitem">Table style: Aligned</button>
+        <button type="button" data-table-op="setPipeCompact" role="menuitem">Table style: Compact</button>
       </div>
     </div>
   </div>

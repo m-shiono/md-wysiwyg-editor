@@ -35,6 +35,20 @@ import {
   TipTapSearchAdapter,
   MarpSearchAdapter,
 } from "./find-widget";
+import {
+  navigateTable,
+  formatMarkdownTable,
+  findTableBlockAtCursor,
+  type TablePipeAlignment,
+} from "../src/utils/table-formatter";
+import {
+  handleListAutoContinue,
+  handleListIndent,
+  toggleTaskList,
+  toggleFormatting,
+  handleSmartUrlPaste,
+  updateOrInsertTableOfContents,
+} from "../src/utils/editor-assist";
 
 const MERMAID_MEASURE_FONT_STYLE_ID = "mermaid-density-measure-font";
 
@@ -295,6 +309,8 @@ interface TipTapDoc {
 
 let editor: Editor | undefined;
 let insertTableFormat: TableFormat = "gfm";
+let tablePipeAlignment: TablePipeAlignment =
+  (document.body?.dataset?.tablePipeAlignment as TablePipeAlignment) || "aligned";
 let readonly = false;
 /** Must match Host DEFAULT_EDITOR_MODE / initial HTML body[data-mode] (AD-016). */
 let editorMode: EditorMode = "raw";
@@ -1798,7 +1814,8 @@ function attachRawEditorHandlers(): void {
     return;
   }
   raw.dataset.bound = "1";
-  raw.addEventListener("input", () => {
+
+  const triggerRawUpdate = (immediate = false): void => {
     if (suppressRawUpdate || readonly || editorMode !== "raw") {
       return;
     }
@@ -1806,9 +1823,188 @@ function attachRawEditorHandlers(): void {
     if (rawUpdateTimer) {
       clearTimeout(rawUpdateTimer);
     }
-    rawUpdateTimer = setTimeout(() => {
+    if (immediate) {
       vscode.postMessage({ type: "updateRaw", markdown: value });
-    }, RAW_UPDATE_DEBOUNCE_MS);
+    } else {
+      rawUpdateTimer = setTimeout(() => {
+        vscode.postMessage({ type: "updateRaw", markdown: value });
+      }, RAW_UPDATE_DEBOUNCE_MS);
+    }
+  };
+
+  raw.addEventListener("input", () => {
+    triggerRawUpdate(false);
+  });
+
+  raw.addEventListener("keydown", (e: KeyboardEvent) => {
+    if (readonly || editorMode !== "raw") {
+      return;
+    }
+
+    // 1. Tab / Shift+Tab: Table navigation or List indent
+    if (e.key === "Tab") {
+      // Table navigation
+      const navResult = navigateTable(
+        raw.value,
+        raw.selectionStart,
+        e.shiftKey ? "prev" : "next",
+        tablePipeAlignment,
+      );
+      if (navResult) {
+        e.preventDefault();
+        raw.value = navResult.updatedText;
+        raw.setSelectionRange(
+          navResult.newCursorOffset,
+          navResult.newCursorOffset,
+        );
+        triggerRawUpdate(true);
+        return;
+      }
+
+      // List indentation
+      const listIndentResult = handleListIndent(
+        raw.value,
+        raw.selectionStart,
+        e.shiftKey ? "outdent" : "indent",
+      );
+      if (listIndentResult) {
+        e.preventDefault();
+        raw.value = listIndentResult.updatedText;
+        raw.setSelectionRange(
+          listIndentResult.newSelectionStart,
+          listIndentResult.newSelectionEnd,
+        );
+        triggerRawUpdate(true);
+        return;
+      }
+
+      // Default indent with 2 spaces
+      if (!e.shiftKey && raw.selectionStart === raw.selectionEnd) {
+        e.preventDefault();
+        const start = raw.selectionStart;
+        raw.value = raw.value.slice(0, start) + "  " + raw.value.slice(start);
+        raw.setSelectionRange(start + 2, start + 2);
+        triggerRawUpdate(true);
+        return;
+      }
+    }
+
+    // 2. Enter: List auto-continue
+    if (
+      e.key === "Enter" &&
+      !e.shiftKey &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey
+    ) {
+      const continueResult = handleListAutoContinue(
+        raw.value,
+        raw.selectionStart,
+      );
+      if (continueResult) {
+        e.preventDefault();
+        raw.value = continueResult.updatedText;
+        raw.setSelectionRange(
+          continueResult.newSelectionStart,
+          continueResult.newSelectionEnd,
+        );
+        triggerRawUpdate(true);
+        return;
+      }
+    }
+
+    // 3. Alt+C: Toggle task list
+    if (e.altKey && (e.key === "c" || e.key === "C")) {
+      const taskResult = toggleTaskList(raw.value, raw.selectionStart);
+      if (taskResult) {
+        e.preventDefault();
+        raw.value = taskResult.updatedText;
+        raw.setSelectionRange(
+          taskResult.newSelectionStart,
+          taskResult.newSelectionEnd,
+        );
+        triggerRawUpdate(true);
+        return;
+      }
+    }
+
+    // 4. Formatting shortcuts
+    const isMod = e.metaKey || e.ctrlKey;
+    if (isMod && (e.key === "b" || e.key === "B")) {
+      e.preventDefault();
+      const res = toggleFormatting(
+        raw.value,
+        raw.selectionStart,
+        raw.selectionEnd,
+        "**",
+      );
+      raw.value = res.updatedText;
+      raw.setSelectionRange(res.newSelectionStart, res.newSelectionEnd);
+      triggerRawUpdate(true);
+      return;
+    }
+    if (isMod && (e.key === "i" || e.key === "I")) {
+      e.preventDefault();
+      const res = toggleFormatting(
+        raw.value,
+        raw.selectionStart,
+        raw.selectionEnd,
+        "*",
+      );
+      raw.value = res.updatedText;
+      raw.setSelectionRange(res.newSelectionStart, res.newSelectionEnd);
+      triggerRawUpdate(true);
+      return;
+    }
+    if (e.altKey && (e.key === "s" || e.key === "S")) {
+      e.preventDefault();
+      const res = toggleFormatting(
+        raw.value,
+        raw.selectionStart,
+        raw.selectionEnd,
+        "~~",
+      );
+      raw.value = res.updatedText;
+      raw.setSelectionRange(res.newSelectionStart, res.newSelectionEnd);
+      triggerRawUpdate(true);
+      return;
+    }
+    if (isMod && (e.key === "m" || e.key === "M")) {
+      e.preventDefault();
+      const res = toggleFormatting(
+        raw.value,
+        raw.selectionStart,
+        raw.selectionEnd,
+        "$",
+      );
+      raw.value = res.updatedText;
+      raw.setSelectionRange(res.newSelectionStart, res.newSelectionEnd);
+      triggerRawUpdate(true);
+      return;
+    }
+  });
+
+  raw.addEventListener("paste", (e: ClipboardEvent) => {
+    if (readonly || editorMode !== "raw") {
+      return;
+    }
+    const pasted = e.clipboardData?.getData("text/plain");
+    if (!pasted) {
+      return;
+    }
+    if (raw.selectionStart !== raw.selectionEnd) {
+      const selected = raw.value.slice(raw.selectionStart, raw.selectionEnd);
+      const smartLink = handleSmartUrlPaste(selected, pasted);
+      if (smartLink) {
+        e.preventDefault();
+        const start = raw.selectionStart;
+        raw.value =
+          raw.value.slice(0, start) + smartLink + raw.value.slice(raw.selectionEnd);
+        raw.setSelectionRange(start + smartLink.length, start + smartLink.length);
+        triggerRawUpdate(true);
+        return;
+      }
+    }
   });
 }
 
@@ -1864,6 +2060,20 @@ function attachToolbarHandlers(): void {
         case "horizontalRule":
           editor.chain().focus().setHorizontalRule().run();
           break;
+        case "insertToc": {
+          if (editorMode === "raw") {
+            const raw = getRawEditor();
+            if (raw) {
+              const updated = updateOrInsertTableOfContents(raw.value);
+              raw.value = updated;
+              vscode.postMessage({ type: "updateRaw", markdown: updated });
+            }
+          } else if (editorMode === "markdown" && editor) {
+            const updated = updateOrInsertTableOfContents(latestMarkdownText);
+            vscode.postMessage({ type: "updateRaw", markdown: updated });
+          }
+          break;
+        }
       }
       updateFormatToolbarPressedState();
     });
@@ -2087,12 +2297,48 @@ function postDocUpdate(): void {
 }
 
 function handleTableOperation(op: string): void {
-  if (!editor || readonly || editorMode !== "markdown") {
+  closeTableMenuPanel();
+  closeTableContextMenu();
+
+  if (readonly) {
     return;
   }
 
-  closeTableMenuPanel();
-  closeTableContextMenu();
+  if (op === "setPipeAligned") {
+    tablePipeAlignment = "aligned";
+    document.body.dataset.tablePipeAlignment = "aligned";
+    vscode.postMessage({ type: "setTablePipeAlignment", alignment: "aligned" });
+    return;
+  }
+  if (op === "setPipeCompact") {
+    tablePipeAlignment = "compact";
+    document.body.dataset.tablePipeAlignment = "compact";
+    vscode.postMessage({ type: "setTablePipeAlignment", alignment: "compact" });
+    return;
+  }
+  if (op === "formatTable") {
+    if (editorMode === "raw") {
+      const raw = getRawEditor();
+      if (raw) {
+        const block = findTableBlockAtCursor(raw.value, raw.selectionStart);
+        if (block) {
+          const formatted = formatMarkdownTable(block.tableText, tablePipeAlignment);
+          raw.value =
+            raw.value.slice(0, block.startOffset) +
+            formatted +
+            raw.value.slice(block.endOffset);
+          vscode.postMessage({ type: "updateRaw", markdown: raw.value });
+        }
+      }
+    } else if (editorMode === "markdown" && editor) {
+      postDocUpdate();
+    }
+    return;
+  }
+
+  if (!editor || editorMode !== "markdown") {
+    return;
+  }
 
   switch (op) {
     case "insert":

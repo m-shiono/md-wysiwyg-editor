@@ -109,7 +109,7 @@ export class MarkdownDocument implements vscode.CustomDocument {
       throw new Error(message);
     }
     try {
-      const serialized = serializeMarkdown(this._doc);
+      const serialized = serializeMarkdown(this._doc, this.getSerializeOptions());
       this._markdownText = serialized;
       await vscode.workspace.fs.writeFile(targetResource, Buffer.from(serialized, 'utf8'));
       this._isDirty = false;
@@ -133,9 +133,30 @@ export class MarkdownDocument implements vscode.CustomDocument {
     if (this._isRawParseFailed) {
       throw new Error('Cannot backup: Raw Markdown parse failed');
     }
-    const serialized = serializeMarkdown(this._doc);
+    const serialized = serializeMarkdown(this._doc, this.getSerializeOptions());
     this._markdownText = serialized;
     await vscode.workspace.fs.writeFile(destination, Buffer.from(serialized, 'utf8'));
+  }
+
+  private _tablePipeAlignmentOverride?: 'aligned' | 'compact';
+
+  setTablePipeAlignment(alignment: 'aligned' | 'compact'): void {
+    this._tablePipeAlignmentOverride = alignment;
+  }
+
+  private getSerializeOptions(): { tablePipeAlignment: 'aligned' | 'compact' } {
+    if (this._tablePipeAlignmentOverride) {
+      return { tablePipeAlignment: this._tablePipeAlignmentOverride };
+    }
+    try {
+      const config = vscode.workspace?.getConfiguration?.('md-wysiwyg-editor');
+      const alignment = config?.get<string>('table.pipeAlignment', 'aligned');
+      return {
+        tablePipeAlignment: alignment === 'compact' ? 'compact' : 'aligned',
+      };
+    } catch {
+      return { tablePipeAlignment: 'aligned' };
+    }
   }
 
   /**
@@ -199,8 +220,9 @@ export class MarkdownDocument implements vscode.CustomDocument {
     const previous = this._doc;
     this._doc = newDoc;
     this._isRawParseFailed = false;
+    const opts = this.getSerializeOptions();
     try {
-      this._markdownText = serializeMarkdown(newDoc);
+      this._markdownText = serializeMarkdown(newDoc, opts);
     } catch {
       // Keep in-memory doc; save will fail later
     }
@@ -209,7 +231,7 @@ export class MarkdownDocument implements vscode.CustomDocument {
       () => {
         this._doc = previous;
         try {
-          this._markdownText = serializeMarkdown(previous);
+          this._markdownText = serializeMarkdown(previous, opts);
         } catch {
           /* noop */
         }
@@ -218,7 +240,7 @@ export class MarkdownDocument implements vscode.CustomDocument {
       () => {
         this._doc = newDoc;
         try {
-          this._markdownText = serializeMarkdown(newDoc);
+          this._markdownText = serializeMarkdown(newDoc, opts);
         } catch {
           /* noop */
         }

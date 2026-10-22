@@ -28,4 +28,6 @@ import './suite/unit/list-indent-and-paste.test';
 import './suite/unit/plantuml-support.test';
 import './suite/unit/document-export.test';
 import './suite/unit/katex-math.test';
+import './suite/unit/table-formatter.test';
+import './suite/unit/editor-assist.test';
 

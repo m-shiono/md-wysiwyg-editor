@@ -331,14 +331,16 @@ Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdow
 ### 概要
 
 Excel 的な表編集。各表は per-table `tableFormat`（`gfm` \| `html`）で永続化する。新規挿入のデフォルトは **GFM パイプ表**（GitHub 親和性）。HTML 形式ではセル内改行・箇条書き・チェックボックス等のリッチ表現を WYSIWYG で保持する（AD-005, UD-006）。形式変更は Table メニューの明示操作のみとし、編集操作による自動変換は行わない。
+また、GFM パイプ表の区切り文字 `|` の配置スタイルとして、各列の最大幅に合わせて固定長の空白で揃える **Aligned モード** と、余分な空白を省く最小パディングの **Compact モード** を切り替え可能とし、ソースモード（Source Editor）では Tab キーによる表ブロック自動整列およびセル間ナビゲーションを提供する（AD-017, AD-018）。
 
 ### Inputs & Types
 
 | 入力 | 型 | 必須 | 最小 | 最大 | 備考 |
 |------|-----|------|------|------|------|
 | `tableFormat` | `'gfm'` \| `'html'` | はい（表ごと） | — | — | 当該表の永続化形式。読込時はソースから推論（既存 `gfmSource` / `html` 属性は互換推論に使用） |
+| `tablePipeAlignment` | `'aligned'` \| `'compact'` | 任意 | — | — | GFM パイプ表のフォーマットスタイル。既定値 `'aligned'`（VS Code 設定 `md-wysiwyg-editor.table.pipeAlignment` および Table メニューで切替可能）。`aligned` は列幅に合わせた固定長空白パディング、`compact` は区切り `|` 前後1スペースのみの最小配置 |
 | `insertTableFormat` | `'gfm'` \| `'html'` | はい（セッション） | — | — | 新規挿入のデフォルト形式。Webview 内メモリのみ（VS Code 再起動で `gfm` にリセット）。ワークスペース / ユーザー設定への永続化は MVP 非対象 |
-| `tableOperation` | 列挙 | 操作ごと | — | — | `insert`、行/列追加・削除（`addRowBefore` / `addRowAfter` / `deleteRow` / `addColumnBefore` / `addColumnAfter` / `deleteColumn`）、`deleteTable`、`convertToGfm`、`convertToHtml`、`setInsertDefault` |
+| `tableOperation` | 列挙 | 操作ごと | — | — | `insert`、行/列追加・削除（`addRowBefore` / `addRowAfter` / `deleteRow` / `addColumnBefore` / `addColumnAfter` / `deleteColumn`）、`deleteTable`、`convertToGfm`、`convertToHtml`、`setInsertDefault`、`setPipeAlignment`、`formatTable` |
 | `cellContent` | テキスト / リッチ | 任意 | 空 | — | `gfm`: インラインマーク・プレーンテキスト。**セル内改行**は `<br />`（または同等 hard break）として永続化し、Markdown↔Raw で**単一改行**として往復する（連続 `<br />` による空行相当・多重改行は不可／単一改行へ正規化）。リスト等のブロック構造は不可。`html`: 改行・リスト・チェックボックス可（本項の GFM 改行契約は HTML リッチセル仕様を変更しない） |
 | 表サイズ | 行 × 列 | はい | 1 × 1 | ソフト上限 100 行 × 20 列 | 超過時 UI 警告、保存は許可 |
 
@@ -346,8 +348,11 @@ Excel 的な表編集。各表は per-table `tableFormat`（`gfm` \| `html`）�
 
 | 条件 | 戻り値 / ステータス | 備考 |
 |------|-------------------|------|
-| 成功（`gfm`） | 表 UI 更新、保存時 GFM パイプ表出力 | AD-005, AD-013 |
+| 成功（`gfm`・aligned） | 表 UI 更新、保存時固定長空白で列位置を揃えた GFM パイプ表出力 | 全角文字（East Asian Width）を半角2文字分として計算し、視覚的な垂直ラインを保持 |
+| 成功（`gfm`・compact） | 表 UI 更新、保存時パイプ `|` 前後最小スペース（1文字）の GFM パイプ表出力 | 余剰空白を排除した最小幅シリアライズ |
 | 成功（`html`） | 表 UI 更新、保存時 HTML `<table>` ブロック出力 | AD-005, AD-010, AD-013 |
+| 成功（Source モード Tab） | 表ブロック検出・整列（aligned時）、次セルへカーソル移動 | 最終セル押下時は新規行を自動生成し先頭セルへ移動 |
+| 成功（Source モード Shift+Tab） | 前セルへカーソル移動 | 先頭セルの場合は前行の末尾セルへ移動 |
 | `convertToHtml` 成功 | 当該表の `tableFormat` を `html` に更新。確認なし即時実行（プレーンテキスト昇格、実質ロスレス） | Undo 1 段で復元可 |
 | `convertToGfm` 成功 | 当該表の `tableFormat` を `gfm` に更新。リスト・チェックボックス等のブロックリッチはプレーンテキストへ flatten。セル内改行は GFM の `<br />`（または同等 hard break）として保持し、単一改行へ正規化する | 実行前に確認ダイアログ必須 |
 | `convertToGfm` キャンセル | 変換なし、表・`tableFormat` 不変 | ユーザーが確認を拒否 |
@@ -359,7 +364,7 @@ Excel 的な表編集。各表は per-table `tableFormat`（`gfm` \| `html`）�
 ### Preconditions
 
 - 編集モードであること（Readonly 時は §5 に従い全操作無効）
-- 表は WYSIWYG 内部の表モデルとして存在すること
+- 表は WYSIWYG 内部の表モデル、または Source モードにおける連続したパイプ行ブロックとして存在すること
 - 行/列操作・形式変換はカーソルが当該表内にあること（挿入・セッションデフォルト切替を除く）
 
 ### Behavior
@@ -373,6 +378,7 @@ Table ボタン（▼ ドロップダウン）の構成:
 3. **Convert to GFM pipe table** — 当該表が `html` のときのみ有効
 4. **Convert to HTML table** — 当該表が `gfm` のときのみ有効
 5. **New tables default: GFM / HTML** — `insertTableFormat` とボタン色を更新（既存表の `tableFormat` は変更しない）
+6. **Table Style: Aligned / Compact** — GFM パイプ表のシリアライズおよび整形時の区切り配置スタイル（固定長空白揃え / 最小パディング）を切り替える
 
 Table ボタンの色は **セッション挿入デフォルト**（`insertTableFormat`）を反映する。GFM = 通常ツールバースタイル、HTML = アクセント色。カーソルが表内にあるときはドロップダウン内チェックマークで **当該表の `tableFormat`** を示し、ボタン色とは分離する。
 
@@ -394,22 +400,39 @@ Visual（Markdown）モードにおいて、表（`td` / `th` / `table`）要素
 - **メニュー非表示条件:** 項目選択時、メニュー外クリック時、`Escape` キー押下時、スクロールまたはリサイズ時にメニューを閉じる。
 - **配置境界調整:** 画面端（右端・下端）付近で開かれた場合、ビューポート内に収まるよう座標を調整する。
 
+#### ソースモードでの表編集・Tab 自動整列（AD-018）
+
+Source モード（`<textarea id="raw-editor">`）において、カーソルが Markdown 表（パイプ文字 `|` を含む連続行）内にある場合、以下のキー操作による編集支援を提供する。
+
+1. **Tab キー押下時の挙動:**
+   - カーソル位置の前後の空行または非テーブル行までの範囲を「現在の表ブロック」として抽出・解析する。
+   - `tablePipeAlignment` が `aligned` の場合、全列の最大表示文字幅（全角文字=2幅、半角文字=1幅）を算出し、全行のセルを固定長空白でパディングして垂直パイプラインを整列させる。
+   - 整形後の表ブロックにおいて、カーソルを「次のセル」の入力開始位置（区切り `|` の直後の空白後）へ移動する。
+   - 行末のセルにいる場合は次行の先頭セルへ移動する。
+   - 表の最後の行・最後のセルで Tab を押下した場合は、**新しい行（`|   |   | ... |`）を自動的に挿入**し、新行の先頭セルへカーソルをフォーカスする。
+2. **Shift + Tab キー押下時の挙動:**
+   - 整形を保持しつつ、カーソルを「一つ前のセル」へ移動する。行頭セルの場合は前行の末尾セルへ移動する。
+3. **非テーブル行での挙動:**
+   - 表以外の行で Tab / Shift+Tab を押下した場合は、通常のインデント（2スペース挿入または選択範囲のインデント/アウトデント）を実行する。
+
 #### 正常系
 
 1. 表の挿入、行/列の追加・削除、セル編集ができる（ツールバー Table メニューおよび表セルの右クリックコンテキストメニューから実行可能）
 2. `tableFormat: 'html'` の表では、セル内に複数行テキスト、箇条書き、チェックボックスを入力できる（HTML リッチセルの既存仕様は変更しない）
 3. `tableFormat: 'gfm'` の表では、セル内容はインラインマーク・プレーンテキストに制限する。**セル内改行**はソース上 `<br />`（または同等 hard break）として永続化し、Markdown 面では単一改行として表示・編集する。Raw の `<br />` を Markdown へ投影するときも単一改行とする（空行相当の多重改行は作らない）。リスト・複数段落などのブロック構造は不可
-4. 保存後の `.md` は当該表の `tableFormat` に応じて GFM パイプ表または HTML `<table>` として記録される。GFM 表セル内の改行はパイプ行内の `<br />`（または同等 hard break）として出力する
+4. 保存後の `.md` は当該表の `tableFormat` に応じて GFM パイプ表または HTML `<table>` として記録される。GFM 表セル内の改行はパイプ行内の `<br />`（または同等 hard break）として出力する。`tablePipeAlignment` 設定に基づき、固定長揃え（aligned）または最小空白（compact）でフォーマットされる
 5. 既存 GFM パイプ表の読込 → `tableFormat: 'gfm'`、既存 HTML `<table>` の読込 → `tableFormat: 'html'`（サニタイズ後）。属性欠落時は `gfmSource` / `html` 属性から推論する。GFM セル内の `<br />`（または同等）は単一改行として Document / Markdown 面へ復元する
 6. **GFM→HTML** 変換は確認なしで即時実行する。**HTML→GFM** 変換は実行前に確認ダイアログを表示する（例: 「リスト・チェックボックス等はプレーンテキストに flatten されます。セル内改行は `<br />` として保持されます。続行しますか？」）。flatten はブロックリッチの除去を指し、セル内改行は上記 GFM 改行契約に従い保持する。MVP に「今後表示しない」オプションは設けない
 7. 行数が 100 を超える、または列数が 20 を超える場合、エディタ内にソフト上限警告を表示する（保存は拒否しない）
 8. 表セル上で右クリックするとコンテキストメニューが表示され、選択した行列操作（追加・削除・表削除）が即座に対象セルに適用されてドキュメントが更新（dirty）される
+9. Source モードで表編集中に Tab キーを押下すると、設定が aligned の場合に自動的にパイプ位置が揃えられ、次のセルまたは新行へカーソルがジャンプする
 
 #### 例外系
 
 1. 外部 HTML 表の読込時、サニタイズ後に表示する（RK-003）
 2. 手書き GFM 表と HTML 表が同一リポジトリに混在しうる（RK-006 — スタイルガイド推奨）
 3. Readonly（§5）時、または Visual 以外のモード（Preview / Raw）では右クリックコンテキストメニューを表示しない（ツールバー項目も無効化）
+4. 不正なパイプ構文（列数が不一致な行など）を含む表ブロックで Tab を押下した場合、例外でクラッシュさせず、可能な限り行の列数を正規化して安全に整形を完了する
 
 #### 廃止（本機能以前の挙動）
 
@@ -426,7 +449,7 @@ Visual（Markdown）モードにおいて、表（`td` / `th` / `table`）要素
 
 ### Related Tests
 
-- [doc/test/testspec-vsc-md-wysiwyg.md](../test/testspec-vsc-md-wysiwyg.md) — TC-016–024, TC-065（既存）。**要追記:** 挿入デフォルト GFM、HTML 挿入、HTML→GFM 確認付き変換・flatten、GFM→HTML 変換、メニュー行/列操作、ボタン色 / セッションデフォルト切替、Readonly 無効、GFM/HTML round-trip（`table-gfm-html-mode`）。**要追記（回帰）:** GFM セル内改行 ↔ Raw `<br />` 単一改行往復、連続 `<br />` の単一改行正規化（`gfm-table-linebreak-fix`）。**右クリックコンテキストメニュー:** TC-160–165（`table-context-menu`）
+- [doc/test/testspec-vsc-md-wysiwyg.md](../test/testspec-vsc-md-wysiwyg.md) — TC-016–024, TC-065（既存）。**要追記:** 挿入デフォルト GFM、HTML 挿入、HTML→GFM 確認付き変換・flatten、GFM→HTML 変換、メニュー行/列操作、ボタン色 / セッションデフォルト切替、Readonly 無効、GFM/HTML round-trip（`table-gfm-html-mode`）。**要追記（回帰）:** GFM セル内改行 ↔ Raw `<br />` 単一改行往復、連続 `<br />` の単一改行正規化（`gfm-table-linebreak-fix`）。**右クリックコンテキストメニュー:** TC-160–165（`table-context-menu`）。**要追記（新機能）:** 表フォーマット切替（Aligned vs Compact）、全角文字幅整列、Source モードでの Tab / Shift+Tab 表自動整列およびセル移動・新行挿入（`table-format-and-editor-assist`）
 
 ---
 
@@ -1106,6 +1129,40 @@ LaTeX 構文の数式記法（````math ... ```` コードブロックおよび `
 
 ---
 
+## §15 Markdown 編集支援（エディタ入力アシスト）
+
+### 概要
+
+Source モード（Raw エディタ）およびエディタ全般における Markdown 記法の入力・編集体験を向上させる支援機能群（AD-018）。リストの自動継続、書式トグルショートカット、スマート URL ペースト、目次（TOC）自動生成を提供する。
+
+### 1. リスト編集支援（List Editing）
+
+- **自動リスト継続**: 箇条書き（`- `, `* `, `+ `）または番号付きリスト（`1. `, `2. ` 等）の行で `Enter` を押下した際、次の行へ自動的に同一種別のリストマーカーを挿入する。番号付きリストの場合は番号を自動的にインクリメント（+1）する。
+- **リスト終了**: マーカーのみ（本文が空）の行で `Enter` を押下した場合、現在の行のマーカーを削除し、リストを終了して通常の空行とする。
+- **インデント・アウトデント**: リスト行で `Tab` を押下した場合は 2 スペース分のインデント（ネスト深化）を行い、`Shift + Tab` を押下した場合はインデントを解除（アウトデント）する。
+- **タスクリストのトグル**: ショートカットキー `Alt + C` を押下することで、カーソル行（または選択範囲内の全行）のタスクリストマーカー（`- [ ]` と `- [x]`）を相互にトグル切り替えする。
+
+### 2. 書式ショートカットキー（Formatting Shortcuts）
+
+Source モード（`<textarea id="raw-editor">`）において、選択テキストに対するマークアップのトグル操作を提供する。
+- `Ctrl+B` / `Cmd+B`: 太字（`**text**`）トグル
+- `Ctrl+I` / `Cmd+I`: 斜体（`*text*`）トグル
+- `Alt+S`: 取り消し線（`~~text~~`）トグル
+- `Ctrl+M` / `Cmd+M`: インライン数式（`$text$`）トグル
+- `Ctrl+K`: リンク構文（`[text](url)`）挿入。クリップボードに URL 文字列が存在する場合は自動でリンク先として補完する
+
+### 3. スマート URL ペースト（Smart Link Paste）
+
+Source モードおよび Visual モードにおいて、文字列を選択した状態でクリップボードの URL（`http://` または `https://`）を貼り付け（Paste）した場合、選択テキストをそのまま置換するのではなく、選択テキストをラベルとして `[選択テキスト](URL)` に自動変換して挿入する。
+
+### 4. 目次（Table of Contents: TOC）生成・自動更新
+
+- **TOC 挿入**: コマンドまたはツールバーから、ドキュメント内の見出し（H1〜H6）を解析し、Markdown リンク形式の階層化目次ブロックを生成する。
+- **TOC コメントタグ管理**: 目次は `<!-- TOC -->` と `<!-- /TOC -->` のコメントブロック内に生成される。
+- **自動同期**: 保存時または TOC 更新コマンド実行時に、ドキュメント内の既存 TOC ブロックの内容を最新の見出し構造に同期する。
+
+---
+
 | ID | 内容 | 本仕様での扱い |
 |----|------|---------------|
 | RK-001 | HTML 混在による Git diff 可読性低下 | AD-013 で緩和。レビューはプレビュー推奨 |
@@ -1227,4 +1284,5 @@ LaTeX 構文の数式記法（````math ... ```` コードブロックおよび `
 | 2026-10-21 | §11, 改訂履歴 | 検索・置換機能追加（`search-replace-widget`）: Visual・Source・Preview の各面で VS Code 標準準拠の検索・置換ウィジェットを提供。ProseMirror Decoration によるハイライト、Undo 統合置換、正規表現/単語単位/大文字小文字区別オプション、キーバインド（Cmd+F / Cmd+H / Escape / Enter）を契約化 |
 | 2026-10-22 | §12, §13, 改訂履歴 | PlantUML 表示サポート（`plantuml-support`）およびドキュメントエクスポート機能（`document-export`）の仕様追加。PlantUML はローカル Java/CLI 実行（アプローチ B）、未検出時は図非表示の安全縮退を契約化。エクスポートはスタンドアロン HTML、PDF、DOCX、PPTX のパイプラインを定義 |
 | 2026-10-22 | §14, 改訂履歴 | 数式レンダリング（`katex-math-rendering`）の仕様追加。LaTeX 構文（math / latex フェンス）を KaTeX でリアルタイム描画。三点モード（Visual: 図+ソース / Preview: 図のみ）を契約化 |
+| 2026-10-23 | §3, §15, 改訂履歴 | 表フォーマット切替（Aligned vs Compact）およびエディタ入力支援（`table-format-and-editor-assist`）: GFM パイプ表の区切り文字固定長整列／最小空白パディングの切替（設定 `md-wysiwyg-editor.table.pipeAlignment` および Table メニュー）、全角文字幅（CJK）対応、Source モードでの Tab / Shift+Tab 表自動整列およびセル移動・新行挿入、リスト編集支援（Enter 継続・終了、Tab インデント）、書式トグルショートカット、スマート URL ペースト、目次（TOC）自動生成・同期を契約化 |
 

@@ -1,0 +1,30 @@
+# Test Specification: table-format-and-editor-assist
+
+表フォーマット形式切替（Aligned vs Compact）、全角文字幅整列、ソースモードにおける表編集支援（Tab キー自動整列・セルナビゲーション）、および Markdown 入力支援機能群の振る舞い検証仕様。
+
+- **対応仕様:** [doc/requirements/systemspec.md](../requirements/systemspec.md) §3, §15 / [doc/design/architecture.md](../design/architecture.md) AD-017, AD-018
+- **テストコード:**
+  - `src/test/suite/unit/table-formatter.test.ts`
+  - `src/test/suite/unit/editor-assist.test.ts`
+  - `src/test/suite/unit/markdown-serializer-table.test.ts`
+
+## Test Matrix
+
+| TC ID | 区分 | 項目 | 入力・条件 | 期待結果 (Expected) |
+|---|---|---|---|---|
+| `TC-TAB-001` | P0 | 表フォーマット（Aligned） | 任意の Markdown 表, `tablePipeAlignment === 'aligned'` | 各列の最大幅に合わせて固定長の空白がパディングされ、パイプ文字 `\|` の位置が揃う |
+| `TC-TAB-002` | P0 | 表フォーマット（Compact） | 任意の Markdown 表, `tablePipeAlignment === 'compact'` | パイプ文字 `\|` の前後に最小1文字の半角スペースのみが配置され、余剰空白が排除される |
+| `TC-TAB-003` | P0 | 全角文字幅計算（East Asian Width） | 日本語・全角文字を含むセル | 全角文字を表示幅2（半角文字は1）として正確に計算し、表示上の垂直整列を保持する |
+| `TC-TAB-004` | P1 | VS Code 設定反映 | 設定 `md-wysiwyg-editor.table.pipeAlignment` | 設定値（aligned / compact）に応じてシリアライズ・フォーマット挙動が切り替わる |
+| `TC-TAB-005` | P0 | ソースモード Tab 表整列 | 表内行で Tab 押下（aligned 時） | 現在の表ブロック全体が検出され、列幅に合わせて自動フォーマットされる |
+| `TC-TAB-006` | P0 | ソースモード Tab 次セル移動 | 表セル内で Tab 押下 | 直後の区切り文字 `\|` を超えて次のセルの入力位置へカーソルがジャンプする |
+| `TC-TAB-007` | P0 | ソースモード Shift+Tab 前セル移動 | 表セル内で Shift+Tab 押下 | 直前のセル入力位置へカーソルが戻る |
+| `TC-TAB-008` | P0 | 表末尾での新規行自動追加 | 表の最終セルで Tab 押下 | 新規行（`\|   \|   \| ... \|`）が自動挿入され、先頭セルにフォーカスする |
+| `TC-TAB-009` | P1 | 非テーブル行の Tab 挙動 | 表外テキスト行で Tab 押下 | 表整列は走らず、通常のインデント（2スペース挿入）として動作する |
+| `TC-AST-001` | P0 | リスト自動継続（箇条書き・番号） | リスト項目行末で Enter 押下 | 次行に自動で `- ` やインクリメントされた `2. ` 等のマーカーが挿入される |
+| `TC-AST-002` | P0 | リスト終了（空マーカー） | マーカーのみの行で Enter 押下 | 現在行のマーカーが削除され、通常の空行となってリストが終了する |
+| `TC-AST-003` | P1 | リストのインデント・アウトデント | リスト行で Tab / Shift+Tab 押下 | マーカーのインデント（ネスト深化）およびアウトデント（ネスト解除）が行われる |
+| `TC-AST-004` | P1 | タスクリストトグル | タスク行で Alt+C 押下 | `- [ ]` と `- [x]` が相互にトグル切り替えされる |
+| `TC-AST-005` | P1 | ソースモード書式ショートカット | テキスト選択中に Cmd/Ctrl+B, I, Alt+S 押下 | 選択範囲が `**text**` や `*text*`, `~~text~~` で囲まれる（既存マーク時は解除） |
+| `TC-AST-006` | P1 | スマート URL ペースト | テキスト選択中に URL 文字列をペースト | 選択テキストが保持され、`[選択テキスト](URL)` に自動変換されて貼り付けられる |
+| `TC-AST-007` | P1 | 目次（TOC）生成・更新 | 見出しを含む文書で TOC 生成実行 | `<!-- TOC -->` ブロック内に階層的なアンカーリンク目次が生成・同期される |

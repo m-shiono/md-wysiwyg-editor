@@ -44,6 +44,7 @@ export type WebviewInboundMessage =
   | { type: 'pasteImage'; mime: string; dataBase64: string }
   | { type: 'mermaidError'; error: string }
   | { type: 'renderPlantUml'; id: string; source: string }
+  | { type: 'setTablePipeAlignment'; alignment: 'aligned' | 'compact' }
   | { type: 'log'; message: string }
   | { type: 'openNativePreview' };
 
