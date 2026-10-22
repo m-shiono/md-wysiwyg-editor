@@ -25,3 +25,7 @@ import './suite/unit/native-preview-side-and-default-raw.test';
 import './suite/unit/table-context-menu.test';
 import './suite/unit/find-replace-widget.test';
 import './suite/unit/list-indent-and-paste.test';
+import './suite/unit/plantuml-support.test';
+import './suite/unit/document-export.test';
+import './suite/unit/katex-math.test';
+

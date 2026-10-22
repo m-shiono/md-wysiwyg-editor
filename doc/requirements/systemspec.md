@@ -1009,7 +1009,102 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 
 ---
 
-## リスク・制約（RK-*）
+## §12 PlantUML レンダリング（ローカル実行・アプローチ B）
+
+### 概要
+
+Markdown 内の ````plantuml ... ```` コードブロックを、ローカルの PlantUML 実行環境（Java / `plantuml.jar` / `plantuml` コマンド）を用いて SVG に非同期レンダリングし、Webview 上に図として表示する（アプローチ B）。
+機密情報保護のため外部公開サーバーへの図ソース送信は行わない（AD-PLANTUML-001）。
+ローカルに PlantUML 実行環境が存在しない場合は、ユーザーの編集作業を妨げないよう **図プレビュー領域を非表示（通常のフェンスブロック扱い）** とし、エラーダイアログ等を出さずに静かにフォールバックする（AD-PLANTUML-002）。
+
+### Inputs & Types
+
+| 入力 | 型 | 必須 | 備考 |
+|------|-----|------|------|
+| `plantumlSource` | `string` | はい | ````plantuml```` フェンス内のテキスト |
+| `jarPath` | `string` | 任意 | 設定 `md-wysiwyg-editor.plantuml.jarPath`（未指定時は環境変数 `PLANTUML_JAR` または PATH 探索） |
+| `customCommand` | `string` | 任意 | 設定 `md-wysiwyg-editor.plantuml.command`（未指定時は `plantuml` または `java`） |
+
+### Outputs & Failure Returns
+
+| 条件 | 戻り値 / 表示 | 備考 |
+|------|--------------|------|
+| 成功（実行環境あり＋構文正常） | ブロック内に SVG 図描画（Markdown では図下にソース併記、Preview では図のみ表示） | DOMPurify サニタイズ後に描画 |
+| 実行環境なし（未検出） | **図プレビュー領域を非表示**（通常のコードブロックとして表示） | エラーダイアログは出さない（ユーザー要件）。Output に debug 記録のみ |
+| 構文エラー / プロセス失敗 | エラーメッセージ枠（`.plantuml-error`）または図プレビュー非表示 | Document 正本は一切破壊しない |
+| レンダリングタイムアウト（5秒超過） | プロセス強制 kill ＋ タイムアウト警告 | Webview やエディタをフリーズさせない |
+
+### Behavior
+
+1. **ローカル環境探索**:
+   - Extension Host 起動時およびレンダリング要求時に、指定された jar パス、PATH 上の `plantuml`、または `java -jar` の存在を確認する。
+2. **非同期レンダリング**:
+   - Webview から debounce（約 400ms）後にソースが Extension Host へ送信される。
+   - Extension Host の `PlantUmlRenderer` が `child_process.spawn` を使用して標準入力経由でソースを渡し、SVG 出力を受け取る。
+   - キャッシュ機構: ソース文字列のハッシュ値によりレンダリング結果をメモリキャッシュし、重複実行を抑制する。
+3. **安全な SVG 描画 & サニタイズ**:
+   - 受信した SVG は Webview 内で DOMPurify（Mermaid と同様、`foreignObject` / テキスト要素を安全に許可しつつ `<script>` やイベントハンドラを除去）を通じてサニタイズされた上で DOM に挿入される。
+4. **モード別表示**:
+   - **Visual (`markdown`) モード**: 図（`.plantuml-preview`）の下にソースコードエディタ（`.plantuml-source`）を表示し、編集可能。
+   - **Preview (`preview`) モード**: 図のみを表示し、ソースは非表示（`display: none`）。編集イベントは送らない（厳密 RO）。
+   - **Raw (`raw`) モード**: 通常のテキスト。
+
+---
+
+## §13 ドキュメントエクスポート機能（HTML / PDF / DOCX / PPTX 変換）
+
+### 概要
+
+編集中のドキュメントを、共有や提出、印刷に適した各種フォーマット（スタンドアロン HTML、PDF、DOCX、PPTX）に変換・出力する機能を提供する。
+
+### サポートフォーマットと変換パイプライン
+
+| 形式 | 対象ドキュメント | 実現パイプライン | 外部依存 |
+|---|---|---|---|
+| **HTML** | 全 Markdown 文書 | スタンドアロン HTML 生成。エディタスタイル、ローカル画像（Base64 埋め込み）、Mermaid / PlantUML SVG を 1 ファイルに自己完結化 | なし（内蔵） |
+| **PDF** | 全 Markdown / Marp | ① 通常文書: Webview 印刷ダイアログ（Print to PDF）連携。<br>② Marp 文書: `@marp-team/marp-cli` による高精度スライド PDF 出力 | Chrome / Chromium（Marp 時） |
+| **DOCX** | 全 Markdown 文書 | Pandoc コマンド連携（`pandoc -f markdown -t docx`）または内蔵 HTML-to-DOCX コンバータ | Pandoc（利用可能な場合） |
+| **PPTX** | Marp スライド文書 | `@marp-team/marp-cli` による PowerPoint プレゼンテーション（`--pptx`）出力 | Marp CLI + Chrome |
+
+### コマンドと操作導線
+
+- コマンドパレットおよびエディタタイトルメニュー・コンテキストメニューから `Export Document...` を起動し、出力形式を選択可能とする。
+- 未保存バッファが存在する場合は、エクスポート前に保存確認ゲート（Dirty Save Check）を設ける。
+
+---
+
+## §14 数式レンダリング（KaTeX）
+
+### 概要
+
+LaTeX 構文の数式記法（````math ... ```` コードブロックおよび `$$ ... $$`）を、KaTeX を用いてリアルタイムに高品質な数式としてレンダリングする。
+
+### Inputs & Types
+
+| 入力 | 型 | 必須 | 備考 |
+|------|-----|------|------|
+| `mathSource` | `string` | はい | LaTeX 記法の数式コード |
+| `displayMode` | `boolean` | いいえ | ブロック数式時は `true`（既定） |
+
+### Outputs & Failure Returns
+
+| 条件 | 戻り値 / 表示 | 備考 |
+|------|--------------|------|
+| 成功（構文正常） | 数式プレビュー描画（Visual では図下ソース併記、Preview では数式のみ表示） | KaTeX レンダリング結果を DOMPurify サニタイズ後に挿入 |
+| 構文エラー | 赤いエラー表示（`.katex-error`） | `throwOnError: false` でエラーを安全に捕捉しエディタをクラッシュさせない |
+
+### Behavior
+
+1. **NodeView 構成**:
+   - `language === 'math'` または `language === 'latex'` のフェンスブロックを数式ノードとして扱う。
+   - **Visual (`markdown`) モード**: 数式プレビュー（`.math-preview`）の下にソースコードエディタ（`.math-source`）を併記。
+   - **Preview (`preview`) モード**: 数式プレビューのみ表示、ソースは非表示（`display: none`）。
+   - **Raw (`raw`) モード**: 通常のテキスト。
+2. **高速・安全レンダリング**:
+   - `katex.renderToString` によりクライアントサイドで直接 HTML/MathML を生成。
+   - 入力変更に対して debounce（約 200ms）を適用。
+
+---
 
 | ID | 内容 | 本仕様での扱い |
 |----|------|---------------|
@@ -1130,3 +1225,6 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 | 2026-10-19 | §1, §5, Spec Gaps, Related Tests, 改訂履歴 | Preview Mermaid ソース非表示化: Preview モード（`preview`）では `body[data-mode='preview'] .mermaid-source { display: none; }` により `.mermaid-source` を非表示とし、図のみを表示。Visual（`markdown`）モードでは図下ソース併記を維持 |
 | 2026-10-19 | §3, Spec Gaps, Related Tests, 改訂履歴 | 表の右クリックコンテキストメニュー追加（`table-context-menu`）: Visual（`markdown`）モードの表セル（`td`/`th`）右クリック時に、ポインター位置に対象セル操作（行/列の追加・削除、表削除）のコンテキストメニューを表示する仕様を契約化（UD-1 A / UD-2 A）。ツールバー機能は維持。Readonly / Visual 以外では非表示 |
 | 2026-10-21 | §11, 改訂履歴 | 検索・置換機能追加（`search-replace-widget`）: Visual・Source・Preview の各面で VS Code 標準準拠の検索・置換ウィジェットを提供。ProseMirror Decoration によるハイライト、Undo 統合置換、正規表現/単語単位/大文字小文字区別オプション、キーバインド（Cmd+F / Cmd+H / Escape / Enter）を契約化 |
+| 2026-10-22 | §12, §13, 改訂履歴 | PlantUML 表示サポート（`plantuml-support`）およびドキュメントエクスポート機能（`document-export`）の仕様追加。PlantUML はローカル Java/CLI 実行（アプローチ B）、未検出時は図非表示の安全縮退を契約化。エクスポートはスタンドアロン HTML、PDF、DOCX、PPTX のパイプラインを定義 |
+| 2026-10-22 | §14, 改訂履歴 | 数式レンダリング（`katex-math-rendering`）の仕様追加。LaTeX 構文（math / latex フェンス）を KaTeX でリアルタイム描画。三点モード（Visual: 図+ソース / Preview: 図のみ）を契約化 |
+

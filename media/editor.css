@@ -626,6 +626,88 @@ body[data-mode='preview'] .mermaid-source {
   display: none;
 }
 
+.plantuml-block {
+  margin: 1rem 0;
+}
+
+.plantuml-preview {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: auto;
+  padding: 8px;
+  background: var(--vscode-editor-background);
+}
+
+.plantuml-preview svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.plantuml-error {
+  color: var(--vscode-errorForeground);
+  background: var(--vscode-inputValidation-errorBackground);
+  font-size: 0.9em;
+  padding: 8px;
+  border-radius: 4px;
+}
+
+.plantuml-source {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.85em;
+  white-space: pre-wrap;
+  background: var(--vscode-textCodeBlock-background);
+  padding: 8px;
+  margin-top: 8px;
+}
+
+.plantuml-source .ProseMirror-trailingBreak {
+  display: none;
+}
+
+body[data-mode='preview'] .plantuml-source {
+  display: none;
+}
+
+.math-block {
+  margin: 1rem 0;
+}
+
+.math-preview {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: auto;
+  padding: 12px;
+  background: var(--vscode-editor-background);
+  font-size: 1.1em;
+}
+
+.katex-error {
+  color: var(--vscode-errorForeground);
+  background: var(--vscode-inputValidation-errorBackground);
+  font-size: 0.9em;
+  padding: 8px;
+  border-radius: 4px;
+}
+
+.math-source {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.85em;
+  white-space: pre-wrap;
+  background: var(--vscode-textCodeBlock-background);
+  padding: 8px;
+  margin-top: 8px;
+}
+
+.math-source .ProseMirror-trailingBreak {
+  display: none;
+}
+
+body[data-mode='preview'] .math-source {
+  display: none;
+}
+
 #preview-marp-root {
   overflow: auto;
   flex: 1;

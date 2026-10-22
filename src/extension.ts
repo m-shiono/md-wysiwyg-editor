@@ -6,6 +6,7 @@ import { MarkdownEditorProvider } from './providers/markdown-editor-provider';
 import { setExtensionContext } from './utils/extension-context';
 import { setMarkdownEditorProvider } from './utils/editor-provider-hook';
 import { registerReloadExtensionCommand } from './commands/reload-extension';
+import { registerExportCommands } from './commands/export-document';
 import { registerEditorSwitchGuard } from './utils/editor-switch-guard';
 import { getOutputChannel } from './utils/logger';
 
@@ -30,6 +31,7 @@ export function activate(context: vscode.ExtensionContext): void {
     registerToggleReadonlyCommand(context, provider),
     registerMarpPreviewCommand(context, marpManager),
     registerNativeMarkdownPreviewCommand(context, provider),
+    ...registerExportCommands(context, provider),
     registerEditorSwitchGuard(context),
     registerReloadExtensionCommand(context),
     output,

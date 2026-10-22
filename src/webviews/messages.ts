@@ -20,7 +20,8 @@ export type WebviewOutboundMessage =
   | { type: 'rawParseFailed'; failed: boolean; message?: string }
   | { type: 'modeChanged'; editorMode: EditorMode }
   | { type: 'previewMarpHtml'; html: string }
-  | { type: 'themeUpdated'; kind: 'light' | 'dark' | 'highContrast' };
+  | { type: 'themeUpdated'; kind: 'light' | 'dark' | 'highContrast' }
+  | { type: 'plantUmlRendered'; id: string; svg: string; available: boolean };
 
 export type WebviewInboundMessage =
   | { type: 'ready' }
@@ -42,6 +43,7 @@ export type WebviewInboundMessage =
   | { type: 'checkTableLimits'; rows: number; cols: number }
   | { type: 'pasteImage'; mime: string; dataBase64: string }
   | { type: 'mermaidError'; error: string }
+  | { type: 'renderPlantUml'; id: string; source: string }
   | { type: 'log'; message: string }
   | { type: 'openNativePreview' };
 

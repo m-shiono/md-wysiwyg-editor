@@ -14,6 +14,7 @@ import Image from "@tiptap/extension-image";
 import { common, createLowlight } from "lowlight";
 import mermaid from "mermaid";
 import DOMPurify from "dompurify";
+import katex from "katex";
 import { buildMermaidRenderSource } from "../src/utils/mermaid-render";
 import {
   buildMermaidThemeConfig,
@@ -85,6 +86,8 @@ const mermaidTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const mermaidRerenderCallbacks = new Set<() => void>();
 const mermaidFitCallbacks = new Set<() => void>();
 let mermaidThemeRerenderTimer: ReturnType<typeof setTimeout> | undefined;
+const plantUmlTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const plantUmlCallbacks = new Map<string, (svg: string, available: boolean) => void>();
 /** ELK ローダは初回 layout:elk 要求時のみ動的 import（AD-007）。 */
 let elkLayoutRegisterPromise: Promise<void> | undefined;
 
@@ -362,7 +365,150 @@ const HtmlBlockNode = Node.create({
 const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
   addNodeView() {
     return ({ node }) => {
-      const language = (node.attrs.language as string) ?? "";
+      const language = ((node.attrs.language as string) ?? "").toLowerCase();
+      if (language === "math" || language === "latex") {
+        const dom = document.createElement("div");
+        dom.classList.add("math-block");
+        dom.setAttribute("data-math-node", "true");
+
+        const preview = document.createElement("div");
+        preview.classList.add("math-preview");
+        preview.setAttribute("contenteditable", "false");
+        dom.appendChild(preview);
+
+        const pre = document.createElement("pre");
+        pre.classList.add("math-source");
+        const code = document.createElement("code");
+        code.classList.add(`language-${language}`);
+        pre.appendChild(code);
+        dom.appendChild(pre);
+
+        const renderPreview = (source: string) => {
+          if (!source.trim()) {
+            preview.innerHTML = "";
+            return;
+          }
+          try {
+            const html = katex.renderToString(source.trim(), {
+              displayMode: true,
+              throwOnError: false,
+            });
+            preview.innerHTML = DOMPurify.sanitize(html, {
+              USE_PROFILES: { svg: true, html: true },
+            });
+          } catch (err) {
+            preview.innerHTML = `<div class="katex-error">${escapeHtml(String(err))}</div>`;
+          }
+        };
+
+        code.addEventListener("input", () => {
+          renderPreview(code.textContent ?? "");
+        });
+
+        renderPreview(node.textContent);
+
+        return {
+          dom,
+          contentDOM: code,
+          update: (updatedNode) => {
+            if (updatedNode.type.name !== "codeBlock") {
+              return false;
+            }
+            const lang = ((updatedNode.attrs.language as string) ?? "").toLowerCase();
+            if (lang !== "math" && lang !== "latex") {
+              return false;
+            }
+            renderPreview(updatedNode.textContent);
+            return true;
+          },
+        };
+      }
+
+      if (language === "plantuml") {
+        const dom = document.createElement("div");
+        dom.classList.add("plantuml-block");
+        dom.setAttribute("data-plantuml-node", "true");
+
+        const preview = document.createElement("div");
+        preview.classList.add("plantuml-preview");
+        preview.setAttribute("contenteditable", "false");
+        dom.appendChild(preview);
+
+        const pre = document.createElement("pre");
+        pre.classList.add("plantuml-source");
+        const code = document.createElement("code");
+        code.classList.add("language-plantuml");
+        pre.appendChild(code);
+        dom.appendChild(pre);
+
+        const viewId = `plantuml-nv-${Math.random().toString(36).slice(2, 10)}`;
+
+        plantUmlCallbacks.set(viewId, (svg, available) => {
+          if (!available) {
+            preview.style.display = "none";
+            preview.innerHTML = "";
+            return;
+          }
+          preview.style.display = "";
+          if (svg) {
+            preview.innerHTML = sanitizePlantUmlSvg(svg);
+          } else {
+            preview.innerHTML = '<div class="plantuml-error">PlantUML render error</div>';
+          }
+        });
+
+        const renderPreview = (source: string) => {
+          const existing = plantUmlTimers.get(viewId);
+          if (existing) {
+            clearTimeout(existing);
+          }
+          plantUmlTimers.set(
+            viewId,
+            setTimeout(() => {
+              if (!source.trim()) {
+                preview.style.display = "none";
+                preview.innerHTML = "";
+                return;
+              }
+              vscode.postMessage({
+                type: "renderPlantUml",
+                id: viewId,
+                source,
+              });
+            }, 400)
+          );
+        };
+
+        code.addEventListener("input", () => {
+          renderPreview(code.textContent ?? "");
+        });
+
+        renderPreview(node.textContent);
+
+        return {
+          dom,
+          contentDOM: code,
+          update: (updatedNode) => {
+            if (updatedNode.type.name !== "codeBlock") {
+              return false;
+            }
+            if (((updatedNode.attrs.language as string) ?? "").toLowerCase() !== "plantuml") {
+              return false;
+            }
+            renderPreview(updatedNode.textContent);
+            return true;
+          },
+          destroy: () => {
+            const timer = plantUmlTimers.get(viewId);
+            if (timer) {
+              clearTimeout(timer);
+              plantUmlTimers.delete(viewId);
+            }
+            plantUmlCallbacks.delete(viewId);
+          },
+        };
+      }
+
       if (language !== "mermaid") {
         const pre = document.createElement("pre");
         const code = document.createElement("code");
@@ -622,6 +768,15 @@ function sanitizeMermaidSvg(svg: string): string {
     ADD_TAGS: ["foreignObject"],
     ADD_ATTR: ["xmlns"],
     // foreignObject 内の XHTML ラベルを空シェルにしない（mermaid-contrast-readable P0）
+    HTML_INTEGRATION_POINTS: { foreignobject: true },
+  });
+}
+
+function sanitizePlantUmlSvg(svg: string): string {
+  return DOMPurify.sanitize(svg, {
+    USE_PROFILES: { svg: true, svgFilters: true, html: true },
+    ADD_TAGS: ["foreignObject"],
+    ADD_ATTR: ["xmlns"],
     HTML_INTEGRATION_POINTS: { foreignobject: true },
   });
 }
@@ -2293,6 +2448,15 @@ window.addEventListener("message", (event) => {
         handleThemeUpdated(message.kind);
       }
       break;
+    case "plantUmlRendered": {
+      if (typeof message.id === "string") {
+        const cb = plantUmlCallbacks.get(message.id);
+        if (cb) {
+          cb(message.svg ?? "", !!message.available);
+        }
+      }
+      break;
+    }
   }
 });
 

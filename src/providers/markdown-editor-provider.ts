@@ -9,6 +9,7 @@ import {
   serializeMarkdown,
   type TipTapDoc,
 } from '../serializers/markdown-serializer';
+import { getDefaultPlantUmlRenderer } from '../utils/plantuml-renderer';
 import { isReadonly } from '../utils/readonly-state';
 import { checkTableLimits, countTableDimensions } from '../utils/table-limits';
 import {
@@ -458,6 +459,30 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
           logError(`Mermaid render error: ${message.error}`);
         }
         break;
+      case 'renderPlantUml':
+        if (typeof message.id === 'string' && typeof message.source === 'string') {
+          const config = vscode.workspace.getConfiguration('md-wysiwyg-editor');
+          const renderer = getDefaultPlantUmlRenderer(() => ({
+            jarPath: config.get<string>('plantuml.jarPath', ''),
+            command: config.get<string>('plantuml.command', ''),
+          }));
+          const available = await renderer.isAvailable();
+          let svg = '';
+          if (available) {
+            try {
+              svg = await renderer.renderSvg(message.source);
+            } catch (err) {
+              logError(`PlantUML render error: ${err}`);
+            }
+          }
+          this.postMessage(panel.webview, {
+            type: 'plantUmlRendered',
+            id: message.id,
+            svg,
+            available,
+          });
+        }
+        break;
       case 'log':
         if (typeof message.message === 'string') {
           logInfo(message.message);
@@ -547,6 +572,9 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     const styleUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'media', 'editor.css'),
     );
+    const katexStyleUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'media', 'katex.min.css'),
+    );
     const nonce = getNonce();
 
     const csp = [
@@ -565,6 +593,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
   <meta http-equiv="Content-Security-Policy" content="${csp}" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="${styleUri}" nonce="${nonce}" />
+  <link rel="stylesheet" href="${katexStyleUri}" nonce="${nonce}" />
   <title>MD WYSIWYG Editor</title>
 </head>
 <body data-readonly="${readonly}" data-mode="${DEFAULT_EDITOR_MODE}" data-csp-nonce="${nonce}" data-elk-chunk-uri="${elkChunkUri}">

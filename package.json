@@ -2,7 +2,7 @@
   "name": "vsc-md-editor",
   "displayName": "MD WYSIWYG Editor",
   "description": "WYSIWYG Markdown editor with tables, Mermaid, Marp preview, and image paste",
-  "version": "0.3.6",
+  "version": "0.3.8",
   "publisher": "mshiono",
   "author": "mshiono",
   "icon": "media/icon.png",
@@ -23,7 +23,12 @@
     "onCommand:md-wysiwyg-editor.openWithWysiwyg",
     "onCommand:md-wysiwyg-editor.reloadExtension",
     "onCommand:md-wysiwyg-editor.showNativeMarkdownPreview",
-    "onCommand:md-wysiwyg-editor.showNativeMarkdownPreviewToSide"
+    "onCommand:md-wysiwyg-editor.showNativeMarkdownPreviewToSide",
+    "onCommand:md-wysiwyg-editor.exportDocument",
+    "onCommand:md-wysiwyg-editor.exportHtml",
+    "onCommand:md-wysiwyg-editor.exportPdf",
+    "onCommand:md-wysiwyg-editor.exportDocx",
+    "onCommand:md-wysiwyg-editor.exportPptx"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -81,6 +86,32 @@
         "command": "md-wysiwyg-editor.showNativeMarkdownPreviewToSide",
         "title": "Open VS Code Markdown Preview",
         "category": "MD WYSIWYG Editor"
+      },
+      {
+        "command": "md-wysiwyg-editor.exportDocument",
+        "title": "Export Document...",
+        "category": "MD WYSIWYG Editor",
+        "icon": "$(export)"
+      },
+      {
+        "command": "md-wysiwyg-editor.exportHtml",
+        "title": "Export to HTML",
+        "category": "MD WYSIWYG Editor"
+      },
+      {
+        "command": "md-wysiwyg-editor.exportPdf",
+        "title": "Export to PDF",
+        "category": "MD WYSIWYG Editor"
+      },
+      {
+        "command": "md-wysiwyg-editor.exportDocx",
+        "title": "Export to DOCX (Word)",
+        "category": "MD WYSIWYG Editor"
+      },
+      {
+        "command": "md-wysiwyg-editor.exportPptx",
+        "title": "Export to PPTX (PowerPoint)",
+        "category": "MD WYSIWYG Editor"
       }
     ],
     "configuration": {
@@ -90,6 +121,16 @@
           "type": "boolean",
           "default": false,
           "description": "Automatically reopen the WYSIWYG editor when switching from it to the built-in Markdown editor via the IDE title bar."
+        },
+        "md-wysiwyg-editor.plantuml.jarPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the local plantuml.jar file. If empty, the PLANTUML_JAR environment variable or system PATH will be searched."
+        },
+        "md-wysiwyg-editor.plantuml.command": {
+          "type": "string",
+          "default": "",
+          "description": "Custom command to run PlantUML (e.g. 'plantuml' or 'java'). If empty, default executable search is used."
         }
       }
     },
@@ -113,6 +154,12 @@
           "command": "md-wysiwyg-editor.toggleReadonly",
           "when": "activeCustomEditorId == md-wysiwyg-editor.wysiwyg",
           "group": "navigation"
+        },
+        {
+          "command": "md-wysiwyg-editor.exportDocument",
+          "when": "resourceExtname == .md && activeCustomEditorId == md-wysiwyg-editor.wysiwyg",
+          "group": "navigation@1",
+          "icon": "$(export)"
         },
         {
           "command": "md-wysiwyg-editor.openWithWysiwyg",
@@ -173,6 +220,7 @@
     "@tiptap/pm": "3.31.4",
     "@tiptap/starter-kit": "3.31.4",
     "dompurify": "^3.4.14",
+    "katex": "^0.17.0",
     "lowlight": "^3.1.0",
     "mdast-util-from-markdown": "^2.0.2",
     "mdast-util-gfm-strikethrough": "^2.0.0",
