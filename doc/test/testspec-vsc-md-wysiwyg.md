@@ -806,3 +806,5 @@ P0 + P1 の机上トレース（実装前）。
 | 2026-10-19 | TC-130 / TC-132 Expected 更新 | Preview モードでの Mermaid ソース非表示化（`body[data-mode='preview'] .mermaid-source { display: none; }`）。Markdown ではソース併記を維持 |
 | 2026-10-19 | TC-160–165 追加 | 表の右クリックコンテキストメニュー（`table-context-menu`）: Visualモードでの表セル右クリック表示、行列操作・表削除、Escape/外部クリックでのキャンセル、Readonly/非Visualモードでのガード |
 | 2026-10-21 | TC-170–176 追加 | 検索・置換機能（`search-replace-widget`）: Visual・Source・Preview でのウィジェット開閉・キーバインド（Cmd+F/Cmd+H/Escape）、Source/Visual での検索ナビゲーション・置換・全置換、検索オプション（Case/Word/Regex）と正規表現安全性、Preview/Readonly での置換ガード |
+| 2026-10-22 | TC-PASTE-001–005, TC-LIST-001–008 追加 | テキストペースト保護（Web/Officeリッチテキストコピー時の画像誤爆防止・通常ペースト委譲）および箇条書き・タスクリストのスマートインデント（先頭行含む複数選択でのぶら下げネスト、Shift-Tabアウトデント、フォーカス離脱防止、テーブル保護） |
+

@@ -25,6 +25,10 @@ import {
 import type { ThemeKind } from "../src/utils/theme-sync";
 import { SearchAndReplace } from "./extensions/search-and-replace";
 import {
+  ListKeymap,
+  shouldDelegateToTextPaste,
+} from "../src/utils/list-keymap";
+import {
   FindWidget,
   RawSearchAdapter,
   TipTapSearchAdapter,
@@ -1123,6 +1127,7 @@ function getEditorExtensions() {
     TableHeader,
     TaskList,
     TaskItem.configure({ nested: true }),
+    ListKeymap,
     MermaidAwareCodeBlock,
     Image.configure({ inline: true, allowBase64: false }),
     HtmlTableExtension,
@@ -2126,14 +2131,23 @@ function attachPasteHandler(): void {
     if (readonly || editorMode !== "markdown" || !event.clipboardData) {
       return;
     }
-    const items = event.clipboardData.items;
+
+    // クリップボードにテキスト（text/plain や text/html）が含まれている場合、
+    // ユーザーは文字を貼り付けようとしている。WebやOffice等からコピーした際、
+    // 同時にプレビュー用 image/png が含まれることがあるが、テキストがある場合は通常ペーストへ委譲する。
+    const clipboardData = event.clipboardData;
+    if (shouldDelegateToTextPaste(clipboardData)) {
+      return;
+    }
+
+    const items = clipboardData.items;
     for (const item of items) {
       if (item.type.startsWith("image/")) {
-        event.preventDefault();
         const file = item.getAsFile();
         if (!file) {
-          return;
+          continue;
         }
+        event.preventDefault();
         const reader = new FileReader();
         reader.onload = () => {
           const result = reader.result as string;

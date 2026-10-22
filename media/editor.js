@@ -227633,6 +227633,158 @@ ${prefix}
     }
   });
 
+  // src/utils/list-keymap.ts
+  function shouldDelegateToTextPaste(clipboardData) {
+    const plainText = clipboardData.getData("text/plain");
+    const htmlText = clipboardData.getData("text/html");
+    return Boolean(plainText && plainText.length > 0 || htmlText && htmlText.length > 0);
+  }
+  function getActiveListItemType(state4) {
+    const { $from } = state4.selection;
+    const { nodes: nodes5 } = state4.schema;
+    const tableType = nodes5.table;
+    const listItemType = nodes5.listItem;
+    const taskItemType = nodes5.taskItem;
+    if (tableType) {
+      for (let d3 = $from.depth; d3 > 0; d3--) {
+        if ($from.node(d3).type === tableType) {
+          return null;
+        }
+      }
+    }
+    for (let d3 = $from.depth; d3 > 0; d3--) {
+      const node2 = $from.node(d3);
+      if (listItemType && node2.type === listItemType) {
+        return listItemType;
+      }
+      if (taskItemType && node2.type === taskItemType) {
+        return taskItemType;
+      }
+    }
+    return null;
+  }
+  function executeSink(range3, itemType, state4, dispatch3) {
+    const { parent: parent4, startIndex } = range3;
+    const nodeBefore = parent4.child(startIndex - 1);
+    if (nodeBefore.type !== itemType) {
+      return false;
+    }
+    if (dispatch3) {
+      const nestedBefore = nodeBefore.lastChild && nodeBefore.lastChild.type === parent4.type;
+      const inner2 = Fragment.from(nestedBefore ? itemType.create() : null);
+      const slice6 = new Slice(
+        Fragment.from(
+          itemType.create(
+            null,
+            Fragment.from(parent4.type.create(null, inner2))
+          )
+        ),
+        nestedBefore ? 3 : 1,
+        0
+      );
+      const before = range3.start;
+      const after = range3.end;
+      dispatch3(
+        state4.tr.step(
+          new ReplaceAroundStep(
+            before - (nestedBefore ? 3 : 1),
+            after,
+            before,
+            after,
+            slice6,
+            1,
+            true
+          )
+        ).scrollIntoView()
+      );
+    }
+    return true;
+  }
+  function customSinkListItem(itemType) {
+    return function(state4, dispatch3) {
+      const { $from, $to } = state4.selection;
+      const range3 = $from.blockRange(
+        $to,
+        (node2) => node2.childCount > 0 && node2.firstChild.type === itemType
+      );
+      if (!range3) {
+        return false;
+      }
+      const { parent: parent4, startIndex, endIndex } = range3;
+      if (startIndex === 0 && endIndex === 1) {
+        return true;
+      }
+      if (startIndex === 0 && endIndex > 1) {
+        const firstChild = parent4.child(0);
+        const subStartPos = range3.start + firstChild.nodeSize;
+        const subEndPos = range3.end;
+        if (subStartPos < subEndPos) {
+          const $subFrom = state4.doc.resolve(subStartPos + 1);
+          const $subTo = state4.doc.resolve(subEndPos - 1);
+          const subRange = $subFrom.blockRange(
+            $subTo,
+            (node2) => node2.childCount > 0 && node2.firstChild.type === itemType
+          );
+          if (subRange && subRange.startIndex > 0) {
+            return executeSink(subRange, itemType, state4, dispatch3);
+          }
+        }
+        return true;
+      }
+      if (startIndex > 0) {
+        const nodeBefore = parent4.child(startIndex - 1);
+        if (nodeBefore.type === itemType) {
+          return executeSink(range3, itemType, state4, dispatch3);
+        }
+      }
+      return true;
+    };
+  }
+  function customLiftListItem(itemType) {
+    return function(state4, dispatch3) {
+      const { $from, $to } = state4.selection;
+      const range3 = $from.blockRange(
+        $to,
+        (node2) => node2.childCount > 0 && node2.firstChild.type === itemType
+      );
+      if (!range3) {
+        return false;
+      }
+      if (liftListItem(itemType)(state4, dispatch3)) {
+        return true;
+      }
+      return true;
+    };
+  }
+  var ListKeymap2 = Extension.create({
+    name: "enhancedListKeymap",
+    priority: 150,
+    addKeyboardShortcuts() {
+      return {
+        Tab: () => {
+          const itemType = getActiveListItemType(this.editor.state);
+          if (!itemType) {
+            return false;
+          }
+          return customSinkListItem(itemType)(
+            this.editor.state,
+            this.editor.view.dispatch
+          );
+        },
+        "Shift-Tab": () => {
+          const itemType = getActiveListItemType(this.editor.state);
+          if (!itemType) {
+            return false;
+          }
+          return customLiftListItem(itemType)(
+            this.editor.state,
+            this.editor.view.dispatch
+          );
+        }
+      };
+    }
+  });
+
   // media/find-widget.ts
   function compileRegex(query) {
     if (!query.term) {
@@ -229215,6 +229367,7 @@ ${prefix}
       src_default7,
       src_default8,
       src_default9.configure({ nested: true }),
+      ListKeymap2,
       MermaidAwareCodeBlock,
       src_default11.configure({ inline: true, allowBase64: false }),
       HtmlTableExtension,
@@ -230078,14 +230231,18 @@ ${prefix}
       if (readonly || editorMode !== "markdown" || !event3.clipboardData) {
         return;
       }
-      const items = event3.clipboardData.items;
+      const clipboardData = event3.clipboardData;
+      if (shouldDelegateToTextPaste(clipboardData)) {
+        return;
+      }
+      const items = clipboardData.items;
       for (const item of items) {
         if (item.type.startsWith("image/")) {
-          event3.preventDefault();
           const file = item.getAsFile();
           if (!file) {
-            return;
+            continue;
           }
+          event3.preventDefault();
           const reader = new FileReader();
           reader.onload = () => {
             const result = reader.result;
