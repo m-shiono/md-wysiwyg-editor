@@ -26,4 +26,7 @@ AGENTS.md
 !media/editor.css
 !media/icon.png
 !media/mermaid-layout-elk.js
+!media/mermaid-chunk.js
+!media/katex.min.css
+!media/fonts/**
 **/*.map

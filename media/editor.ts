@@ -12,7 +12,8 @@ import Blockquote from "@tiptap/extension-blockquote";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import Image from "@tiptap/extension-image";
 import { common, createLowlight } from "lowlight";
-import mermaid from "mermaid";
+import type mermaid from "mermaid";
+type MermaidApi = typeof mermaid;
 import DOMPurify from "dompurify";
 import katex from "katex";
 import { buildMermaidRenderSource } from "../src/utils/mermaid-render";
@@ -147,6 +148,60 @@ function sourceRequestsElkLayout(source: string): boolean {
   );
 }
 
+let mermaidInstance: MermaidApi | undefined;
+let mermaidLoadPromise: Promise<MermaidApi> | undefined;
+let currentMermaidThemeKind: ThemeKind = "dark";
+let latestMermaidThemeConfig: MermaidThemeConfig | undefined;
+
+function applyMermaidThemeToInstance(
+  mermaid: MermaidApi,
+  config: MermaidThemeConfig,
+): void {
+  try {
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: config.theme as any,
+      themeVariables: config.themeVariables,
+      securityLevel: "strict",
+      // Default-like hug→wrap (stock Mermaid defaults; explicit for contract)
+      flowchart: {
+        wrappingWidth: config.flowchart.wrappingWidth,
+        padding: config.flowchart.padding,
+      },
+    });
+  } catch (err) {
+    console.error("Mermaid initialization failed:", err);
+  }
+}
+
+async function getMermaid(): Promise<MermaidApi> {
+  if (mermaidInstance) {
+    return mermaidInstance;
+  }
+  if (!mermaidLoadPromise) {
+    mermaidLoadPromise = (async () => {
+      try {
+        const chunkUri = document.body?.getAttribute("data-mermaid-chunk-uri");
+        const mod = chunkUri
+          ? await import(/* webpackIgnore: true */ chunkUri)
+          : await import("mermaid");
+        const m =
+          (mod as { default?: MermaidApi }).default ?? (mod as MermaidApi);
+        mermaidInstance = m;
+        const config =
+          latestMermaidThemeConfig ??
+          buildMermaidThemeConfig(currentMermaidThemeKind);
+        applyMermaidThemeToInstance(m, config);
+        return m;
+      } catch (err) {
+        mermaidLoadPromise = undefined;
+        throw err;
+      }
+    })();
+  }
+  return mermaidLoadPromise;
+}
+
 async function ensureElkLayoutRegistered(source: string): Promise<void> {
   if (!sourceRequestsElkLayout(source)) {
     return;
@@ -162,8 +217,9 @@ async function ensureElkLayoutRegistered(source: string): Promise<void> {
           : await import("@mermaid-js/layout-elk");
         const elkLayouts =
           (elkModule as { default?: unknown }).default ?? elkModule;
-        mermaid.registerLayoutLoaders(
-          elkLayouts as Parameters<typeof mermaid.registerLayoutLoaders>[0],
+        const m = await getMermaid();
+        m.registerLayoutLoaders(
+          elkLayouts as Parameters<typeof m.registerLayoutLoaders>[0],
         );
       } catch (err) {
         // 再試行可能にするため失敗時は Promise を破棄（図単位エラーは呼び出し側）
@@ -247,21 +303,11 @@ function applyMermaidPresentationStyle(viewId: string, svg: string): string {
 }
 
 function initializeMermaidTheme(kind: ThemeKind): void {
-  try {
-    const config = buildMermaidThemeConfig(kind);
-    mermaid.initialize({
-      startOnLoad: false,
-      theme: config.theme as any,
-      themeVariables: config.themeVariables,
-      securityLevel: "strict",
-      // Default-like hug→wrap (stock Mermaid defaults; explicit for contract)
-      flowchart: {
-        wrappingWidth: config.flowchart.wrappingWidth,
-        padding: config.flowchart.padding,
-      },
-    });
-  } catch (err) {
-    console.error("Mermaid initialization failed:", err);
+  currentMermaidThemeKind = kind;
+  const config = buildMermaidThemeConfig(kind);
+  latestMermaidThemeConfig = config;
+  if (mermaidInstance) {
+    applyMermaidThemeToInstance(mermaidInstance, config);
   }
 }
 
@@ -281,19 +327,23 @@ function scheduleMermaidThemeRerender(): void {
 
 registerMermaidThemeRuntime({
   initialize: (config: MermaidThemeConfig) => {
-    try {
-      mermaid.initialize({
-        startOnLoad: false,
-        theme: config.theme as any,
-        themeVariables: config.themeVariables,
-        securityLevel: "strict",
-        flowchart: {
-          wrappingWidth: config.flowchart.wrappingWidth,
-          padding: config.flowchart.padding,
-        },
-      });
-    } catch (err) {
-      console.error("Mermaid runtime initialization failed:", err);
+    latestMermaidThemeConfig = config;
+    if (mermaidInstance) {
+      const mermaid = mermaidInstance;
+      try {
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: config.theme as any,
+          themeVariables: config.themeVariables,
+          securityLevel: "strict",
+          flowchart: {
+            wrappingWidth: config.flowchart.wrappingWidth,
+            padding: config.flowchart.padding,
+          },
+        });
+      } catch (err) {
+        console.error("Mermaid runtime initialization failed:", err);
+      }
     }
   },
   scheduleRerender: scheduleMermaidThemeRerender,
@@ -662,6 +712,7 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
               await ensureElkLayoutRegistered(renderSource);
               // Measure at density typography before render (CSP Host-nonce CSS)
               ensureMermaidMeasureFontCss();
+              const mermaid = await getMermaid();
               const renderId = `${viewId}-svg-${++renderSeq}`;
               const { svg: renderedSvg } = await mermaid.render(
                 renderId,
@@ -1390,12 +1441,18 @@ function syncRawTextFromHost(text: string, immediate = false): void {
   }
   const apply = (): void => {
     const raw = getRawEditor();
-    if (!raw || isRawFocused()) {
+    if (!raw || (!immediate && isRawFocused())) {
       return;
     }
     if (raw.value !== text) {
       suppressRawUpdate = true;
+      const start = raw.selectionStart;
+      const end = raw.selectionEnd;
       raw.value = text;
+      raw.setSelectionRange(
+        Math.min(start, text.length),
+        Math.min(end, text.length),
+      );
       suppressRawUpdate = false;
     }
   };
@@ -1652,9 +1709,38 @@ function flushPendingRawUpdate(): void {
   vscode.postMessage({ type: "updateRaw", markdown: raw.value });
 }
 
+let pendingInitialDoc: TipTapDoc | undefined;
+let commonHandlersAttached = false;
+
+function attachCommonHandlers(): void {
+  if (commonHandlersAttached) {
+    return;
+  }
+  commonHandlersAttached = true;
+  attachModeToolbarHandlers();
+  attachRawEditorHandlers();
+  attachPreviewGuard();
+}
+
+function ensureTipTapInitialized(): void {
+  if (isEditorInitialized && editor) {
+    return;
+  }
+  if (!pendingInitialDoc) {
+    return;
+  }
+  initEditor(pendingInitialDoc);
+}
+
 function applyMode(mode: EditorMode, notifyHost: boolean): void {
   if (editorMode === "raw" && mode !== "raw") {
     flushPendingRawUpdate();
+  }
+  if (
+    (mode === "markdown" || mode === "preview") &&
+    (!isEditorInitialized || !editor)
+  ) {
+    ensureTipTapInitialized();
   }
   setModeUi(mode);
   if (mode === "raw") {
@@ -1708,15 +1794,13 @@ function initEditor(initialDoc: TipTapDoc): void {
     isEditorInitialized = true;
     attachToolbarHandlers();
     attachLinkInputHandlers();
-    attachModeToolbarHandlers();
+    attachCommonHandlers();
     attachTableMenuHandlers();
     attachTableContextMenuHandlers();
     updateFormatToolbarPressedState();
     editor.on("selectionUpdate", () => updateFormatToolbarPressedState());
     editor.on("transaction", () => updateFormatToolbarPressedState());
     attachPasteHandler();
-    attachRawEditorHandlers();
-    attachPreviewGuard();
     updateTableMenuButtonStyle();
     setModeUi(editorMode);
   } finally {
@@ -1832,7 +1916,58 @@ function attachRawEditorHandlers(): void {
     }
   };
 
+  interface RawHistoryEntry {
+    text: string;
+    cursorStart: number;
+    cursorEnd: number;
+  }
+  const rawUndoStack: RawHistoryEntry[] = [];
+  const rawRedoStack: RawHistoryEntry[] = [];
+  const MAX_HISTORY = 100;
+  let rawTypingTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const pushRawHistory = (): void => {
+    const currentText = raw.value;
+    const last = rawUndoStack[rawUndoStack.length - 1];
+    if (last && last.text === currentText) {
+      last.cursorStart = raw.selectionStart;
+      last.cursorEnd = raw.selectionEnd;
+      return;
+    }
+    rawUndoStack.push({
+      text: currentText,
+      cursorStart: raw.selectionStart,
+      cursorEnd: raw.selectionEnd,
+    });
+    if (rawUndoStack.length > MAX_HISTORY) {
+      rawUndoStack.shift();
+    }
+    rawRedoStack.length = 0;
+  };
+
+  const applyRawTextChange = (
+    updatedText: string,
+    newCursorStart: number,
+    newCursorEnd: number,
+  ): void => {
+    pushRawHistory();
+    suppressRawUpdate = true;
+    raw.value = updatedText;
+    raw.setSelectionRange(newCursorStart, newCursorEnd);
+    suppressRawUpdate = false;
+    triggerRawUpdate(true);
+  };
+
   raw.addEventListener("input", () => {
+    if (!rawTypingTimer) {
+      pushRawHistory();
+    } else {
+      clearTimeout(rawTypingTimer);
+    }
+    rawTypingTimer = setTimeout(() => {
+      rawTypingTimer = undefined;
+      pushRawHistory();
+    }, 600);
     triggerRawUpdate(false);
   });
 
@@ -1841,23 +1976,81 @@ function attachRawEditorHandlers(): void {
       return;
     }
 
-    // 1. Tab / Shift+Tab: Table navigation or List indent
+    const isMod = e.metaKey || e.ctrlKey;
+
+    // 0. Undo / Redo with exact cursor retention
+    if (isMod && (e.key === "z" || e.key === "Z")) {
+      if (e.shiftKey) {
+        // Redo (Cmd+Shift+Z / Ctrl+Shift+Z)
+        if (rawRedoStack.length > 0) {
+          e.preventDefault();
+          rawUndoStack.push({
+            text: raw.value,
+            cursorStart: raw.selectionStart,
+            cursorEnd: raw.selectionEnd,
+          });
+          const next = rawRedoStack.pop()!;
+          suppressRawUpdate = true;
+          raw.value = next.text;
+          raw.setSelectionRange(next.cursorStart, next.cursorEnd);
+          suppressRawUpdate = false;
+          triggerRawUpdate(true);
+          return;
+        }
+      } else {
+        // Undo (Cmd+Z / Ctrl+Z)
+        if (rawUndoStack.length > 0) {
+          e.preventDefault();
+          rawRedoStack.push({
+            text: raw.value,
+            cursorStart: raw.selectionStart,
+            cursorEnd: raw.selectionEnd,
+          });
+          const prev = rawUndoStack.pop()!;
+          suppressRawUpdate = true;
+          raw.value = prev.text;
+          raw.setSelectionRange(prev.cursorStart, prev.cursorEnd);
+          suppressRawUpdate = false;
+          triggerRawUpdate(true);
+          return;
+        }
+      }
+    }
+    if (e.ctrlKey && !e.metaKey && (e.key === "y" || e.key === "Y")) {
+      // Windows Redo (Ctrl+Y)
+      if (rawRedoStack.length > 0) {
+        e.preventDefault();
+        rawUndoStack.push({
+          text: raw.value,
+          cursorStart: raw.selectionStart,
+          cursorEnd: raw.selectionEnd,
+        });
+        const next = rawRedoStack.pop()!;
+        suppressRawUpdate = true;
+        raw.value = next.text;
+        raw.setSelectionRange(next.cursorStart, next.cursorEnd);
+        suppressRawUpdate = false;
+        triggerRawUpdate(true);
+        return;
+      }
+    }
+
+    // 1. Tab / Shift+Tab: Table alignment (cursor stays in place) or List indent
     if (e.key === "Tab") {
-      // Table navigation
+      // Table formatting (cursor position change is forbidden: direction 'stay')
       const navResult = navigateTable(
         raw.value,
         raw.selectionStart,
-        e.shiftKey ? "prev" : "next",
+        "stay",
         tablePipeAlignment,
       );
       if (navResult) {
         e.preventDefault();
-        raw.value = navResult.updatedText;
-        raw.setSelectionRange(
+        applyRawTextChange(
+          navResult.updatedText,
           navResult.newCursorOffset,
           navResult.newCursorOffset,
         );
-        triggerRawUpdate(true);
         return;
       }
 
@@ -1869,12 +2062,11 @@ function attachRawEditorHandlers(): void {
       );
       if (listIndentResult) {
         e.preventDefault();
-        raw.value = listIndentResult.updatedText;
-        raw.setSelectionRange(
+        applyRawTextChange(
+          listIndentResult.updatedText,
           listIndentResult.newSelectionStart,
           listIndentResult.newSelectionEnd,
         );
-        triggerRawUpdate(true);
         return;
       }
 
@@ -1882,9 +2074,11 @@ function attachRawEditorHandlers(): void {
       if (!e.shiftKey && raw.selectionStart === raw.selectionEnd) {
         e.preventDefault();
         const start = raw.selectionStart;
-        raw.value = raw.value.slice(0, start) + "  " + raw.value.slice(start);
-        raw.setSelectionRange(start + 2, start + 2);
-        triggerRawUpdate(true);
+        applyRawTextChange(
+          raw.value.slice(0, start) + "  " + raw.value.slice(start),
+          start + 2,
+          start + 2,
+        );
         return;
       }
     }
@@ -1903,12 +2097,11 @@ function attachRawEditorHandlers(): void {
       );
       if (continueResult) {
         e.preventDefault();
-        raw.value = continueResult.updatedText;
-        raw.setSelectionRange(
+        applyRawTextChange(
+          continueResult.updatedText,
           continueResult.newSelectionStart,
           continueResult.newSelectionEnd,
         );
-        triggerRawUpdate(true);
         return;
       }
     }
@@ -1918,18 +2111,16 @@ function attachRawEditorHandlers(): void {
       const taskResult = toggleTaskList(raw.value, raw.selectionStart);
       if (taskResult) {
         e.preventDefault();
-        raw.value = taskResult.updatedText;
-        raw.setSelectionRange(
+        applyRawTextChange(
+          taskResult.updatedText,
           taskResult.newSelectionStart,
           taskResult.newSelectionEnd,
         );
-        triggerRawUpdate(true);
         return;
       }
     }
 
     // 4. Formatting shortcuts
-    const isMod = e.metaKey || e.ctrlKey;
     if (isMod && (e.key === "b" || e.key === "B")) {
       e.preventDefault();
       const res = toggleFormatting(
@@ -1938,9 +2129,11 @@ function attachRawEditorHandlers(): void {
         raw.selectionEnd,
         "**",
       );
-      raw.value = res.updatedText;
-      raw.setSelectionRange(res.newSelectionStart, res.newSelectionEnd);
-      triggerRawUpdate(true);
+      applyRawTextChange(
+        res.updatedText,
+        res.newSelectionStart,
+        res.newSelectionEnd,
+      );
       return;
     }
     if (isMod && (e.key === "i" || e.key === "I")) {
@@ -1951,9 +2144,11 @@ function attachRawEditorHandlers(): void {
         raw.selectionEnd,
         "*",
       );
-      raw.value = res.updatedText;
-      raw.setSelectionRange(res.newSelectionStart, res.newSelectionEnd);
-      triggerRawUpdate(true);
+      applyRawTextChange(
+        res.updatedText,
+        res.newSelectionStart,
+        res.newSelectionEnd,
+      );
       return;
     }
     if (e.altKey && (e.key === "s" || e.key === "S")) {
@@ -1964,9 +2159,11 @@ function attachRawEditorHandlers(): void {
         raw.selectionEnd,
         "~~",
       );
-      raw.value = res.updatedText;
-      raw.setSelectionRange(res.newSelectionStart, res.newSelectionEnd);
-      triggerRawUpdate(true);
+      applyRawTextChange(
+        res.updatedText,
+        res.newSelectionStart,
+        res.newSelectionEnd,
+      );
       return;
     }
     if (isMod && (e.key === "m" || e.key === "M")) {
@@ -1977,9 +2174,11 @@ function attachRawEditorHandlers(): void {
         raw.selectionEnd,
         "$",
       );
-      raw.value = res.updatedText;
-      raw.setSelectionRange(res.newSelectionStart, res.newSelectionEnd);
-      triggerRawUpdate(true);
+      applyRawTextChange(
+        res.updatedText,
+        res.newSelectionStart,
+        res.newSelectionEnd,
+      );
       return;
     }
   });
@@ -1998,10 +2197,13 @@ function attachRawEditorHandlers(): void {
       if (smartLink) {
         e.preventDefault();
         const start = raw.selectionStart;
-        raw.value =
-          raw.value.slice(0, start) + smartLink + raw.value.slice(raw.selectionEnd);
-        raw.setSelectionRange(start + smartLink.length, start + smartLink.length);
-        triggerRawUpdate(true);
+        applyRawTextChange(
+          raw.value.slice(0, start) +
+            smartLink +
+            raw.value.slice(raw.selectionEnd),
+          start + smartLink.length,
+          start + smartLink.length,
+        );
         return;
       }
     }
@@ -2610,16 +2812,21 @@ window.addEventListener("message", (event) => {
       document.body.setAttribute("data-readonly", String(readonly));
       latestMarkdownText = message.markdownText ?? "";
       editorMode = (message.editorMode as EditorMode) ?? "raw";
+      pendingInitialDoc = JSON.parse(message.docJson);
+      attachCommonHandlers();
+
       // ready must not force a second full init if already initialized —
       // apply content refresh instead of destroying a live editing session.
       if (isEditorInitialized && editor) {
         editor.setEditable(!readonly && editorMode === "markdown", false);
-        applyExternalDoc(JSON.parse(message.docJson));
+        applyExternalDoc(pendingInitialDoc);
         scheduleRawTextUpdate(latestMarkdownText);
         setModeUi(editorMode);
         break;
       }
-      initEditor(JSON.parse(message.docJson));
+      if (editorMode === "markdown" || editorMode === "preview") {
+        initEditor(pendingInitialDoc);
+      }
       scheduleRawTextUpdate(latestMarkdownText);
       // Ensure UI matches Host mode after init (DEFAULT may be raw before first paint).
       setModeUi(editorMode);
@@ -2631,13 +2838,23 @@ window.addEventListener("message", (event) => {
         scheduleRawTextUpdate(latestMarkdownText);
         break;
       }
-      if (editorMode === "preview") {
-        applyPreviewTipTap();
+      pendingInitialDoc = JSON.parse(message.docJson);
+      if (isEditorInitialized && editor) {
+        if (editorMode === "preview") {
+          applyPreviewTipTap();
+        }
+        // Host-initiated full doc (table convert, Raw parse, revert, undo/redo).
+        gfmConvertPending = false;
+        syncRawTextFromHost(latestMarkdownText, true);
+        applyExternalDoc(pendingInitialDoc, { force: true });
+      } else {
+        gfmConvertPending = false;
+        syncRawTextFromHost(latestMarkdownText, true);
+        if (editorMode === "preview") {
+          ensureTipTapInitialized();
+          applyPreviewTipTap();
+        }
       }
-      // Host-initiated full doc (table convert, Raw parse, revert, undo/redo).
-      gfmConvertPending = false;
-      syncRawTextFromHost(latestMarkdownText, true);
-      applyExternalDoc(JSON.parse(message.docJson), { force: true });
       break;
     case "previewMarpHtml":
       if (editorMode === "preview" && typeof message.html === "string") {
@@ -2673,6 +2890,7 @@ window.addEventListener("message", (event) => {
       break;
     }
     case "imageInserted":
+      ensureTipTapInitialized();
       if (editor && !readonly && editorMode === "markdown") {
         editor
           .chain()
@@ -2706,6 +2924,7 @@ window.addEventListener("message", (event) => {
   }
 });
 
+attachCommonHandlers();
 attachFindWidgetShortcuts();
 
 vscode.postMessage({ type: "ready" });

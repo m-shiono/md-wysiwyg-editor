@@ -14,16 +14,21 @@ const extensionConfig = {
   format: 'cjs',
   platform: 'node',
   sourcemap,
+  minify: true,
   target: 'node18',
   logLevel: 'info',
 };
 
-/** Rewrite dynamic import('@mermaid-js/layout-elk') → relative ESM chunk (AD-007). */
-const mermaidElkExternalPlugin = {
-  name: 'mermaid-elk-external-chunk',
+/** Rewrite dynamic import('mermaid') → relative ESM chunk. */
+const mermaidExternalPlugin = {
+  name: 'mermaid-external-chunk',
   setup(build) {
     build.onResolve({ filter: /^@mermaid-js\/layout-elk$/ }, () => ({
       path: './mermaid-layout-elk.js',
+      external: true,
+    }));
+    build.onResolve({ filter: /^mermaid$/ }, () => ({
+      path: './mermaid-chunk.js',
       external: true,
     }));
   },
@@ -36,9 +41,10 @@ const mediaConfig = {
   format: 'iife',
   platform: 'browser',
   sourcemap,
+  minify: true,
   target: 'es2020',
   logLevel: 'info',
-  plugins: [mermaidElkExternalPlugin],
+  plugins: [mermaidExternalPlugin],
 };
 
 /** Lazy-loaded ELK layout chunk — kept out of initial editor.js (AD-007). */
@@ -49,6 +55,20 @@ const mermaidElkChunkConfig = {
   format: 'esm',
   platform: 'browser',
   sourcemap,
+  minify: true,
+  target: 'es2020',
+  logLevel: 'info',
+};
+
+/** Lazy-loaded Mermaid core chunk — kept out of initial editor.js. */
+const mermaidChunkConfig = {
+  entryPoints: ['media/mermaid-entry.ts'],
+  bundle: true,
+  outfile: 'media/mermaid-chunk.js',
+  format: 'esm',
+  platform: 'browser',
+  sourcemap,
+  minify: true,
   target: 'es2020',
   logLevel: 'info',
 };
@@ -73,14 +93,17 @@ async function build() {
     const extCtx = await esbuild.context(extensionConfig);
     const mediaCtx = await esbuild.context(mediaConfig);
     const elkCtx = await esbuild.context(mermaidElkChunkConfig);
+    const mermaidCtx = await esbuild.context(mermaidChunkConfig);
     await extCtx.watch();
     await mediaCtx.watch();
     await elkCtx.watch();
+    await mermaidCtx.watch();
     console.log('Watching for changes...');
   } else {
     await esbuild.build(extensionConfig);
     await esbuild.build(mediaConfig);
     await esbuild.build(mermaidElkChunkConfig);
+    await esbuild.build(mermaidChunkConfig);
     await esbuild.build(unitTestConfig);
   }
 }

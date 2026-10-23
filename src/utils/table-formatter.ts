@@ -354,13 +354,9 @@ export function findTableBlockAtCursor(text: string, cursorOffset: number): Tabl
     startOffset += lines[i].length + 1;
   }
 
-  let endOffset = startOffset;
-  for (let i = startLine; i <= endLine; i++) {
-    endOffset += lines[i].length + (i < lines.length - 1 ? 1 : 0);
-  }
-
   const tableLines = lines.slice(startLine, endLine + 1);
   const tableText = tableLines.join('\n');
+  const endOffset = startOffset + tableText.length;
 
   // Determine cursor row and col within table
   const relativeRow = cursorLineIdx - startLine;
@@ -392,20 +388,129 @@ export function findTableBlockAtCursor(text: string, cursorOffset: number): Tabl
 export interface TableNavigationResult {
   updatedText: string;
   newCursorOffset: number;
+  tableRange?: {
+    startOffset: number;
+    endOffset: number;
+    tableText: string;
+  };
 }
 
 /**
- * Handle Tab / Shift+Tab navigation in a Markdown table.
+ * Handle Tab / Shift+Tab or formatting in a Markdown table.
+ * When direction is 'stay', table is aligned while preserving the exact cursor position within the cell.
  */
 export function navigateTable(
   text: string,
   cursorOffset: number,
-  direction: 'next' | 'prev',
+  direction: 'next' | 'prev' | 'stay' = 'stay',
   alignment: TablePipeAlignment = 'aligned'
 ): TableNavigationResult | null {
   const block = findTableBlockAtCursor(text, cursorOffset);
   if (!block) {
     return null;
+  }
+
+  const tableLines = block.tableText.split('\n');
+
+  if (direction === 'stay') {
+    const formatted = formatMarkdownTable(block.tableText, alignment);
+    const formattedLines = formatted.split('\n');
+    const targetRow = Math.min(block.cursorRow, formattedLines.length - 1);
+
+    // Calculate cursor line offset in document before format
+    let lineStartOffsetInDoc = block.startOffset;
+    for (let i = 0; i < targetRow; i++) {
+      lineStartOffsetInDoc += tableLines[i].length + 1;
+    }
+    const cursorInRawLine = Math.max(0, cursorOffset - lineStartOffsetInDoc);
+    const rawLine = tableLines[targetRow];
+
+    // Count pipes before cursor in rawLine to identify cell
+    let pipesFound = 0;
+    let lastPipeIdx = -1;
+    for (let i = 0; i < cursorInRawLine && i < rawLine.length; i++) {
+      if (rawLine[i] === '|' && (i === 0 || rawLine[i - 1] !== '\\')) {
+        pipesFound++;
+        lastPipeIdx = i;
+      }
+    }
+    const colIdx = Math.max(0, pipesFound - 1);
+
+    // Count non-space characters in cell before cursor
+    let nonSpaceBeforeCursor = 0;
+    const rawCellTextStart = lastPipeIdx + 1;
+    if (rawCellTextStart < cursorInRawLine) {
+      const textBefore = rawLine.slice(rawCellTextStart, cursorInRawLine);
+      nonSpaceBeforeCursor = textBefore.replace(/\s/g, '').length;
+    }
+
+    // Find corresponding cell in formattedLine
+    const formattedLine = formattedLines[targetRow];
+    let newPipeCount = 0;
+    let targetPipeIdx = -1;
+    for (let i = 0; i < formattedLine.length; i++) {
+      if (formattedLine[i] === '|' && (i === 0 || formattedLine[i - 1] !== '\\')) {
+        newPipeCount++;
+        if (newPipeCount === colIdx + 1) {
+          targetPipeIdx = i;
+          break;
+        }
+      }
+    }
+
+    let cellOffsetInFormattedLine = 0;
+    if (targetPipeIdx !== -1) {
+      let targetNextPipeIdx = formattedLine.indexOf('|', targetPipeIdx + 1);
+      while (targetNextPipeIdx > 0 && formattedLine[targetNextPipeIdx - 1] === '\\') {
+        targetNextPipeIdx = formattedLine.indexOf('|', targetNextPipeIdx + 1);
+      }
+      if (targetNextPipeIdx === -1) {
+        targetNextPipeIdx = formattedLine.length;
+      }
+
+      const formattedCell = formattedLine.slice(targetPipeIdx + 1, targetNextPipeIdx);
+      if (nonSpaceBeforeCursor === 0) {
+        // Cursor was before text or in empty cell -> place right after leading spaces
+        const leadingSpaces = formattedCell.length - formattedCell.trimStart().length;
+        cellOffsetInFormattedLine = targetPipeIdx + 1 + Math.max(1, leadingSpaces);
+      } else {
+        // Place after the same number of non-space characters
+        let nonSpaceSeen = 0;
+        let posInCell = formattedCell.length;
+        for (let i = 0; i < formattedCell.length; i++) {
+          if (!/\s/.test(formattedCell[i])) {
+            nonSpaceSeen++;
+            if (nonSpaceSeen === nonSpaceBeforeCursor) {
+              posInCell = i + 1;
+              break;
+            }
+          }
+        }
+        cellOffsetInFormattedLine = targetPipeIdx + 1 + posInCell;
+      }
+      cellOffsetInFormattedLine = Math.min(cellOffsetInFormattedLine, targetNextPipeIdx);
+    } else {
+      cellOffsetInFormattedLine = Math.min(cursorInRawLine, formattedLine.length);
+    }
+
+    let newOffsetBeforeLine = block.startOffset;
+    for (let i = 0; i < targetRow; i++) {
+      newOffsetBeforeLine += formattedLines[i].length + 1;
+    }
+    const newCursorOffset = newOffsetBeforeLine + cellOffsetInFormattedLine;
+
+    const updatedText =
+      text.slice(0, block.startOffset) + formatted + text.slice(block.endOffset);
+
+    return {
+      updatedText,
+      newCursorOffset,
+      tableRange: {
+        startOffset: block.startOffset,
+        endOffset: block.endOffset,
+        tableText: formatted,
+      },
+    };
   }
 
   const formatted = formatMarkdownTable(block.tableText, alignment);
@@ -483,5 +588,10 @@ export function navigateTable(
   return {
     updatedText,
     newCursorOffset,
+    tableRange: {
+      startOffset: block.startOffset,
+      endOffset: block.endOffset,
+      tableText: finalTable,
+    },
   };
 }

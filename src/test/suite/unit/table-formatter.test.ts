@@ -150,6 +150,19 @@ Some footer text.
       const tableLines = lines.filter((l) => l.trim().startsWith('|'));
       assert.strictEqual(tableLines.length, 5);
     });
+
+    test('preserves exact cursor position in cell when direction is stay', () => {
+      const doc = `| Name | Age |\n| --- | --- |\n| Alice | 24 |`;
+      // Cursor right after 'Ali' in 'Alice'
+      const cursorOffset = doc.indexOf('Ali') + 3;
+      const result = navigateTable(doc, cursorOffset, 'stay', 'aligned');
+      assert.ok(result !== null);
+      // New cursor must still be right after 'Ali'
+      const textBefore = result.updatedText.slice(0, result.newCursorOffset);
+      assert.ok(textBefore.endsWith('Ali'), `Cursor must remain after 'Ali'. Preceding: ${JSON.stringify(textBefore)}`);
+      const textAfter = result.updatedText.slice(result.newCursorOffset);
+      assert.ok(textAfter.startsWith('ce'), `Text after cursor must start with 'ce'. Got: ${JSON.stringify(textAfter)}`);
+    });
   });
 });
 

@@ -580,6 +580,9 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     const elkChunkUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'media', 'mermaid-layout-elk.js'),
     );
+    const mermaidChunkUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'media', 'mermaid-chunk.js'),
+    );
     const styleUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'media', 'editor.css'),
     );
@@ -609,7 +612,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
   <link rel="stylesheet" href="${katexStyleUri}" nonce="${nonce}" />
   <title>MD WYSIWYG Editor</title>
 </head>
-<body data-readonly="${readonly}" data-mode="${DEFAULT_EDITOR_MODE}" data-csp-nonce="${nonce}" data-elk-chunk-uri="${elkChunkUri}" data-table-pipe-alignment="${tablePipeAlignment}">
+<body data-readonly="${readonly}" data-mode="${DEFAULT_EDITOR_MODE}" data-csp-nonce="${nonce}" data-elk-chunk-uri="${elkChunkUri}" data-mermaid-chunk-uri="${mermaidChunkUri}" data-table-pipe-alignment="${tablePipeAlignment}">
   <div id="mode-toolbar" role="toolbar" aria-label="Editor mode">
     <span class="mode-segment-group" role="group" aria-label="Mode selection">
       <button type="button" data-mode="markdown" title="Visual Editor (WYSIWYG)" aria-label="Visual Editor">Visual</button>
