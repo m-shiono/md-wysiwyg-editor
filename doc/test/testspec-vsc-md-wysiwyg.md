@@ -283,6 +283,10 @@
 | TC-174 | Happy | replace-single-and-all-visual | P0 | Visual（Markdown）モードで単一置換および全置換を実行 | ドキュメントノード内のテキストが置換され、Undo 履歴と連動する | Visual モードでの置換・全置換 | §11 検索・置換機能 |
 | TC-175 | Corner | find-search-options-and-regex-safety | P1 | Match Case、Match Whole Word、Regex オプション切替、および不正な正規表現入力 | 各オプション通りにフィルタされ、不正な正規表現でもクラッシュせず 0 件として安全に扱われる | 検索オプションと正規表現安全ガード | §11 検索・置換機能 |
 | TC-176 | Corner | find-replace-readonly-and-preview-guard | P1 | Preview モードまたは `readonly: true` の状態で検索ウィジェットを起動 | 置換 UI（トグル・置換入力・置換ボタン）は非表示となり、検索のみ動作する | 閲覧専用・Readonly 保護 | §11 検索・置換機能 |
+| TC-177 | Corner | image-path-traversal-variants | P0 | 中間遡行（`img/sub/../../secret.txt`）、URLエンコード（`img/%2e%2e/evil.png`）、Windows区切り（`img\..\evil.png`）、絶対パス（`/etc/passwd`）、非画像ファイル（`.env`, `.sh`） | `isSafeImagePath` が `false` を返し、不正アクセスやトラバーサルが確実に拒否される | 高度なパストラバーサル防御 & ファイル拡張子検証 | §7 正常系 5, §9 正常系 5 |
+| TC-178 | Corner | raw-parse-failure-save-blocked | P0 | Raw モードでパース失敗状態（`isRawParseFailed === true`）中に `save()` を呼び出し | ファイル保存がブロックされ、ディスクへの破壊的書込が発生しない。パース復帰後は保存可能となる | Raw パース失敗時の保存ブロック完全性 | §1 例外系 2, §8 例外系 2 |
+| TC-179 | Corner | find-regex-invalid-resilience | P0 | 検索入力に `(?`, `[abc`, `*` などの不正・未完了の正規表現を入力して検索実行 | 例外でエディタがクラッシュせず、結果 0 件として安全に処理される | 検索ウィジェットの正規表現安全耐性 | §11 ガード条件 & 安全性 |
+| TC-180 | Happy | find-options-filter-accuracy | P1 | Match Case（大文字小文字区別）、Match Whole Word（単語単位）、Regex 各オプションを組み合わせて検索実行 | 指定条件に合致するマッチのみが抽出され、単語境界や大文字小文字の区別が正確に動作する | 検索フィルタロジック精度 | §11 Inputs & Types |
 
 ### Fixtures — preview-mode-quality
 
@@ -807,4 +811,5 @@ P0 + P1 の机上トレース（実装前）。
 | 2026-10-19 | TC-160–165 追加 | 表の右クリックコンテキストメニュー（`table-context-menu`）: Visualモードでの表セル右クリック表示、行列操作・表削除、Escape/外部クリックでのキャンセル、Readonly/非Visualモードでのガード |
 | 2026-10-21 | TC-170–176 追加 | 検索・置換機能（`search-replace-widget`）: Visual・Source・Preview でのウィジェット開閉・キーバインド（Cmd+F/Cmd+H/Escape）、Source/Visual での検索ナビゲーション・置換・全置換、検索オプション（Case/Word/Regex）と正規表現安全性、Preview/Readonly での置換ガード |
 | 2026-10-22 | TC-PASTE-001–005, TC-LIST-001–008 追加 | テキストペースト保護（Web/Officeリッチテキストコピー時の画像誤爆防止・通常ペースト委譲）および箇条書き・タスクリストのスマートインデント（先頭行含む複数選択でのぶら下げネスト、Shift-Tabアウトデント、フォーカス離脱防止、テーブル保護） |
+| 2026-10-24 | TC-177–180 追加 | 画像セキュリティ（高度なパストラバーサル・非画像拡張子拒否）、Rawパース失敗時のsaveブロック、検索ウィジェットの正規表現安全耐性・オプション精度テスト |
 

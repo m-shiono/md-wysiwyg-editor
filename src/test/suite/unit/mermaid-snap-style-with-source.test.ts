@@ -5,31 +5,18 @@
 import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
+import {
+  getUtilExport,
+  readRepoFile,
+} from '../../helpers/test-utils';
 
-function readRepoFile(...parts: string[]): string {
-  return fs.readFileSync(path.resolve(process.cwd(), ...parts), 'utf8');
-}
-
-function loadCompiledUtil(moduleName: string): Record<string, unknown> {
-  const jsPath = path.resolve(process.cwd(), `out/utils/${moduleName}.js`);
-  if (!fs.existsSync(jsPath)) {
-    return {};
-  }
-  return require(jsPath) as Record<string, unknown>;
-}
-
-function getUtilExport<T>(moduleName: string, exportName: string): T | undefined {
-  const mod = loadCompiledUtil(moduleName);
-  const fn = mod[exportName];
-  return typeof fn === 'function' ? (fn as T) : undefined;
-}
-
-/** Preview 専用の .mermaid-source 非表示ルール（撤廃対象 AD-003） */
+/** Preview 専用の .mermaid-source 非表示ルール（2026-10-19 仕様改訂により必須契約） */
 function hasPreviewMermaidSourceHideRule(css: string): boolean {
   return /body\[data-mode=['"]preview['"]\][\s\S]*?\.mermaid-source[\s\S]*?display\s*:\s*none/.test(
     css,
   );
 }
+
 
 function hasPreviewMermaidPreviewHideRule(css: string): boolean {
   return /body\[data-mode=['"]preview['"]\][\s\S]*?\.mermaid-preview[\s\S]*?display\s*:\s*none/.test(

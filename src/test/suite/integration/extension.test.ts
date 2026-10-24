@@ -8,6 +8,7 @@ import { getOutputChannel, OUTPUT_CHANNEL_NAME } from '../../../utils/logger';
 import { getReadonlyKey, isReadonly, setReadonly } from '../../../utils/readonly-state';
 import { NO_MARP_MESSAGE } from '../../../utils/marp-constants';
 import { getWebviewCspContent } from '../../../utils/csp';
+import { waitFor } from '../../helpers/test-utils';
 
 suite('Extension integration tests', () => {
   vscode.window.showInformationMessage('Start md-wysiwyg-editor tests.');
@@ -72,7 +73,6 @@ suite('Extension integration tests', () => {
   test('TC-042: non-Marp guidance message constant', () => {
     assert.strictEqual(NO_MARP_MESSAGE, 'No Marp slides detected');
   });
-
   test('TC-003: open custom editor with sample markdown', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-wysiwyg-open-'));
     const mdPath = path.join(tmpDir, 'sample.md');
@@ -80,7 +80,14 @@ suite('Extension integration tests', () => {
     const uri = vscode.Uri.file(mdPath);
 
     await vscode.commands.executeCommand('vscode.openWith', uri, 'md-wysiwyg-editor.wysiwyg');
-    await sleep(2000);
+    await waitFor(() => {
+      const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs);
+      return tabs.some(
+        (t) =>
+          t.input instanceof vscode.TabInputCustom &&
+          t.input.viewType === 'md-wysiwyg-editor.wysiwyg',
+      );
+    }, 6000);
 
     const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs);
     const customTab = tabs.find(
@@ -95,6 +102,3 @@ suite('Extension integration tests', () => {
   });
 });
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}

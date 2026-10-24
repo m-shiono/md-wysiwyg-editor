@@ -5,6 +5,8 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { getMarkdownEditorProvider } from '../../../utils/editor-provider-hook';
 
+import { waitFor } from '../../helpers/test-utils';
+
 const VIEW_TYPE = 'md-wysiwyg-editor.wysiwyg';
 
 suite('Table HTML→GFM convert integration', () => {
@@ -31,7 +33,7 @@ suite('Table HTML→GFM convert integration', () => {
 
     try {
       await vscode.commands.executeCommand('vscode.openWith', uri, VIEW_TYPE);
-      await sleep(3500);
+      await waitFor(() => provider.getOpenDocumentForTest(uri) !== undefined, 8000);
 
       const doc = provider.getOpenDocumentForTest(uri);
       assert.ok(doc, 'open document should be tracked');
@@ -69,7 +71,3 @@ suite('Table HTML→GFM convert integration', () => {
     }
   });
 });
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}

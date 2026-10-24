@@ -28,7 +28,7 @@ export interface SearchAdapter {
   clear(): void;
 }
 
-function compileRegex(query: SearchQuery): RegExp | null {
+export function compileRegex(query: SearchQuery): RegExp | null {
   if (!query.term) {
     return null;
   }

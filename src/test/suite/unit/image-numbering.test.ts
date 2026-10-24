@@ -28,4 +28,24 @@ suite('Image numbering unit tests', () => {
     assert.strictEqual(isSafeImagePath('file:///a/b.md', '../evil.png'), false);
     assert.strictEqual(isSafeImagePath('file:///a/b.md', 'img/image-0001.png'), true);
   });
+
+  test('TC-177: rejects advanced path traversal variants and non-image extensions', () => {
+    // Intermediate directory traversal
+    assert.strictEqual(isSafeImagePath('file:///a/b.md', 'img/sub/../../secret.png'), false);
+    // URL-encoded directory traversal
+    assert.strictEqual(isSafeImagePath('file:///a/b.md', 'img/%2e%2e/evil.png'), false);
+    assert.strictEqual(isSafeImagePath('file:///a/b.md', 'img/..%2fevil.png'), false);
+    // Windows backslash separator
+    assert.strictEqual(isSafeImagePath('file:///a/b.md', 'img\\..\\evil.png'), false);
+    assert.strictEqual(isSafeImagePath('file:///a/b.md', 'img\\image-0001.png'), false);
+    // Absolute paths
+    assert.strictEqual(isSafeImagePath('file:///a/b.md', '/etc/passwd'), false);
+    assert.strictEqual(isSafeImagePath('file:///a/b.md', 'C:\\secret.png'), false);
+    // Disallowed / sensitive file extensions
+    assert.strictEqual(isSafeImagePath('file:///a/b.md', 'img/image-0001.env'), false);
+    assert.strictEqual(isSafeImagePath('file:///a/b.md', 'img/image-0001.sh'), false);
+    assert.strictEqual(isSafeImagePath('file:///a/b.md', 'img/image-0001.exe'), false);
+    assert.strictEqual(isSafeImagePath('file:///a/b.md', 'img/image-0001'), false);
+  });
 });
+

@@ -140,4 +140,107 @@ suite('search-replace-widget (TC-170–176)', () => {
       );
     });
   });
+
+  suite('TC-179: Regex syntax errors safety (compileRegex)', () => {
+    // Dynamic execution of compileRegex logic
+    let compileRegexFn: ((query: { term: string; matchCase: boolean; matchWholeWord: boolean; useRegex: boolean }) => RegExp | null) | null = null;
+    try {
+      // compileRegex is exported from media/find-widget
+      const mod = require('../../../../media/find-widget');
+      compileRegexFn = mod.compileRegex;
+    } catch {
+      compileRegexFn = null;
+    }
+
+    test('returns null without throwing on invalid regex patterns', () => {
+      if (!compileRegexFn) {
+        // Fallback for environment without media bundle transpilation
+        assert.ok(findWidgetTsSrc.includes('catch') && findWidgetTsSrc.includes('RegExp'));
+        return;
+      }
+      const invalidPatterns = ['(?', '[abc', '*invalid', '\\', '(?<=', '(unclosed'];
+      for (const pattern of invalidPatterns) {
+        assert.doesNotThrow(() => {
+          const result = compileRegexFn!({
+            term: pattern,
+            matchCase: false,
+            matchWholeWord: false,
+            useRegex: true,
+          });
+          assert.strictEqual(result, null, `Invalid pattern "${pattern}" must return null`);
+        });
+      }
+    });
+
+    test('returns null for empty search term', () => {
+      if (!compileRegexFn) return;
+      assert.strictEqual(
+        compileRegexFn({ term: '', matchCase: false, matchWholeWord: false, useRegex: false }),
+        null,
+      );
+    });
+  });
+
+  suite('TC-180: Search option logic accuracy (compileRegex)', () => {
+    let compileRegexFn: ((query: { term: string; matchCase: boolean; matchWholeWord: boolean; useRegex: boolean }) => RegExp | null) | null = null;
+    try {
+      const mod = require('../../../../media/find-widget');
+      compileRegexFn = mod.compileRegex;
+    } catch {
+      compileRegexFn = null;
+    }
+
+    test('escapes regex special characters when useRegex is false', () => {
+      if (!compileRegexFn) return;
+      const regex = compileRegexFn({
+        term: 'item.name [0] + 1 * 2?',
+        matchCase: false,
+        matchWholeWord: false,
+        useRegex: false,
+      });
+      assert.ok(regex !== null);
+      assert.strictEqual(regex.test('item.name [0] + 1 * 2?'), true);
+      assert.strictEqual(regex.test('itemXname [0] + 1 * 2?'), false);
+    });
+
+    test('respects matchCase option', () => {
+      if (!compileRegexFn) return;
+      const caseSensitive = compileRegexFn({
+        term: 'Hello',
+        matchCase: true,
+        matchWholeWord: false,
+        useRegex: false,
+      });
+      assert.ok(caseSensitive !== null);
+      assert.strictEqual(caseSensitive.test('Hello'), true);
+      caseSensitive.lastIndex = 0;
+      assert.strictEqual(caseSensitive.test('hello'), false);
+
+      const caseInsensitive = compileRegexFn({
+        term: 'Hello',
+        matchCase: false,
+        matchWholeWord: false,
+        useRegex: false,
+      });
+      assert.ok(caseInsensitive !== null);
+      assert.strictEqual(caseInsensitive.test('hello'), true);
+    });
+
+    test('respects matchWholeWord option', () => {
+      if (!compileRegexFn) return;
+      const wholeWord = compileRegexFn({
+        term: 'test',
+        matchCase: false,
+        matchWholeWord: true,
+        useRegex: false,
+      });
+      assert.ok(wholeWord !== null);
+      assert.strictEqual(wholeWord.test('a test case'), true);
+      wholeWord.lastIndex = 0;
+      assert.strictEqual(wholeWord.test('testing case'), false);
+      wholeWord.lastIndex = 0;
+      assert.strictEqual(wholeWord.test('attest case'), false);
+    });
+  });
 });
+

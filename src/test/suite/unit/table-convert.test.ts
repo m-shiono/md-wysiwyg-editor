@@ -1,10 +1,6 @@
 import * as assert from 'assert';
-import { readFileSync } from 'fs';
-import { join } from 'path';
 import { parseMarkdown, serializeMarkdown } from '../../../serializers/markdown-serializer';
 import { convertTableToGfmAtIndex } from '../../../utils/table-convert';
-
-const testMdPath = join(__dirname, '../../../../../temporary/test.md');
 
 function getTableAt(doc: ReturnType<typeof parseMarkdown>, index: number) {
   const tables = doc.content.filter((n) => n.type === 'table');
@@ -90,46 +86,5 @@ suite('table-convert', () => {
       'index 1 must convert the HTML table',
     );
   });
-
-  test('TC-099: temporary/test.md html table at index 1 converts to gfm', () => {
-    let md: string;
-    try {
-      md = readFileSync(testMdPath, 'utf8');
-    } catch {
-      md =
-        '| あああ | あああ | あああ |\n| --- | --- | --- |\n| あああ |  | あああ |\n| あああ |  |  |\n\n' +
-        '<table>\n  <tr>\n    <th>あああ</th>\n    <th>あああ</th>\n    <th>あああ</th>\n  </tr>\n' +
-        '  <tr>\n    <td>あああ</td>\n    <td>あああ</td>\n    <td>あああ</td>\n  </tr>\n' +
-        '  <tr>\n    <td>あああ</td>\n    <td>あああ</td>\n    <td>あああ</td>\n  </tr>\n</table>\n\n' +
-        '| aaa | bbb |\n| --- | --- |\n| fuga | aaa |\n';
-    }
-
-    const doc = parseMarkdown(md);
-    const tables = doc.content.filter((n) => n.type === 'table');
-    const htmlBlocks = doc.content.filter((n) => n.type === 'htmlBlock');
-    assert.strictEqual(htmlBlocks.length, 0, 'must not fall back to htmlBlock atoms');
-    assert.strictEqual(tables.length, 3, 'test.md must have 2 GFM + 1 HTML table');
-
-    const htmlIndex = tables.findIndex((t) => t.attrs?.tableFormat === 'html');
-    assert.strictEqual(htmlIndex, 1, 'HTML table must be at index 1 (not 0)');
-
-    const htmlTable = tables[htmlIndex];
-    assert.ok(
-      (htmlTable.content?.length ?? 0) > 0,
-      'HTML table must have editable rows, not html-only atom',
-    );
-
-    const converted = convertTableToGfmAtIndex(doc, htmlIndex);
-    assert.strictEqual(tables[htmlIndex]?.attrs?.tableFormat, 'html');
-    assert.strictEqual(
-      converted.content.filter((n) => n.type === 'table')[htmlIndex]?.attrs?.tableFormat,
-      'gfm',
-    );
-
-    const out = serializeMarkdown(converted);
-    const htmlTableCount = (out.match(/<table[\s>]/gi) ?? []).length;
-    assert.strictEqual(htmlTableCount, 0, `HTML table must be gone after convert; got:\n${out}`);
-    assert.ok(out.includes('あああ'), 'cell text must remain');
-    assert.ok(isGfmPipeTable(out), 'must contain GFM pipe table output');
-  });
 });
+

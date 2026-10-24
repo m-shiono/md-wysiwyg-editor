@@ -134,9 +134,15 @@ suite('editor-assist (TC-AST-001–007)', () => {
       const res = handleSmartUrlPaste('[GitHub](https://old.com)', 'https://new.com');
       assert.strictEqual(res, '[GitHub](https://new.com)');
     });
+
+    test('preserves query parameters and fragments in URL (TC-AST-009)', () => {
+      const urlWithQuery = 'https://example.com/search?q=test&lang=ja#results';
+      const res = handleSmartUrlPaste('Search Results', urlWithQuery);
+      assert.strictEqual(res, `[Search Results](${urlWithQuery})`);
+    });
   });
 
-  suite('TOC Generation (TC-AST-007)', () => {
+  suite('TOC Generation (TC-AST-007 & TC-AST-008)', () => {
     const doc = `
 # Title
 ## Section 1
@@ -168,6 +174,28 @@ suite('editor-assist (TC-AST-001–007)', () => {
       assert.strictEqual(headings[2].slug, '日本語のセクション');
     });
 
+    test('handles duplicate headings and ignores # inside code blocks (TC-AST-008)', () => {
+      const complexDoc = `
+# Overview
+## Overview
+\`\`\`python
+# This is a python comment, not a markdown heading
+def foo():
+    pass
+\`\`\`
+## Overview
+`.trim();
+      const headings = extractHeadings(complexDoc);
+      // Should find 3 headings, not the comment inside code block
+      assert.strictEqual(headings.length, 3);
+      assert.strictEqual(headings[0].text, 'Overview');
+      assert.strictEqual(headings[0].slug, 'overview');
+      assert.strictEqual(headings[1].text, 'Overview');
+      assert.strictEqual(headings[1].slug, 'overview-1');
+      assert.strictEqual(headings[2].text, 'Overview');
+      assert.strictEqual(headings[2].slug, 'overview-2');
+    });
+
     test('generates markdown list structure for TOC', () => {
       const toc = generateTableOfContents(doc);
       assert.ok(toc.includes('- [Title](#title)'));
@@ -186,3 +214,4 @@ suite('editor-assist (TC-AST-001–007)', () => {
     });
   });
 });
+

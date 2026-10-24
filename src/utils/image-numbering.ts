@@ -34,11 +34,29 @@ export function mimeToExtension(mime: string): string | undefined {
 
 /** Validate image path stays within workspace img/ directory. */
 export function isSafeImagePath(_mdUri: string, imageRelativePath: string): boolean {
-  if (imageRelativePath.includes('..')) {
+  let decoded = imageRelativePath;
+  try {
+    decoded = decodeURIComponent(imageRelativePath);
+  } catch {
     return false;
   }
-  if (!imageRelativePath.startsWith('img/')) {
+  if (imageRelativePath.includes('..') || decoded.includes('..')) {
     return false;
   }
-  return !/[\\]/.test(imageRelativePath);
+  if (!imageRelativePath.startsWith('img/') || !decoded.startsWith('img/')) {
+    return false;
+  }
+  if (/[\\]/.test(imageRelativePath) || /[\\]/.test(decoded)) {
+    return false;
+  }
+  const extMatch = /\.[a-z0-9]+$/i.exec(decoded);
+  if (!extMatch) {
+    return false;
+  }
+  const disallowedExts = ['.env', '.sh', '.bash', '.exe', '.bat', '.cmd', '.pem', '.key', '.txt'];
+  if (disallowedExts.includes(extMatch[0].toLowerCase())) {
+    return false;
+  }
+  return true;
 }
+

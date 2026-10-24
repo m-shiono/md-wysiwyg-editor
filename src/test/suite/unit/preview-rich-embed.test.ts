@@ -8,25 +8,11 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { isSafeImagePath } from '../../../utils/image-numbering';
 import { docToJson, parseMarkdown, serializeMarkdown } from '../../../serializers/markdown-serializer';
+import {
+  getUtilExport,
+  readRepoFile,
+} from '../../helpers/test-utils';
 type PreviewProjectionMessage = { type: string; html?: string; docJson?: string; markdownText?: string };
-
-function readRepoFile(...parts: string[]): string {
-  return fs.readFileSync(path.resolve(process.cwd(), ...parts), 'utf8');
-}
-
-function loadCompiledUtil(moduleName: string): Record<string, unknown> {
-  const jsPath = path.resolve(process.cwd(), `out/utils/${moduleName}.js`);
-  if (!fs.existsSync(jsPath)) {
-    return {};
-  }
-  return require(jsPath) as Record<string, unknown>;
-}
-
-function getUtilExport<T>(moduleName: string, exportName: string): T | undefined {
-  const mod = loadCompiledUtil(moduleName);
-  const fn = mod[exportName];
-  return typeof fn === 'function' ? (fn as T) : undefined;
-}
 
 function createMockWebview(): { asWebviewUri: (uri: vscode.Uri) => vscode.Uri } {
   return {
@@ -273,7 +259,7 @@ suite('preview-rich-embed (TC-124–142)', () => {
     assert.ok(!dataProjected.includes('vscode-webview://'));
   });
 
-  // --- Preview Mermaid CSS (TC-130–132) — snap-style: source visible in Preview ---
+  // --- Preview Mermaid CSS (TC-130–132) — Preview: source hidden in Preview (AD-008) ---
 
   test('TC-130: Preview mode hides mermaid-source and shows mermaid-preview', () => {
     const css = readRepoFile('media/editor.css');

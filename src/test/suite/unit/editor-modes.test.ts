@@ -279,6 +279,45 @@ suite('Three-mode editor contracts (AD-016)', () => {
     doc!.dispose();
   });
 
+  test('TC-178: raw parse failure save blocked and clean persistence on recovery', async () => {
+    const uri = vscode.Uri.file('/tmp/modes-tc-178-save-blocked.md');
+    const initialText = '# Intact Title\n\nOriginal safe content.\n';
+    mockVscode.setMockFile(uri, initialText);
+    const doc = await MarkdownDocument.create(uri, undefined);
+    assert.ok(doc);
+
+    // Simulate broken syntax in Raw mode
+    setParseFailureMock(true);
+    const success = doc!.applyRawSource('### Broken unparseable markdown syntax');
+    setParseFailureMock(false);
+
+    assert.strictEqual(success, false);
+    assert.strictEqual(doc!.isRawParseFailed, true);
+
+    // Attempting to save should be blocked and reject
+    await assert.rejects(
+      async () => doc!.save(noCancel),
+      /parse failed/i,
+      'Save must be blocked when isRawParseFailed is true',
+    );
+
+    // Verify on-disk file remains completely intact and uncorrupted
+    const onDisk = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+    assert.strictEqual(onDisk, initialText, 'On-disk file must not be modified when save is blocked');
+
+    // Fix the error in Raw mode
+    const fixSuccess = doc!.applyRawSource('# Intact Title\n\nFixed and updated content.\n');
+    assert.strictEqual(fixSuccess, true);
+    assert.strictEqual(doc!.isRawParseFailed, false);
+
+    // Save should now succeed and persist
+    await doc!.save(noCancel);
+    const updatedDisk = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+    assert.ok(updatedDisk.includes('Fixed and updated content.'), 'On-disk file must be updated after recovery');
+    doc!.dispose();
+  });
+
+
   test('TC-082: Markdown and Raw edits converge on the same Document for Preview projection', async () => {
     const doc = await openDoc('# Title\n\nHello\n');
 

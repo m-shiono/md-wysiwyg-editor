@@ -319,6 +319,20 @@ suite('Markdown serializer unit tests', () => {
     );
   });
 
+  test('TC-TAB-012: consecutive br tags in gfm cell are normalized and prevent unbounded blank expansion', () => {
+    const md = '| a<br /><br />b |\n| --- |\n| 1 |\n';
+    const doc = parseMarkdown(md);
+    const cell = getCellAt(doc, 0, 0);
+    assert.ok(cell, 'cell must exist');
+    const texts = cellTextParts(cell).join('');
+    assert.ok(texts.includes('a') && texts.includes('b'));
+    // Must not generate excessive htmlBlock markers
+    assert.strictEqual(countExcessBreakMarkers(cell), 0);
+    const serialized = serializeMarkdown(doc);
+    assert.ok(isGfmPipeTable(serialized));
+    assert.ok(serialized.includes('a') && serialized.includes('b'));
+  });
+
   test('TC-091: gfm table round-trip preserves pipe format', () => {
     const md = '| a | b |\n| --- | --- |\n| 1 | 2 |\n';
     const doc = parseMarkdown(md);

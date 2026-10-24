@@ -8,24 +8,10 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { Config } from 'dompurify';
-
-function readRepoFile(...parts: string[]): string {
-  return fs.readFileSync(path.resolve(process.cwd(), ...parts), 'utf8');
-}
-
-function loadCompiledUtil(moduleName: string): Record<string, unknown> {
-  const jsPath = path.resolve(process.cwd(), `out/utils/${moduleName}.js`);
-  if (!fs.existsSync(jsPath)) {
-    return {};
-  }
-  return require(jsPath) as Record<string, unknown>;
-}
-
-function getUtilExport<T>(moduleName: string, exportName: string): T | undefined {
-  const mod = loadCompiledUtil(moduleName);
-  const fn = mod[exportName];
-  return typeof fn === 'function' ? (fn as T) : undefined;
-}
+import {
+  getUtilExport,
+  readRepoFile,
+} from '../../helpers/test-utils';
 
 type MermaidThemeConfig = {
   theme: string;

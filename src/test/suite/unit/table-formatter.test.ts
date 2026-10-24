@@ -91,7 +91,38 @@ suite('table-formatter (TC-TAB-001–009)', () => {
       const lines = formatted.split('\n');
       assert.strictEqual(lines[2], '| `cat file | grep text` | success |');
     });
+
+    test('handles escaped pipes without splitting cell (TC-TAB-011)', () => {
+      const escapedTable = `
+| Syntax | Description |
+| --- | --- |
+| A \\| B | escaped pipe symbol |
+`.trim();
+      const formatted = formatMarkdownTable(escapedTable, 'compact');
+      const lines = formatted.split('\n');
+      assert.strictEqual(lines[2], '| A \\| B | escaped pipe symbol |');
+    });
+
+    test('handles uneven columns and normalizes row lengths safely (TC-TAB-010)', () => {
+      const unevenTable = `
+| Col1 | Col2 | Col3 |
+| --- | --- |
+| Val1 |
+| A | B | C | D |
+`.trim();
+      // Should not throw and should normalize table width
+      assert.doesNotThrow(() => {
+        const formatted = formatMarkdownTable(unevenTable, 'aligned');
+        const lines = formatted.split('\n');
+        assert.ok(lines.length >= 4);
+        // Each formatted line must start and end with pipe
+        for (const line of lines) {
+          assert.ok(line.startsWith('|') && line.endsWith('|'));
+        }
+      });
+    });
   });
+
 
   suite('findTableBlockAtCursor & navigateTable (TC-TAB-005–009)', () => {
     const sampleDoc = `

@@ -4,27 +4,12 @@
  * Theme/presentation canonical suite: mermaid-redux-elk-fidelity.
  */
 import * as assert from 'assert';
-import * as fs from 'fs';
-import * as path from 'path';
 import type { Config } from 'dompurify';
-
-function readRepoFile(...parts: string[]): string {
-  return fs.readFileSync(path.resolve(process.cwd(), ...parts), 'utf8');
-}
-
-function loadCompiledUtil(moduleName: string): Record<string, unknown> {
-  const jsPath = path.resolve(process.cwd(), `out/utils/${moduleName}.js`);
-  if (!fs.existsSync(jsPath)) {
-    return {};
-  }
-  return require(jsPath) as Record<string, unknown>;
-}
-
-function getUtilExport<T>(moduleName: string, exportName: string): T | undefined {
-  const mod = loadCompiledUtil(moduleName);
-  const fn = mod[exportName];
-  return typeof fn === 'function' ? (fn as T) : undefined;
-}
+import {
+  getUtilExport,
+  readRepoFile,
+  safeSanitizeSvg,
+} from '../../helpers/test-utils';
 
 type MermaidThemeConfig = {
   theme: string;
@@ -92,25 +77,10 @@ function extractSanitizeMermaidSvgOptions(editorSrc: string): Config {
   return new Function(`return (${match[1]})`)() as Config;
 }
 
-function createDomPurify(): { sanitize: (dirty: string, cfg?: Config) => string } {
-  const { JSDOM } = require('jsdom') as {
-    JSDOM: new (html: string) => { window: object & { document: object } };
-  };
-  const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
-  const { window } = dom;
-  (globalThis as { window?: unknown }).window = window;
-  (globalThis as { document?: unknown }).document = window.document;
-  const createDOMPurify = require('dompurify') as (
-    win: object,
-  ) => { sanitize: (dirty: string, cfg?: Config) => string };
-  return createDOMPurify(window);
-}
-
 function runProductionSanitize(svg: string): string {
   const editorSrc = readRepoFile('media/editor.ts');
   const options = extractSanitizeMermaidSvgOptions(editorSrc);
-  const purify = createDomPurify();
-  return purify.sanitize(svg, options);
+  return safeSanitizeSvg(svg, options as Record<string, unknown>);
 }
 
 const XSS_LABEL_SVG = [

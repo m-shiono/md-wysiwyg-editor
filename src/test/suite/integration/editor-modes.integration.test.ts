@@ -5,6 +5,8 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { getMarkdownEditorProvider } from '../../../utils/editor-provider-hook';
 
+import { waitFor } from '../../helpers/test-utils';
+
 const VIEW_TYPE = 'md-wysiwyg-editor.wysiwyg';
 
 function tipTapDocJson(paragraphText: string): string {
@@ -29,7 +31,7 @@ suite('Three-mode integration (AD-016)', () => {
     const uri = vscode.Uri.file(mdPath);
 
     await vscode.commands.executeCommand('vscode.openWith', uri, VIEW_TYPE);
-    await sleep(3500);
+    await waitFor(() => provider.getOpenDocumentForTest(uri) !== undefined, 8000);
 
     assert.strictEqual(provider.getEditorMode(uri), 'raw', 'initial mode must be raw');
 
@@ -80,7 +82,3 @@ suite('Three-mode integration (AD-016)', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 });
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
