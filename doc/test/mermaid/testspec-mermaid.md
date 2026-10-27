@@ -100,6 +100,8 @@ Mermaid 関連テスト契約の正本（AD-006）。旧 5 ファイルを統合
 | `testspec-mermaid-readable-viewport.md#TC-025` | `TC-MRV-025` | `readable-viewport`（`mermaid-default-preview-parity`） |
 | `testspec-mermaid-readable-viewport.md#TC-026` | `TC-MRV-026` | `readable-viewport`（`mermaid-default-preview-parity`） |
 | `testspec-mermaid-readable-viewport.md#TC-027` | `TC-MRV-027` | `readable-viewport`（`mermaid-default-preview-parity`） |
+| `testspec-mermaid-readable-viewport.md#TC-028` | `TC-MRV-028` | `readable-viewport`（`mermaid-zoom-center-alignment`） |
+| `testspec-mermaid-readable-viewport.md#TC-029` | `TC-MRV-029` | `readable-viewport`（`mermaid-sequential-queue-reliability`） |
 
 
 ---
@@ -1441,4 +1443,4 @@ testspec-implementation（2026-09-26 / `mermaid-label-metrics`）。Expected を
 | 2026-09-26 | `mermaid-label-metrics`: readable-viewport Expected を自然サイズ（scale 1）／Fit のみ contain／ラベルタイポへ更新。統合改訂履歴追記 |
 | 2026-09-26 | `mermaid-default-preview-parity`: 統合 testspec の全 suite Expected を `'12px'`→`'16px'`。readable-viewport に TC-MRV-024–027（中央寄せ・ズーム原点・測定 nonce・パン後 Fit 復帰）追加。改訂履歴追記 |
 | 2026-09-19 | doc-reorg: 5 Mermaid testspec を本ファイルへ統合。パス移設／Mermaid 統合。契約内容不変 |
-| 2026-10-03 | doc 整理: Mermaid 旧個別アーカイブ削除に伴う記述更新 |
+| 2026-10-03 | doc 整理: Mermaid 旧個別アーカイブ削除に伴う記述更新 || 2026-10-27 | `mermaid-sequential-queue-reliability`: 複数 Mermaid 図の同時描画競合（レースコンディション）を防止する直列実行キュー（`queueMermaidRender`）、Mermaid 内部エラー DOM 挿入抑制（`suppressErrorRendering: true`）、`htmlLabels: true` 明示、一時要素クリーンアップ、CRLF 改行正規化を追加（TC-MRV-029） |

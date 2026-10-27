@@ -102,7 +102,10 @@ const mermaidRerenderCallbacks = new Set<() => void>();
 const mermaidFitCallbacks = new Set<() => void>();
 let mermaidThemeRerenderTimer: ReturnType<typeof setTimeout> | undefined;
 const plantUmlTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const plantUmlCallbacks = new Map<string, (svg: string, available: boolean) => void>();
+const plantUmlCallbacks = new Map<
+  string,
+  (svg: string, available: boolean) => void
+>();
 /** ELK ローダは初回 layout:elk 要求時のみ動的 import（AD-007）。 */
 let elkLayoutRegisterPromise: Promise<void> | undefined;
 
@@ -153,6 +156,30 @@ let mermaidLoadPromise: Promise<MermaidApi> | undefined;
 let currentMermaidThemeKind: ThemeKind = "dark";
 let latestMermaidThemeConfig: MermaidThemeConfig | undefined;
 
+/**
+ * Global sequential queue for mermaid.render calls.
+ * Mermaid's render() is not concurrent-safe; concurrent calls mutate shared internal
+ * DOM elements (#d...) and trigger race conditions / syntax errors.
+ */
+let mermaidRenderQueue: Promise<void> = Promise.resolve();
+
+function queueMermaidRender<T>(task: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    mermaidRenderQueue = mermaidRenderQueue
+      .then(async () => {
+        try {
+          const res = await task();
+          resolve(res);
+        } catch (err) {
+          reject(err);
+        }
+      })
+      .catch(() => {
+        // Guarantee queue continuity even if previous render threw
+      });
+  });
+}
+
 function applyMermaidThemeToInstance(
   mermaid: MermaidApi,
   config: MermaidThemeConfig,
@@ -163,10 +190,12 @@ function applyMermaidThemeToInstance(
       theme: config.theme as any,
       themeVariables: config.themeVariables,
       securityLevel: "strict",
+      suppressErrorRendering: true,
       // Default-like hug→wrap (stock Mermaid defaults; explicit for contract)
       flowchart: {
         wrappingWidth: config.flowchart.wrappingWidth,
         padding: config.flowchart.padding,
+        htmlLabels: true,
       },
     });
   } catch (err) {
@@ -336,9 +365,11 @@ registerMermaidThemeRuntime({
           theme: config.theme as any,
           themeVariables: config.themeVariables,
           securityLevel: "strict",
+          suppressErrorRendering: true,
           flowchart: {
             wrappingWidth: config.flowchart.wrappingWidth,
             padding: config.flowchart.padding,
+            htmlLabels: true,
           },
         });
       } catch (err) {
@@ -360,7 +391,8 @@ interface TipTapDoc {
 let editor: Editor | undefined;
 let insertTableFormat: TableFormat = "gfm";
 let tablePipeAlignment: TablePipeAlignment =
-  (document.body?.dataset?.tablePipeAlignment as TablePipeAlignment) || "aligned";
+  (document.body?.dataset?.tablePipeAlignment as TablePipeAlignment) ||
+  "aligned";
 let readonly = false;
 /** Must match Host DEFAULT_EDITOR_MODE / initial HTML body[data-mode] (AD-016). */
 let editorMode: EditorMode = "raw";
@@ -480,7 +512,9 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
             if (updatedNode.type.name !== "codeBlock") {
               return false;
             }
-            const lang = ((updatedNode.attrs.language as string) ?? "").toLowerCase();
+            const lang = (
+              (updatedNode.attrs.language as string) ?? ""
+            ).toLowerCase();
             if (lang !== "math" && lang !== "latex") {
               return false;
             }
@@ -519,7 +553,8 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
           if (svg) {
             preview.innerHTML = sanitizePlantUmlSvg(svg);
           } else {
-            preview.innerHTML = '<div class="plantuml-error">PlantUML render error</div>';
+            preview.innerHTML =
+              '<div class="plantuml-error">PlantUML render error</div>';
           }
         });
 
@@ -541,7 +576,7 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
                 id: viewId,
                 source,
               });
-            }, 400)
+            }, 400),
           );
         };
 
@@ -558,7 +593,10 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
             if (updatedNode.type.name !== "codeBlock") {
               return false;
             }
-            if (((updatedNode.attrs.language as string) ?? "").toLowerCase() !== "plantuml") {
+            if (
+              ((updatedNode.attrs.language as string) ?? "").toLowerCase() !==
+              "plantuml"
+            ) {
               return false;
             }
             renderPreview(updatedNode.textContent);
@@ -678,7 +716,10 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
           : undefined;
       resizeObserver?.observe(viewport);
 
-      const applyScale = (next: number, isZoomAction: boolean = false): void => {
+      const applyScale = (
+        next: number,
+        isZoomAction: boolean = false,
+      ): void => {
         userInteracted = true;
         viewportScale = clampMermaidViewportScale(next);
         const clamped = getClampedPanOffsets(
@@ -739,14 +780,33 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
                 return;
               }
               await ensureElkLayoutRegistered(renderSource);
-              // Measure at density typography before render (CSP Host-nonce CSS)
-              ensureMermaidMeasureFontCss();
               const mermaid = await getMermaid();
               const renderId = `${viewId}-svg-${++renderSeq}`;
-              const { svg: renderedSvg } = await mermaid.render(
-                renderId,
-                renderSource,
+              const thisSeq = renderSeq;
+
+              const { svg: renderedSvg } = await queueMermaidRender(
+                async () => {
+                  if (thisSeq !== renderSeq) {
+                    throw new Error("__MERMAID_RENDER_SUPERSEDED__");
+                  }
+                  try {
+                    // Measure at density typography before render (CSP Host-nonce CSS)
+                    ensureMermaidMeasureFontCss();
+                    return await mermaid.render(renderId, renderSource);
+                  } finally {
+                    // Clean up dangling temporary DOM element if created by mermaid
+                    const tempEl = document.getElementById(`d${renderId}`);
+                    if (tempEl && tempEl.parentNode) {
+                      tempEl.parentNode.removeChild(tempEl);
+                    }
+                  }
+                },
               );
+
+              if (thisSeq !== renderSeq) {
+                return;
+              }
+
               const svg = applyMermaidPresentationStyle(viewId, renderedSvg);
               preview.innerHTML = sanitizeMermaidSvg(svg);
               const svgEl = preview.querySelector("svg");
@@ -760,6 +820,9 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
                 fit();
               });
             } catch (err) {
+              if (String(err).includes("__MERMAID_RENDER_SUPERSEDED__")) {
+                return;
+              }
               preview.innerHTML = `<div class="mermaid-error">${escapeHtml(String(err))}</div>`;
               // mermaid-error → mermaid-viewport UI disabled / aria-hidden (TC-017)
               setViewportUiEnabled(false);
@@ -807,6 +870,7 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
           return !target || !code.contains(target);
         },
         destroy: () => {
+          renderSeq++;
           code.removeEventListener("input", onSourceInput);
           resizeObserver?.disconnect();
           mermaidFitCallbacks.delete(fit);
@@ -2658,7 +2722,10 @@ function handleTableOperation(op: string): void {
       if (raw) {
         const block = findTableBlockAtCursor(raw.value, raw.selectionStart);
         if (block) {
-          const formatted = formatMarkdownTable(block.tableText, tablePipeAlignment);
+          const formatted = formatMarkdownTable(
+            block.tableText,
+            tablePipeAlignment,
+          );
           raw.value =
             raw.value.slice(0, block.startOffset) +
             formatted +
@@ -2835,7 +2902,10 @@ function attachTableContextMenuHandlers(): void {
     event.preventDefault();
     event.stopPropagation();
 
-    const pos = editor.view.posAtCoords({ left: event.clientX, top: event.clientY });
+    const pos = editor.view.posAtCoords({
+      left: event.clientX,
+      top: event.clientY,
+    });
     if (pos) {
       editor.chain().focus().setTextSelection(pos.pos).run();
     } else {

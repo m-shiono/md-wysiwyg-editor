@@ -875,4 +875,46 @@ suite('mermaid-readable-viewport', () => {
       'attachMermaidViewportPan must wire onPan delta updates to NodeView pan offsets',
     );
   });
+
+  test('TC-MRV-029: Mermaid sequential render queue, cleanup, and CRLF normalization', () => {
+    const editorSrc = readRepoFile('media/editor.ts');
+    const renderSrc = readRepoFile('src/utils/mermaid-render.ts');
+
+    // 1. Global sequential queue to prevent concurrent render race conditions
+    assert.ok(
+      /let\s+mermaidRenderQueue(?::\s*Promise<[^>]+>)?\s*=\s*Promise\.resolve\(\)/.test(editorSrc),
+      'editor.ts must define mermaidRenderQueue',
+    );
+    assert.ok(
+      /function\s+queueMermaidRender\s*<\s*T\s*>\s*\(task:\s*\(\)\s*=>\s*Promise<T>\)/.test(editorSrc),
+      'editor.ts must declare queueMermaidRender function',
+    );
+    assert.ok(
+      /queueMermaidRender\s*\(\s*async\s*\(\)\s*=>[\s\S]*?mermaid\.render/.test(editorSrc),
+      'renderPreview must execute mermaid.render inside queueMermaidRender',
+    );
+
+    // 2. Suppress Mermaid internal error DOM insertion and enable htmlLabels
+    assert.ok(
+      /suppressErrorRendering\s*:\s*true/.test(editorSrc),
+      'mermaid.initialize must set suppressErrorRendering: true',
+    );
+    assert.ok(
+      /htmlLabels\s*:\s*true/.test(editorSrc),
+      'mermaid.initialize flowchart config must enable htmlLabels: true',
+    );
+
+    // 3. Temporary DOM node cleanup in finally
+    assert.ok(
+      /const\s+tempEl\s*=\s*document\.getElementById\(`d\$\{renderId\}`\)/.test(editorSrc) &&
+        /tempEl\.parentNode\.removeChild\(tempEl\)/.test(editorSrc),
+      'renderPreview must clean up dangling #d... temporary elements in finally block',
+    );
+
+    // 4. CRLF normalization in buildMermaidRenderSource
+    assert.ok(
+      /source\.replace\(\s*\/\\r\\n\/g\s*,\s*['"]\\n['"]\s*\)/.test(renderSrc),
+      'buildMermaidRenderSource must normalize CRLF to LF',
+    );
+  });
 });
