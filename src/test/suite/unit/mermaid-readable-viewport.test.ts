@@ -854,4 +854,25 @@ suite('mermaid-readable-viewport', () => {
     assert.ok(hasZoomControls(editorSrc), 'zoom controls must remain after pan/Fit path');
     assert.ok(hasFitAriaLabel(editorSrc), "Fit control must keep aria-label (e.g. 'Fit')");
   });
+
+  test('TC-MRV-028: preview centers SVG and viewport pan handles translate offsets to prevent zoom clipping', () => {
+    const editorSrc = readRepoFile('media/editor.ts');
+    const css = readRepoFile('media/editor.css');
+    // Verify .mermaid-preview has center alignment so diagrams are not left-aligned
+    assert.ok(
+      /\.mermaid-preview\s*\{[^}]*justify-content\s*:\s*center/i.test(css) &&
+        /\.mermaid-preview\s*\{[^}]*align-items\s*:\s*center/i.test(css),
+      '.mermaid-preview must center contents (align-items: center, justify-content: center)',
+    );
+    // Verify applyViewportZoom supports panX/panY translation
+    assert.ok(
+      /translate\(\s*\$\{panX\}px\s*,\s*\$\{panY\}px\s*\)\s*scale/.test(editorSrc),
+      'applyViewportZoom must apply translate(panX, panY) with scale to prevent negative scroll clipping',
+    );
+    // Verify attachMermaidViewportPan supports onPan callback
+    assert.ok(
+      /attachMermaidViewportPan\s*\(\s*viewport\s*,\s*\(\s*dx\s*,\s*dy\s*\)\s*=>/.test(editorSrc),
+      'attachMermaidViewportPan must wire onPan delta updates to NodeView pan offsets',
+    );
+  });
 });

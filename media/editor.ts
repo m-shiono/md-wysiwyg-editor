@@ -96,7 +96,7 @@ const MERMAID_VIEWPORT_MAX_SCALE = 8;
 /** Extra viewBox padding so Mermaid titleText is not clipped (AD-003). */
 const MERMAID_TITLE_VIEWBOX_PAD = 24;
 /** Extra horizontal pad — long centered titles need more than vertical (leading glyph clip). */
-const MERMAID_TITLE_VIEWBOX_PAD_X = 36;
+const MERMAID_TITLE_VIEWBOX_PAD_X = 48;
 const mermaidTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const mermaidRerenderCallbacks = new Set<() => void>();
 const mermaidFitCallbacks = new Set<() => void>();
@@ -617,8 +617,23 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
       const viewId = `mermaid-nv-${Math.random().toString(36).slice(2, 10)}`;
       let renderSeq = 0;
       let viewportScale = 1;
+      let panX = 0;
+      let panY = 0;
       let userInteracted = false;
-      const detachPan = attachMermaidViewportPan(viewport);
+      const detachPan = attachMermaidViewportPan(viewport, (dx, dy) => {
+        userInteracted = true;
+        const clamped = getClampedPanOffsets(
+          viewport,
+          preview,
+          viewportScale,
+          panX + dx,
+          panY + dy,
+          false,
+        );
+        panX = clamped.x;
+        panY = clamped.y;
+        applyViewportZoom(canvas, viewportScale, panX, panY);
+      });
 
       const setViewportUiEnabled = (enabled: boolean): void => {
         toolbar.hidden = !enabled;
@@ -640,6 +655,8 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
           if (svgEl) {
             ensureTitleVisible(svgEl as SVGSVGElement);
           }
+          panX = 0;
+          panY = 0;
           viewportScale = fitToViewport(viewport, canvas, preview);
         }
       };
@@ -661,18 +678,28 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
           : undefined;
       resizeObserver?.observe(viewport);
 
-      const applyScale = (next: number): void => {
+      const applyScale = (next: number, isZoomAction: boolean = false): void => {
         userInteracted = true;
         viewportScale = clampMermaidViewportScale(next);
-        applyViewportZoom(canvas, viewportScale);
+        const clamped = getClampedPanOffsets(
+          viewport,
+          preview,
+          viewportScale,
+          panX,
+          panY,
+          isZoomAction,
+        );
+        panX = clamped.x;
+        panY = clamped.y;
+        applyViewportZoom(canvas, viewportScale, panX, panY);
       };
 
       const zoomIn = (): void => {
-        applyScale(viewportScale * MERMAID_VIEWPORT_ZOOM_STEP);
+        applyScale(viewportScale * MERMAID_VIEWPORT_ZOOM_STEP, true);
       };
 
       const zoomOut = (): void => {
-        applyScale(viewportScale / MERMAID_VIEWPORT_ZOOM_STEP);
+        applyScale(viewportScale / MERMAID_VIEWPORT_ZOOM_STEP, true);
       };
 
       zoomInBtn.addEventListener("click", (event) => {
@@ -689,6 +716,8 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
         event.preventDefault();
         event.stopPropagation();
         userInteracted = false;
+        panX = 0;
+        panY = 0;
         fit();
         // Fit clears pan offset via fitToViewport → centerOnSmallerAxes (AD-007/008)
         viewportScale = fitToViewport(viewport, canvas, preview);
@@ -734,6 +763,8 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
               preview.innerHTML = `<div class="mermaid-error">${escapeHtml(String(err))}</div>`;
               // mermaid-error → mermaid-viewport UI disabled / aria-hidden (TC-017)
               setViewportUiEnabled(false);
+              panX = 0;
+              panY = 0;
               applyViewportZoom(canvas, 1);
               viewportScale = 1;
               vscode.postMessage({ type: "mermaidError", error: String(err) });
@@ -917,13 +948,21 @@ function expandBoundsForSvgText(
   bounds: SvgBounds,
 ): void {
   const extent = getSvgTextExtent(el);
-  if (!extent) {
-    return;
+  if (extent) {
+    bounds.minX = Math.min(bounds.minX, extent.left);
+    bounds.minY = Math.min(bounds.minY, extent.top);
+    bounds.maxX = Math.max(bounds.maxX, extent.right);
+    bounds.maxY = Math.max(bounds.maxY, extent.bottom);
   }
-  bounds.minX = Math.min(bounds.minX, extent.left);
-  bounds.minY = Math.min(bounds.minY, extent.top);
-  bounds.maxX = Math.max(bounds.maxX, extent.right);
-  bounds.maxY = Math.max(bounds.maxY, extent.bottom);
+  el.querySelectorAll("tspan").forEach((tspan) => {
+    const tExtent = getSvgTextExtent(tspan as SVGGraphicsElement);
+    if (tExtent) {
+      bounds.minX = Math.min(bounds.minX, tExtent.left);
+      bounds.minY = Math.min(bounds.minY, tExtent.top);
+      bounds.maxX = Math.max(bounds.maxX, tExtent.right);
+      bounds.maxY = Math.max(bounds.maxY, tExtent.bottom);
+    }
+  });
 }
 
 function expandBoundsFromBBox(
@@ -958,7 +997,9 @@ function findMermaidTitleElements(
   svgRoot: SVGSVGElement,
 ): SVGGraphicsElement[] {
   const byClass = Array.from(
-    svgRoot.querySelectorAll(".titleText, g.title > text, text.title"),
+    svgRoot.querySelectorAll(
+      ".titleText, g.title > text, text.title, .diagramTitle, g.diagramTitle > text, text.diagramTitle",
+    ),
   ) as SVGGraphicsElement[];
   if (byClass.length > 0) {
     return byClass;
@@ -1061,6 +1102,10 @@ function shiftSvgTextByX(el: SVGGraphicsElement, deltaX: number): void {
   if (!(deltaX > 0) || !Number.isFinite(deltaX)) {
     return;
   }
+  if (el.getAttribute("data-title-aligned") === "true") {
+    return;
+  }
+  el.setAttribute("data-title-aligned", "true");
 
   const xAttr = el.getAttribute("x");
   const xNum = xAttr !== null && xAttr !== "" ? Number(xAttr) : NaN;
@@ -1180,8 +1225,84 @@ function clampMermaidViewportScale(scale: number): number {
   );
 }
 
-function applyViewportZoom(canvas: HTMLElement, scale: number): void {
-  canvas.style.transform = `scale(${scale})`;
+function applyViewportZoom(
+  canvas: HTMLElement,
+  scale: number,
+  panX: number = 0,
+  panY: number = 0,
+): void {
+  if (panX !== 0 || panY !== 0) {
+    canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+  } else {
+    canvas.style.transform = `scale(${scale})`;
+  }
+}
+
+function getDiagramNaturalDimensions(preview: HTMLElement): {
+  naturalW: number;
+  naturalH: number;
+} {
+  const svg = preview.querySelector("svg");
+  if (!svg) {
+    return { naturalW: 1, naturalH: 1 };
+  }
+  const vb = (svg as SVGSVGElement).viewBox?.baseVal;
+  const naturalW =
+    (vb && vb.width > 0 ? vb.width : 0) ||
+    (svg as SVGSVGElement).width?.baseVal?.value ||
+    svg.getBoundingClientRect().width ||
+    1;
+  const naturalH =
+    (vb && vb.height > 0 ? vb.height : 0) ||
+    (svg as SVGSVGElement).height?.baseVal?.value ||
+    svg.getBoundingClientRect().height ||
+    1;
+  return { naturalW, naturalH };
+}
+
+/**
+ * Keep scaled diagram inside the viewport frame bounds, preventing left/top clipping on zoom.
+ */
+function getClampedPanOffsets(
+  viewport: HTMLElement,
+  preview: HTMLElement,
+  scale: number,
+  currentPanX: number,
+  currentPanY: number,
+  alignToStart: boolean = false,
+): { x: number; y: number } {
+  const { naturalW, naturalH } = getDiagramNaturalDimensions(preview);
+  const frameW = Math.max(1, viewport.clientWidth - 24);
+  const frameH = Math.max(1, viewport.clientHeight - 16);
+  const scaledW = naturalW * scale;
+  const scaledH = naturalH * scale;
+
+  let x = currentPanX;
+  let y = currentPanY;
+
+  if (scaledW > frameW) {
+    const overflowX = (scaledW - frameW) / 2;
+    if (alignToStart) {
+      x = overflowX;
+    } else {
+      x = Math.max(-overflowX, Math.min(overflowX, x));
+    }
+  } else {
+    x = 0;
+  }
+
+  if (scaledH > frameH) {
+    const overflowY = (scaledH - frameH) / 2;
+    if (alignToStart) {
+      y = overflowY;
+    } else {
+      y = Math.max(-overflowY, Math.min(overflowY, y));
+    }
+  } else {
+    y = 0;
+  }
+
+  return { x, y };
 }
 
 /**
@@ -1264,14 +1385,19 @@ function createMermaidViewportToolbar(): {
 
 /**
  * Spec Gap RK-004 resolution: pan starts with primary-button drag inside
- * `.mermaid-viewport`, adjusting native scrollLeft/scrollTop. No modifier key
+ * `.mermaid-viewport`, adjusting native scrollLeft/scrollTop or callback delta. No modifier key
  * or middle-button is required. Source text lives outside the frame so Preview
  * RO selection conflicts are avoided. Viewport ops never post Document edits.
  */
-function attachMermaidViewportPan(viewport: HTMLElement): () => void {
+function attachMermaidViewportPan(
+  viewport: HTMLElement,
+  onPan?: (dx: number, dy: number) => void,
+): () => void {
   let isPanning = false;
   let startX = 0;
   let startY = 0;
+  let lastX = 0;
+  let lastY = 0;
   let originScrollLeft = 0;
   let originScrollTop = 0;
   let activePointerId: number | null = null;
@@ -1288,6 +1414,8 @@ function attachMermaidViewportPan(viewport: HTMLElement): () => void {
     activePointerId = event.pointerId;
     startX = event.clientX;
     startY = event.clientY;
+    lastX = event.clientX;
+    lastY = event.clientY;
     originScrollLeft = viewport.scrollLeft;
     originScrollTop = viewport.scrollTop;
     viewport.classList.add("is-panning");
@@ -1299,10 +1427,16 @@ function attachMermaidViewportPan(viewport: HTMLElement): () => void {
     if (!isPanning || activePointerId !== event.pointerId) {
       return;
     }
-    const dx = event.clientX - startX;
-    const dy = event.clientY - startY;
-    viewport.scrollLeft = originScrollLeft - dx;
-    viewport.scrollTop = originScrollTop - dy;
+    const dx = event.clientX - lastX;
+    const dy = event.clientY - lastY;
+    lastX = event.clientX;
+    lastY = event.clientY;
+    if (onPan) {
+      onPan(dx, dy);
+    } else {
+      viewport.scrollLeft = originScrollLeft - (event.clientX - startX);
+      viewport.scrollTop = originScrollTop - (event.clientY - startY);
+    }
   };
 
   const endPan = (event: PointerEvent): void => {
