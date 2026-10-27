@@ -7,6 +7,7 @@ import { setExtensionContext } from './utils/extension-context';
 import { setMarkdownEditorProvider } from './utils/editor-provider-hook';
 import { registerReloadExtensionCommand } from './commands/reload-extension';
 import { registerExportCommands } from './commands/export-document';
+import { registerTableCsvBacklogCommands } from './commands/table-csv-backlog';
 import { registerEditorSwitchGuard } from './utils/editor-switch-guard';
 import { getOutputChannel } from './utils/logger';
 
@@ -32,6 +33,7 @@ export function activate(context: vscode.ExtensionContext): void {
     registerMarpPreviewCommand(context, marpManager),
     registerNativeMarkdownPreviewCommand(context, provider),
     ...registerExportCommands(context, provider),
+    ...registerTableCsvBacklogCommands(context),
     registerEditorSwitchGuard(context),
     registerReloadExtensionCommand(context),
     output,

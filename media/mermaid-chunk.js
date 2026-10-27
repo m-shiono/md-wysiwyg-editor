@@ -3640,4 +3640,3 @@ mermaid/dist/mermaid.core.mjs:
    * Wait for document loaded before starting the execution
    *)
 */
-//# sourceMappingURL=mermaid-chunk.js.map

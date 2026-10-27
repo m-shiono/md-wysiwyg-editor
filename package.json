@@ -28,7 +28,12 @@
     "onCommand:md-wysiwyg-editor.exportHtml",
     "onCommand:md-wysiwyg-editor.exportPdf",
     "onCommand:md-wysiwyg-editor.exportDocx",
-    "onCommand:md-wysiwyg-editor.exportPptx"
+    "onCommand:md-wysiwyg-editor.exportPptx",
+    "onCommand:md-wysiwyg-editor.convertCsvToMarkdownTable",
+    "onCommand:md-wysiwyg-editor.convertMarkdownTableToCsv",
+    "onCommand:md-wysiwyg-editor.copyTableAsCsv",
+    "onCommand:md-wysiwyg-editor.copyAsBacklog",
+    "onCommand:md-wysiwyg-editor.pasteBacklogAsMarkdown"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -112,6 +117,31 @@
         "command": "md-wysiwyg-editor.exportPptx",
         "title": "Export to PPTX (PowerPoint)",
         "category": "MD WYSIWYG Editor"
+      },
+      {
+        "command": "md-wysiwyg-editor.convertCsvToMarkdownTable",
+        "title": "Convert CSV/TSV to Markdown Table",
+        "category": "MD WYSIWYG Editor"
+      },
+      {
+        "command": "md-wysiwyg-editor.convertMarkdownTableToCsv",
+        "title": "Convert Markdown Table to CSV",
+        "category": "MD WYSIWYG Editor"
+      },
+      {
+        "command": "md-wysiwyg-editor.copyTableAsCsv",
+        "title": "Copy Table as CSV",
+        "category": "MD WYSIWYG Editor"
+      },
+      {
+        "command": "md-wysiwyg-editor.copyAsBacklog",
+        "title": "Copy as Backlog Format",
+        "category": "MD WYSIWYG Editor"
+      },
+      {
+        "command": "md-wysiwyg-editor.pasteBacklogAsMarkdown",
+        "title": "Paste Backlog as Markdown",
+        "category": "MD WYSIWYG Editor"
       }
     ],
     "configuration": {
@@ -174,6 +204,33 @@
           "command": "md-wysiwyg-editor.openWithWysiwyg",
           "when": "resourceExtname == .md && activeCustomEditorId != md-wysiwyg-editor.wysiwyg",
           "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "md-wysiwyg-editor.convertCsvToMarkdownTable",
+          "when": "editorHasSelection && (editorLangId == markdown || resourceExtname == .md)",
+          "group": "7_modification@1"
+        },
+        {
+          "command": "md-wysiwyg-editor.convertMarkdownTableToCsv",
+          "when": "editorLangId == markdown || resourceExtname == .md",
+          "group": "7_modification@2"
+        },
+        {
+          "command": "md-wysiwyg-editor.copyTableAsCsv",
+          "when": "editorLangId == markdown || resourceExtname == .md",
+          "group": "7_modification@3"
+        },
+        {
+          "command": "md-wysiwyg-editor.copyAsBacklog",
+          "when": "editorLangId == markdown || resourceExtname == .md",
+          "group": "7_modification@4"
+        },
+        {
+          "command": "md-wysiwyg-editor.pasteBacklogAsMarkdown",
+          "when": "editorLangId == markdown || resourceExtname == .md",
+          "group": "7_modification@5"
         }
       ]
     }

@@ -1163,6 +1163,53 @@ Source モードおよび Visual モードにおいて、文字列を選択し�
 
 ---
 
+## §16 CSV ⇄ Markdown 表相互変換および Backlog 形式コピー＆ペースト（table-csv-and-backlog-conversion）
+
+### 概要
+
+Markdownファイル（`.md`）の編集体験を維持したまま、表計算ツール（Excel / スプレッドシート等）との間でCSV/TSVの相互変換、およびBacklog記法（Wiki・課題）との間でBacklog形式コピー＆ペースト連携を提供する。
+
+### 1. CSV/TSV ⇄ Markdown 表形式の相互変換
+
+- **CSV/TSV → Markdown 表形式**:
+  - RFC 4180準拠。カンマ（`,`）およびタブ（`\t`）の出現頻度から区切り文字を自動判定。
+  - セル内のカンマ、タブ、改行、二重引用符（`""` エスケープ）を適切にパースし、Markdownテーブルへ変換。
+  - 変換後は既存の `table-formatter` ルールに沿ってアライメントおよびパディングを自動整形。
+- **Markdown 表形式 → CSV/TSV**:
+  - Markdownテーブルのパイプ構文（エスケープパイプ `\|` を考慮）を各行・各セルへ分解。
+  - カンマや改行、ダブルクォートを含むセルは `"` で囲み、内部の `"` は `""` にエスケープして出力。
+- **提供コマンド**:
+  - `md-wysiwyg-editor.convertCsvToMarkdownTable`: 選択中のCSV/TSVテキストをMarkdown表に置換。
+  - `md-wysiwyg-editor.convertMarkdownTableToCsv`: カーソル位置のMarkdown表をCSVテキストに置換。
+  - `md-wysiwyg-editor.copyTableAsCsv`: カーソル位置のMarkdown表をCSV形式テキストとしてクリップボードにコピー。
+
+### 2. Backlog 形式コピー＆ペースト連携
+
+- **Markdown → Backlog形式でコピー (`copyAsBacklog`)**:
+  - エディタの選択範囲（またはテーブル内にカーソルがある場合はそのテーブル、未選択時はドキュメント全体）をBacklog記法へ変換し、クリップボードに格納する。
+  - **表形式の変換**:
+    - ヘッダ行末尾に `|h` を付与。デリミタ行（`| --- |`）は除去。
+    - 各列のアライメント（左寄せ/中央/右寄せ）を各データセルの `LEFT:` / `CENTER:` / `RIGHT:` 接頭辞に変換。
+  - **ドキュメント記法の変換**:
+    - 見出し: `#` → `*`、`##` → `**`、`###` → `***`
+    - 箇条書き: `-` / `*` のインデント階層 → `-`、`--`、`---`
+    - 番号付きリスト: `1.` のインデント階層 → `+`、`++`、`+++`
+    - コードブロック: ````lang ... ```` → `{code:lang} ... {/code}`
+    - 引用: `> text` → `>>\ntext\n<<`
+    - 文字装飾: `**bold**` → `''bold''`、`~~strike~~` → `%%strike%%`
+    - リンク: `[title](url)` → `[[title>url]]`
+- **Backlog形式 → Markdown形式で貼り付け (`pasteBacklogAsMarkdown`)**:
+  - クリップボード内のBacklogテキストを読み取り、Markdown構文に逆変換してエディタのカーソル位置（または選択範囲）へ挿入する。
+  - Backlogテーブル（`|h` 行、`LEFT:` / `CENTER:` / `RIGHT:` 接頭辞）をGFM Markdownテーブル（デリミタ行 `|:---|` を含む）へ展開。
+  - Backlog記法（見出し、リスト、コード、装飾、引用、リンク）をMarkdown記法へ自動復元。
+
+### 3. エディタ UI / コンテキストメニュー統合
+
+- テキストエディタのコンテキストメニュー（右クリック）に変換・コピー・ペースト項目を配置。
+- `pasteBacklogAsMarkdown` にショートカットキー（例: `Cmd+Alt+V` / `Ctrl+Alt+V`）を提供。
+
+---
+
 | ID | 内容 | 本仕様での扱い |
 |----|------|---------------|
 | RK-001 | HTML 混在による Git diff 可読性低下 | AD-013 で緩和。レビューはプレビュー推奨 |
@@ -1198,6 +1245,7 @@ Source モードおよび Visual モードにおいて、文字列を選択し�
 | [doc/test/mermaid/testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) | **作成済** — HIP 付き sanitize 回帰維持。テーマ／CSS Expected は **`mermaid-redux-elk-fidelity` で更新要**（`redux`/`redux-dark`＋nonce presentation 再注入） |
 | [doc/test/mermaid/testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) | **作成済** — ソース併記・Preview RO・HIP / strict。テーマ／CSS 前提は **`mermaid-redux-elk-fidelity` で更新要**。flowchart エッジ CSP＋nonce 再注入回帰必須；`'unsafe-inline'` なし |
 | [doc/test/mermaid/testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) | **未作成** — 後続 `spec-test-design`。kind→redux マップ、nonce 再注入、ELK オプトイン／遅延ロード、グローバル強制 ELK なし、strict / HIP / ソース併記 / Preview RO 回帰 |
+| [doc/test/testspec-table-csv-and-backlog-conversion.md](../test/testspec-table-csv-and-backlog-conversion.md) | **作成済** — CSV ⇄ Markdown 表相互変換および Backlog 形式コピー＆ペースト（§16） |
 | MVP 外項目 | [doc/requirements/backlog.md](backlog.md) |
 
 ---
@@ -1285,4 +1333,5 @@ Source モードおよび Visual モードにおいて、文字列を選択し�
 | 2026-10-22 | §12, §13, 改訂履歴 | PlantUML 表示サポート（`plantuml-support`）およびドキュメントエクスポート機能（`document-export`）の仕様追加。PlantUML はローカル Java/CLI 実行（アプローチ B）、未検出時は図非表示の安全縮退を契約化。エクスポートはスタンドアロン HTML、PDF、DOCX、PPTX のパイプラインを定義 |
 | 2026-10-22 | §14, 改訂履歴 | 数式レンダリング（`katex-math-rendering`）の仕様追加。LaTeX 構文（math / latex フェンス）を KaTeX でリアルタイム描画。三点モード（Visual: 図+ソース / Preview: 図のみ）を契約化 |
 | 2026-10-23 | §3, §15, 改訂履歴 | 表フォーマット切替（Aligned vs Compact）およびエディタ入力支援（`table-format-and-editor-assist`）: GFM パイプ表の区切り文字固定長整列／最小空白パディングの切替（設定 `md-wysiwyg-editor.table.pipeAlignment` および Table メニュー）、全角文字幅（CJK）対応、Source モードでの Tab / Shift+Tab 表自動整列およびセル移動・新行挿入、リスト編集支援（Enter 継続・終了、Tab インデント）、書式トグルショートカット、スマート URL ペースト、目次（TOC）自動生成・同期を契約化 |
+| 2026-10-24 | §16, 改訂履歴 | CSV ⇄ Markdown 表相互変換および Backlog 形式コピー＆ペースト（`table-csv-and-backlog-conversion`）: RFC 4180準拠のCSV/TSV相互変換（カンマ/タブ自動判別、改行・ダブルクォートエスケープ）、Backlog 表記法（`|h`、`LEFT:` / `CENTER:` / `RIGHT:`）およびドキュメント記法（見出し、リスト、コード、装飾、引用、リンク）のBacklog形式コピー＆Markdown形式ペーストを契約化 |
 
