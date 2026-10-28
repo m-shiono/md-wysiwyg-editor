@@ -19,3 +19,6 @@ Markdown ファイルを開いた際のデフォルトエディタモード（Vi
 | `TC-MODE-006` | P1 | 設定値マッピング関数の単体検証 | `"source"`, `"visual"`, `"preview"` および不正値 | 期待される `EditorMode`（`'raw'`, `'markdown'`, `'preview'`）へ正確に変換される |
 | `TC-MODE-007` | P0 | 手動モード切替と設定の独立性 | オープン後に三点ツールバーでモード切替（`setMode`） | 表示モードは正常に切り替わり、設定値（configuration）は書き換えられない |
 | `TC-MODE-008` | P0 | `package.json` 設定定義スキーマ検証 | `package.json` の `contributes.configuration` | `md-wysiwyg-editor.defaultMode` が定義され、`enum: ["source", "visual", "preview"]`、`default: "visual"` が設定されていること |
+| `TC-MODE-009` | P0 | 設定動的変更時のスコープ別検知 | `settings.json` の変更（ユーザー/ワークスペース/リソーススコープ） | `onDidChangeConfiguration` で `document.uri` を含む全スコープで検知され、開いているエディタに `syncDocumentModeWithConfig` で反映される |
+| `TC-MODE-010` | P0 | タブフォーカス復帰時のモード再同期 | `settings.json` 編集後に Markdown タブをアクティブ化 | `onDidChangeViewState` でアクティブ復帰時に `syncDocumentModeWithConfig` が実行され、最新設定値とエディタ表示が一致する |
+| `TC-MODE-011` | P0 | Webview 側 `modeChanged` の確実な強制適用 | Host からの `modeChanged` メッセージ受信 | Webview 内部状態に関わらず無条件で `applyMode` が呼び出され、UI およびエディタ状態が更新される |

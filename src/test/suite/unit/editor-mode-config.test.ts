@@ -80,4 +80,52 @@ suite('default-editor-mode-config (TC-MODE-001–008)', () => {
       assert.strictEqual(nextState.mode, 'markdown');
     });
   });
+
+  suite('TC-MODE-009–011: Dynamic config synchronization contracts', () => {
+    test('TC-MODE-009: markdown-editor-provider handles configuration scope and syncDocumentModeWithConfig', () => {
+      const providerSrc = fs.readFileSync(
+        path.resolve(process.cwd(), 'src/providers/markdown-editor-provider.ts'),
+        'utf8',
+      );
+      assert.ok(
+        providerSrc.includes('syncDocumentModeWithConfig'),
+        'markdown-editor-provider must define syncDocumentModeWithConfig',
+      );
+      assert.ok(
+        providerSrc.includes("event.affectsConfiguration('md-wysiwyg-editor.defaultMode', document.uri)"),
+        'onDidChangeConfiguration must check resource-scoped affectsConfiguration',
+      );
+      assert.ok(
+        providerSrc.includes("event.affectsConfiguration('md-wysiwyg-editor')"),
+        'onDidChangeConfiguration must check general section affectsConfiguration',
+      );
+    });
+
+    test('TC-MODE-010: markdown-editor-provider registers onDidChangeViewState to re-sync mode on tab focus', () => {
+      const providerSrc = fs.readFileSync(
+        path.resolve(process.cwd(), 'src/providers/markdown-editor-provider.ts'),
+        'utf8',
+      );
+      assert.ok(
+        providerSrc.includes('webviewPanel.onDidChangeViewState'),
+        'resolveCustomEditor must register onDidChangeViewState',
+      );
+      assert.ok(
+        providerSrc.includes('this.syncDocumentModeWithConfig(document, webviewPanel)'),
+        'onDidChangeViewState must invoke syncDocumentModeWithConfig when active',
+      );
+    });
+
+    test('TC-MODE-011: media/editor.ts applies modeChanged unconditionally on valid editorMode', () => {
+      const editorSrc = fs.readFileSync(
+        path.resolve(process.cwd(), 'media/editor.ts'),
+        'utf8',
+      );
+      assert.ok(
+        /case "modeChanged":\s*if \(message\.editorMode\) \{\s*applyMode\(/.test(editorSrc),
+        'editor.ts must unconditionally apply mode on modeChanged message',
+      );
+    });
+  });
 });
+

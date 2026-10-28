@@ -3069,7 +3069,7 @@ window.addEventListener("message", (event) => {
       gfmConvertPending = false;
       break;
     case "modeChanged":
-      if (message.editorMode && message.editorMode !== editorMode) {
+      if (message.editorMode) {
         applyMode(message.editorMode as EditorMode, false);
       }
       break;

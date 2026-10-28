@@ -63,33 +63,44 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
         }
       }),
       vscode.workspace.onDidChangeConfiguration((event) => {
-        if (event.affectsConfiguration('md-wysiwyg-editor.defaultMode')) {
-          for (const [key, panel] of this._openPanels.entries()) {
-            const document = this._openDocuments.get(key);
-            if (!document) {
-              continue;
-            }
-            const config = vscode.workspace.getConfiguration('md-wysiwyg-editor', document.uri);
-            const configuredMode = config.get<string>('defaultMode');
-            const targetMode = resolveConfiguredEditorMode(configuredMode);
-            const modeState = this.modeStateFor(document);
-            if (modeState.mode !== targetMode) {
-              const next = modeState.setMode(targetMode);
-              for (const outbound of buildModeSwitchMessages(
-                next,
-                document.docJson,
-                document.markdownText,
-              )) {
-                this.postDisplayMessage(document, panel.webview, outbound);
-              }
-              if (targetMode === 'preview') {
-                this.postPreviewProjection(document, panel.webview);
-              }
-            }
+        const affectsGeneral =
+          event.affectsConfiguration('md-wysiwyg-editor.defaultMode') ||
+          event.affectsConfiguration('md-wysiwyg-editor');
+        for (const [key, panel] of this._openPanels.entries()) {
+          const document = this._openDocuments.get(key);
+          if (!document) {
+            continue;
+          }
+          if (
+            affectsGeneral ||
+            event.affectsConfiguration('md-wysiwyg-editor.defaultMode', document.uri) ||
+            event.affectsConfiguration('md-wysiwyg-editor', document.uri)
+          ) {
+            this.syncDocumentModeWithConfig(document, panel);
           }
         }
       }),
     );
+  }
+
+  public syncDocumentModeWithConfig(
+    document: MarkdownDocument,
+    panel: vscode.WebviewPanel,
+  ): void {
+    const config = vscode.workspace.getConfiguration('md-wysiwyg-editor', document.uri);
+    const configuredMode = config.get<string>('defaultMode');
+    const targetMode = resolveConfiguredEditorMode(configuredMode);
+    const modeState = this.modeStateFor(document);
+    if (modeState.mode !== targetMode) {
+      const next = modeState.setMode(targetMode);
+      for (const outbound of buildModeSwitchMessages(
+        next,
+        document.docJson,
+        document.markdownText,
+      )) {
+        this.postDisplayMessage(document, panel.webview, outbound);
+      }
+    }
   }
 
   async openCustomDocument(
@@ -166,6 +177,12 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
         });
       }
       void this.marpManager.updatePreview(document.uri, document.markdownText);
+    });
+
+    webviewPanel.onDidChangeViewState((event) => {
+      if (event.webviewPanel.active) {
+        this.syncDocumentModeWithConfig(document, webviewPanel);
+      }
     });
 
     webviewPanel.onDidDispose(() => {
