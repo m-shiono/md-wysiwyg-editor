@@ -287,6 +287,9 @@
 | TC-178 | Corner | raw-parse-failure-save-blocked | P0 | Raw モードでパース失敗状態（`isRawParseFailed === true`）中に `save()` を呼び出し | ファイル保存がブロックされ、ディスクへの破壊的書込が発生しない。パース復帰後は保存可能となる | Raw パース失敗時の保存ブロック完全性 | §1 例外系 2, §8 例外系 2 |
 | TC-179 | Corner | find-regex-invalid-resilience | P0 | 検索入力に `(?`, `[abc`, `*` などの不正・未完了の正規表現を入力して検索実行 | 例外でエディタがクラッシュせず、結果 0 件として安全に処理される | 検索ウィジェットの正規表現安全耐性 | §11 ガード条件 & 安全性 |
 | TC-180 | Happy | find-options-filter-accuracy | P1 | Match Case（大文字小文字区別）、Match Whole Word（単語単位）、Regex 各オプションを組み合わせて検索実行 | 指定条件に合致するマッチのみが抽出され、単語境界や大文字小文字の区別が正確に動作する | 検索フィルタロジック精度 | §11 Inputs & Types |
+| TC-181 | Happy | update-doc-identical-no-dirty | P0 | TipTapテーブルのセル属性（colspan/rowspan/colwidth/align）正規化や末尾空段落を含む、実質的Markdown差分のない `updateDoc` 受信 | `onDidChange`（VS Code dirty イベント）が発火せず、ドキュメントが未保存（isDirty=true）にならない | 閲覧時・セルクリック時の不要な未保存フラグ抑止 | §1, §8 |
+| TC-182 | Happy | apply-raw-source-identical-no-dirty | P0 | 内容が現在と同一のMarkdown文字列で `applyRawSource` を実行 | `onDidChange` が発火せず、ドキュメントが未保存にならない | Rawモード同期時の不要な未保存フラグ抑止 | §1, §8 |
+| TC-183 | Happy | substantive-edit-marks-dirty | P0 | 内容に実質的な差分があるMarkdown編集または `updateDoc` を実行 | `onDidChange` が発火し、`isDirty === true` となる | 通常編集時の未保存フラグの確実な設定 | §1, §8 |
 
 ### Fixtures — preview-mode-quality
 
@@ -812,4 +815,5 @@ P0 + P1 の机上トレース（実装前）。
 | 2026-10-21 | TC-170–176 追加 | 検索・置換機能（`search-replace-widget`）: Visual・Source・Preview でのウィジェット開閉・キーバインド（Cmd+F/Cmd+H/Escape）、Source/Visual での検索ナビゲーション・置換・全置換、検索オプション（Case/Word/Regex）と正規表現安全性、Preview/Readonly での置換ガード |
 | 2026-10-22 | TC-PASTE-001–005, TC-LIST-001–008 追加 | テキストペースト保護（Web/Officeリッチテキストコピー時の画像誤爆防止・通常ペースト委譲）および箇条書き・タスクリストのスマートインデント（先頭行含む複数選択でのぶら下げネスト、Shift-Tabアウトデント、フォーカス離脱防止、テーブル保護） |
 | 2026-10-24 | TC-177–180 追加 | 画像セキュリティ（高度なパストラバーサル・非画像拡張子拒否）、Rawパース失敗時のsaveブロック、検索ウィジェットの正規表現安全耐性・オプション精度テスト |
+| 2026-10-28 | TC-181–183 追加 | 閲覧時・セルクリック時の不要な未保存（dirty）フラグ抑止: TipTapテーブル属性補完時のGFMソース保持、シリアライズ確定化オプション、実質的差分なし時のdirty/undo抑止 |
 

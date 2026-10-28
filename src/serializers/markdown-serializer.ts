@@ -91,13 +91,17 @@ export function parseMarkdown(markdown: string): TipTapDoc {
 /** Serialize TipTap document model to deterministic Markdown. */
 export function serializeMarkdown(
   doc: TipTapDoc,
-  options: SerializeOptions = DEFAULT_SERIALIZE_OPTIONS,
+  options?: Partial<SerializeOptions>,
 ): string {
   if (serializeFailureMock) {
     throw new Error('Serialize failure (mocked)');
   }
+  const opts: SerializeOptions = {
+    ...DEFAULT_SERIALIZE_OPTIONS,
+    ...options,
+  };
   const mdast = tipTapToMdast(doc);
-  const pipeAlign = options.tablePipeAlignment !== 'compact';
+  const pipeAlign = opts.tablePipeAlignment !== 'compact';
   const result = toMarkdown(mdast, {
     extensions: [
       gfmTableToMarkdown({
@@ -114,7 +118,7 @@ export function serializeMarkdown(
     listItemIndent: 'one',
     fences: true,
   });
-  if (options.deterministic) {
+  if (opts.deterministic) {
     return normalizeOutput(result);
   }
   return result;
@@ -150,8 +154,32 @@ function extractGfmTableSources(markdown: string): string[] {
   return sources;
 }
 
+function stripDefaultCellAttrs(node: TipTapNode): TipTapNode {
+  const copy: TipTapNode = { ...node };
+  if (copy.type === 'tableHeader' || copy.type === 'tableCell') {
+    if (copy.attrs) {
+      const cleanAttrs: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(copy.attrs)) {
+        if (v === null || v === undefined) continue;
+        if ((k === 'colspan' || k === 'rowspan') && v === 1) continue;
+        cleanAttrs[k] = v;
+      }
+      if (Object.keys(cleanAttrs).length > 0) {
+        copy.attrs = cleanAttrs;
+      } else {
+        delete copy.attrs;
+      }
+    }
+  }
+  if (copy.content) {
+    copy.content = copy.content.map(stripDefaultCellAttrs);
+  }
+  return copy;
+}
+
 function tableContentFingerprint(node: TipTapNode): string {
-  return JSON.stringify(node.content ?? []);
+  const normalized = (node.content ?? []).map(stripDefaultCellAttrs);
+  return JSON.stringify(normalized);
 }
 
 interface MdastToTipTapContext {

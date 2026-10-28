@@ -97,6 +97,74 @@ suite('MarkdownDocument content-change signaling', () => {
     assert.ok(doc.markdownText.includes('html-cell') || doc.markdownText.includes('あああ'));
     doc.dispose();
   });
+
+  test('TC-181: updateDoc with identical markdown text does not fire onDidChange or mark dirty', async () => {
+    const initialText = '| A | B |\n| --- | --- |\n| 1 | 2 |\n';
+    const doc = await openDoc(initialText);
+    let dirtyEvents = 0;
+    doc.onDidChange(() => {
+      dirtyEvents += 1;
+    });
+
+    // Simulate TipTap normalizing table cells with default attrs (colspan, rowspan, colwidth, align)
+    // and trailing paragraph but generating identical serialized markdown
+    const next = parseMarkdown(initialText);
+    const table = next.content.find((n) => n.type === 'table');
+    if (table?.content) {
+      for (const row of table.content) {
+        if (row.content) {
+          for (const cell of row.content) {
+            cell.attrs = { ...(cell.attrs ?? {}), colspan: 1, rowspan: 1, colwidth: null, align: null };
+          }
+        }
+      }
+    }
+    next.content.push({ type: 'paragraph' });
+
+    doc.updateDoc(next, 'Edit', { syncWebview: false });
+
+    assert.strictEqual(dirtyEvents, 0, 'must not fire onDidChange when serialized markdown is unchanged');
+    assert.strictEqual(doc.isDirty, false, 'document must remain clean');
+    doc.dispose();
+  });
+
+  test('TC-182: applyRawSource with identical markdown text does not fire onDidChange or mark dirty', async () => {
+    const initialText = '# Title\n\nHello\n';
+    const doc = await openDoc(initialText);
+    let dirtyEvents = 0;
+    doc.onDidChange(() => {
+      dirtyEvents += 1;
+    });
+
+    const success = doc.applyRawSource(initialText, 'Raw edit', { syncWebview: false });
+
+    assert.strictEqual(success, true);
+    assert.strictEqual(dirtyEvents, 0, 'must not fire onDidChange when raw markdown is unchanged');
+    assert.strictEqual(doc.isDirty, false, 'document must remain clean');
+    doc.dispose();
+  });
+
+  test('TC-183: updateDoc and applyRawSource with substantive changes mark dirty and fire onDidChange', async () => {
+    const initialText = '# Title\n\nHello\n';
+    const doc = await openDoc(initialText);
+    let dirtyEvents = 0;
+    doc.onDidChange(() => {
+      dirtyEvents += 1;
+    });
+
+    // 1. Substantive raw change
+    const rawSuccess = doc.applyRawSource('# Title\n\nHello world\n', 'Raw edit', { syncWebview: false });
+    assert.strictEqual(rawSuccess, true);
+    assert.strictEqual(dirtyEvents, 1, 'must fire onDidChange when raw markdown is changed');
+    assert.strictEqual(doc.isDirty, true, 'document must become dirty');
+
+    // 2. Substantive doc change via updateDoc
+    const nextDoc = parseMarkdown('# Title\n\nHello modified\n');
+    doc.updateDoc(nextDoc, 'Edit', { syncWebview: false });
+    assert.strictEqual(dirtyEvents, 2, 'must fire onDidChange when updateDoc changes text');
+    assert.strictEqual(doc.isDirty, true);
+    doc.dispose();
+  });
 });
 
 suite('Mermaid model survival across ordinary edits', () => {

@@ -6,6 +6,7 @@ import {
   docToJson,
   isLargeFile,
   type TipTapDoc,
+  type SerializeOptions,
 } from '../serializers/markdown-serializer';
 import { logError, logWarn } from '../utils/logger';
 
@@ -144,18 +145,25 @@ export class MarkdownDocument implements vscode.CustomDocument {
     this._tablePipeAlignmentOverride = alignment;
   }
 
-  private getSerializeOptions(): { tablePipeAlignment: 'aligned' | 'compact' } {
+  private getSerializeOptions(): SerializeOptions {
     if (this._tablePipeAlignmentOverride) {
-      return { tablePipeAlignment: this._tablePipeAlignmentOverride };
+      return {
+        deterministic: true,
+        tablePipeAlignment: this._tablePipeAlignmentOverride,
+      };
     }
     try {
       const config = vscode.workspace?.getConfiguration?.('md-wysiwyg-editor');
       const alignment = config?.get<string>('table.pipeAlignment', 'aligned');
       return {
+        deterministic: true,
         tablePipeAlignment: alignment === 'compact' ? 'compact' : 'aligned',
       };
     } catch {
-      return { tablePipeAlignment: 'aligned' };
+      return {
+        deterministic: true,
+        tablePipeAlignment: 'aligned',
+      };
     }
   }
 
@@ -169,6 +177,9 @@ export class MarkdownDocument implements vscode.CustomDocument {
     label = 'Raw edit',
     options?: { syncWebview?: boolean },
   ): boolean {
+    if (markdown === this._markdownText && !this._isRawParseFailed) {
+      return true;
+    }
     try {
       const newDoc = parseMarkdown(markdown);
       // Ensure the model is serializable before committing.
@@ -221,11 +232,23 @@ export class MarkdownDocument implements vscode.CustomDocument {
     this._doc = newDoc;
     this._isRawParseFailed = false;
     const opts = this.getSerializeOptions();
+    let serialized = this._markdownText;
     try {
-      this._markdownText = serializeMarkdown(newDoc, opts);
+      serialized = serializeMarkdown(newDoc, opts);
     } catch {
       // Keep in-memory doc; save will fail later
     }
+
+    if (serialized === this._markdownText) {
+      // No substantive Markdown diff (e.g. TipTap table attribute normalization).
+      // Keep updated in-memory doc model, but avoid marking document dirty or pushing undo item.
+      if (options?.syncWebview !== false) {
+        this._onDidContentChange.fire();
+      }
+      return;
+    }
+
+    this._markdownText = serialized;
     this.pushEdit(
       label,
       () => {
