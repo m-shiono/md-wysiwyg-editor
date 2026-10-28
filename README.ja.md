@@ -11,7 +11,7 @@ Extension ID: `mshiono.vsc-md-editor`
 
 ### 1. 編集・表示モード
 エディタ上部のツールバーから、いつでも以下のモードを素早く切り替えることができます。
-ファイルを開いた直後は安全のため Source モードで表示されます。
+ファイルを開いた直後のデフォルトモードは設定 `md-wysiwyg-editor.defaultMode`（既定値: Visual）で自由にカスタマイズ可能です。
 
 - Visual: 装飾や書式をリアルタイムに見ながら編集できる WYSIWYG モードです。見出し（H1〜H6）、斜体、取り消し線、箇条書き、タスクリスト、引用、リンク、コードブロック、水平線などを直感的に入力できます。
 - Source: Markdown のソーステキストを直接確認・編集できるテキストモードです。
@@ -47,6 +47,8 @@ Marp 形式のプレゼンテーションスライドを検出した場合、専
 {
   "workbench.editorAssociations": {
     "*.md": "md-wysiwyg-editor.wysiwyg"
-  }
+  },
+  "md-wysiwyg-editor.defaultMode": "visual" // "visual" | "source" | "preview"
 }
 ```
+

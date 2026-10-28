@@ -24,6 +24,7 @@ import {
   DEFAULT_EDITOR_MODE,
   EditorModeState,
   isEditorMode,
+  resolveConfiguredEditorMode,
   type EditorMode,
 } from '../utils/editor-mode';
 import { buildModeSwitchMessages } from '../utils/editor-mode-sync';
@@ -61,6 +62,33 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
           this.postMessage(panel.webview, message);
         }
       }),
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration('md-wysiwyg-editor.defaultMode')) {
+          for (const [key, panel] of this._openPanels.entries()) {
+            const document = this._openDocuments.get(key);
+            if (!document) {
+              continue;
+            }
+            const config = vscode.workspace.getConfiguration('md-wysiwyg-editor', document.uri);
+            const configuredMode = config.get<string>('defaultMode');
+            const targetMode = resolveConfiguredEditorMode(configuredMode);
+            const modeState = this.modeStateFor(document);
+            if (modeState.mode !== targetMode) {
+              const next = modeState.setMode(targetMode);
+              for (const outbound of buildModeSwitchMessages(
+                next,
+                document.docJson,
+                document.markdownText,
+              )) {
+                this.postDisplayMessage(document, panel.webview, outbound);
+              }
+              if (targetMode === 'preview') {
+                this.postPreviewProjection(document, panel.webview);
+              }
+            }
+          }
+        }
+      }),
     );
   }
 
@@ -84,9 +112,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     const key = document.uri.toString();
     this._openPanels.set(key, webviewPanel);
     this._openDocuments.set(key, document);
-    if (!this._modeStates.has(key)) {
-      this._modeStates.set(key, new EditorModeState());
-    }
+    const modeState = this.modeStateFor(document, true);
 
     webviewPanel.webview.options = {
       enableScripts: true,
@@ -97,7 +123,12 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     };
 
     const readonly = isReadonly(this.context, document.uri);
-    webviewPanel.webview.html = this.getHtml(webviewPanel.webview, readonly);
+    webviewPanel.webview.html = this.getHtml(
+      webviewPanel.webview,
+      readonly,
+      modeState.mode,
+      document.uri,
+    );
 
     // Init only after webview posts `ready` — messages sent before the script
     // loads are dropped by VS Code.
@@ -291,12 +322,19 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     }
   }
 
-  private modeStateFor(document: MarkdownDocument): EditorModeState {
+  private modeStateFor(document: MarkdownDocument, refreshFromConfig = false): EditorModeState {
     const key = document.uri.toString();
     let state = this._modeStates.get(key);
-    if (!state) {
-      state = new EditorModeState();
-      this._modeStates.set(key, state);
+    if (!state || refreshFromConfig) {
+      const config = vscode.workspace.getConfiguration('md-wysiwyg-editor', document.uri);
+      const configuredMode = config.get<string>('defaultMode');
+      const initialMode = resolveConfiguredEditorMode(configuredMode);
+      if (!state) {
+        state = new EditorModeState(initialMode);
+        this._modeStates.set(key, state);
+      } else {
+        state.setMode(initialMode);
+      }
     }
     return state;
   }
@@ -573,7 +611,12 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     }
   }
 
-  private getHtml(webview: vscode.Webview, readonly: boolean): string {
+  private getHtml(
+    webview: vscode.Webview,
+    readonly: boolean,
+    initialMode: EditorMode = DEFAULT_EDITOR_MODE,
+    documentUri?: vscode.Uri,
+  ): string {
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'media', 'editor.js'),
     );
@@ -590,7 +633,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
       vscode.Uri.joinPath(this.context.extensionUri, 'media', 'katex.min.css'),
     );
     const nonce = getNonce();
-    const config = vscode.workspace.getConfiguration('md-wysiwyg-editor');
+    const config = vscode.workspace.getConfiguration('md-wysiwyg-editor', documentUri);
     const tablePipeAlignment = config.get<string>('table.pipeAlignment', 'aligned');
 
     const csp = [
@@ -612,13 +655,13 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
   <link rel="stylesheet" href="${katexStyleUri}" nonce="${nonce}" />
   <title>MD WYSIWYG Editor</title>
 </head>
-<body data-readonly="${readonly}" data-mode="${DEFAULT_EDITOR_MODE}" data-csp-nonce="${nonce}" data-elk-chunk-uri="${elkChunkUri}" data-mermaid-chunk-uri="${mermaidChunkUri}" data-table-pipe-alignment="${tablePipeAlignment}">
+<body data-readonly="${readonly}" data-mode="${initialMode}" data-csp-nonce="${nonce}" data-elk-chunk-uri="${elkChunkUri}" data-mermaid-chunk-uri="${mermaidChunkUri}" data-table-pipe-alignment="${tablePipeAlignment}">
   <div id="mode-toolbar" role="toolbar" aria-label="Editor mode">
     <span class="mode-segment-group" role="group" aria-label="Mode selection">
-      <button type="button" data-mode="markdown" title="Visual Editor (WYSIWYG)" aria-label="Visual Editor">Visual</button>
-      <button type="button" data-mode="raw" class="active" title="Source Editor (Markdown)" aria-label="Source Editor">Source</button>
+      <button type="button" data-mode="markdown"${initialMode === 'markdown' ? ' class="active"' : ''} title="Visual Editor (WYSIWYG)" aria-label="Visual Editor">Visual</button>
+      <button type="button" data-mode="raw"${initialMode === 'raw' ? ' class="active"' : ''} title="Source Editor (Markdown)" aria-label="Source Editor">Source</button>
     </span>
-    <button type="button" data-mode="preview" title="Editor Preview" aria-label="Editor Preview">Preview</button>
+    <button type="button" data-mode="preview"${initialMode === 'preview' ? ' class="active"' : ''} title="Editor Preview" aria-label="Editor Preview">Preview</button>
     <button type="button" data-action="native-preview" title="Open Default Markdown Preview" aria-label="Open Default Markdown Preview">Default Preview</button>
   </div>
   <div id="toolbar" role="toolbar" aria-label="Formatting">

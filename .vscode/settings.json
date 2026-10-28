@@ -1,0 +1,6 @@
+{
+  "workbench.editorAssociations": {
+    "*.md": "md-wysiwyg-editor.wysiwyg"
+  },
+  "md-wysiwyg-editor.defaultMode": "preview" // "visual" | "source" | "preview"
+}

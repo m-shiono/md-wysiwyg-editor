@@ -90,46 +90,35 @@ suite('native-preview-side-and-default-raw (TC-001–021)', () => {
 
   // --- TC-001: initial Raw ---
 
-  test('TC-001: DEFAULT_EDITOR_MODE and EditorModeState open as raw', () => {
-    const state = new EditorModeState();
-    assert.strictEqual(DEFAULT_EDITOR_MODE, 'raw');
-    assert.strictEqual(state.mode, 'raw', 'initial editorMode must be raw');
+  test('TC-001: DEFAULT_EDITOR_MODE and EditorModeState open as default mode', () => {
+    const defaultState = new EditorModeState();
+    assert.strictEqual(DEFAULT_EDITOR_MODE, 'markdown');
+    assert.strictEqual(defaultState.mode, 'markdown', 'initial editorMode must default to markdown');
+
+    const rawState = new EditorModeState('raw');
+    assert.strictEqual(rawState.mode, 'raw', 'initial editorMode can be raw when configured');
   });
 
-  test('TC-001: initial Webview HTML uses data-mode=raw and Edit Raw Text active', () => {
+  test('TC-001: initial Webview HTML supports dynamic initialMode data-mode', () => {
     const providerSrc = readRepoFile('src/providers/markdown-editor-provider.ts');
     assert.ok(
-      /data-mode="\$\{[^}]*DEFAULT_EDITOR_MODE[^}]*\}"|data-mode="raw"/.test(providerSrc) ||
-        /data-mode="\$\{[^}]*\}"/.test(providerSrc),
-      'body data-mode must follow DEFAULT_EDITOR_MODE (raw)',
+      /data-mode="\$\{[^}]*initialMode[^}]*\}"|data-mode="\$\{[^}]*DEFAULT_EDITOR_MODE[^}]*\}"/.test(providerSrc),
+      'body data-mode must follow initialMode / DEFAULT_EDITOR_MODE',
     );
 
     const toolbar = extractModeToolbarHtml(providerSrc);
-    const rawActive =
-      /data-mode="raw"[^>]*class="[^"]*active|class="[^"]*active[^"]*"[^>]*data-mode="raw"/.test(
-        toolbar,
-      );
-    const markdownActive =
-      /data-mode="markdown"[^>]*class="[^"]*active|class="[^"]*active[^"]*"[^>]*data-mode="markdown"/.test(
-        toolbar,
-      );
-
-    if (/data-mode="\$\{/.test(providerSrc)) {
-      assert.ok(
-        /DEFAULT_EDITOR_MODE|editorMode|initialMode/.test(providerSrc),
-        'templated data-mode must derive from DEFAULT_EDITOR_MODE / initial mode',
-      );
-      assert.ok(
-        !markdownActive || rawActive,
-        'initial active button must be raw when HTML is static',
-      );
-    } else {
-      assert.ok(/data-mode="raw"/.test(providerSrc), 'body[data-mode="raw"] required');
-      assert.ok(rawActive, 'Source button must be active initially');
-      assert.ok(!markdownActive, 'Visual must not be the initial active mode');
-    }
-
+    assert.ok(
+      /data-mode="markdown"[^>]*initialMode === 'markdown'/.test(toolbar) ||
+        /data-mode="markdown"[^>]*class="[^"]*active/.test(toolbar),
+      'Visual button can be active initially when mode is markdown',
+    );
+    assert.ok(
+      /data-mode="raw"[^>]*initialMode === 'raw'/.test(toolbar) ||
+        /data-mode="raw"[^>]*class="[^"]*active/.test(toolbar),
+      'Source button can be active initially when mode is raw',
+    );
     assert.ok(toolbar.includes('Source'), 'Raw display label Source required');
+    assert.ok(toolbar.includes('Visual'), 'Markdown display label Visual required');
   });
 
   // --- TC-002 / TC-020: mode round-trip, no I/O ---

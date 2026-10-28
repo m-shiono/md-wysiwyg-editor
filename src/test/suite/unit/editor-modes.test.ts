@@ -90,10 +90,10 @@ suite('Three-mode editor contracts (AD-016)', () => {
     );
   });
 
-  test('TC-070: initial editor mode is raw after open', () => {
+  test('TC-070: initial editor mode is markdown by default after open', () => {
     const state = new EditorModeState();
-    assert.strictEqual(DEFAULT_EDITOR_MODE, 'raw');
-    assert.strictEqual(state.mode, 'raw', 'initial editorMode must be raw');
+    assert.strictEqual(DEFAULT_EDITOR_MODE, 'markdown');
+    assert.strictEqual(state.mode, 'markdown', 'initial editorMode must be markdown');
   });
 
   test('TC-071: Preview is one-way RO render from Document', () => {

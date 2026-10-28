@@ -49,7 +49,7 @@ AD-* の HOW 境界・レイヤ方針の正本は [architecture.md](../design/ar
 | `documentUri` | `vscode.Uri` | はい | — | — | ワークスペース内 `.md` |
 | `fileContent` | `string` (UTF-8) | はい | 0 B | 推奨 500 KB 未満 | 超過時は警告のみ（RK-004） |
 | `extensionActivation` | イベント | はい | — | — | Custom Editor オープン時に限定起動（AD-002） |
-| `editorMode` | `"preview" \| "markdown" \| "raw"` | はい | — | — | 初期値 `"raw"`（`DEFAULT_EDITOR_MODE` / AD-016）。第 4 の mode id は持たない |
+| `editorMode` | `"preview" \| "markdown" \| "raw"` | はい | — | — | 初期値は設定 `md-wysiwyg-editor.defaultMode` に従う（未設定時デフォルト `"visual"` -> `markdown` / AD-016）。第 4 の mode id は持たない |
 | `modeSwitchCommand` | コマンド / UI 切替 | 任意 | — | — | 三点モード変更のみ。ディスク I/O なし。Default Preview は対象外 |
 | `openNativePreview` | Webview → Host postMessage | 任意 | — | — | Default Preview ボタン押下。payload 型は `messages.ts`（旧名 `openNativePreviewToSide` は廃止）。Host のみ dirty/save/コマンド実行 |
 
@@ -57,7 +57,7 @@ AD-* の HOW 境界・レイヤ方針の正本は [architecture.md](../design/ar
 
 | 条件 | 戻り値 / ステータス | 備考 |
 |------|-------------------|------|
-| 成功（オープン） | Custom Editor タブ表示、Webview ロード完了、初期モード **Raw**（表示ラベル Source） | AD-016 |
+| 成功（オープン） | Custom Editor タブ表示、Webview ロード完了、設定に基づく初期モード（デフォルト **Visual**、表示ラベル Visual） | AD-016 |
 | 成功（モード切替） | 対象面を表示、Document 内容は維持、**ディスク未書込** | dirty 状態も変更しない（内容未変更時）。三点往復可（下記受け入れ） |
 | 成功（Default Preview・clean） | 現在面不変のまま `markdown.showPreview` で標準 Preview を開き、**アクティブ WYSIWYG と同一 editor group** に配置する | Host コマンド §10。Beside（新規グループ）を作らない。`editorMode` は変更しない |
 | 成功（Default Preview・dirty→Save） | Save 成功後のみ標準 Preview を同一グループに開く | Cancel / 閉じる / save 失敗時は開かない |
@@ -115,7 +115,7 @@ Webview `#mode-toolbar`（`role="toolbar"`）は、編集モード（Visual / So
 | Host | dirty 判定・Save/Cancel・`markdown.showPreview`・同一グループ補償（§10）はすべて Host（§8 / §10） |
 | editor/title | Default Preview 用アイコンを **出さない**（Webview バー + Command Palette） |
 
-**受け入れ（モード切替・P0）:** mode-toolbar の三点モードボタン（Visual / Source / Preview）で `preview` ↔ `markdown` ↔ `raw` が往復できること。初期 HTML の `active` / `body[data-mode]` は `DEFAULT_EDITOR_MODE = 'raw'`（Source が active）と一致させる。Default Preview 押下では mode id が変わらないこと。
+**受け入れ（モード切替・P0）:** mode-toolbar の三点モードボタン（Visual / Source / Preview）で `preview` ↔ `markdown` ↔ `raw` が往復できること。初期 HTML の `active` / `body[data-mode]` は設定 `md-wysiwyg-editor.defaultMode`（未設定時は `DEFAULT_EDITOR_MODE = 'markdown'`、Visual が active）と一致させる。Default Preview 押下では mode id が変わらないこと。
 
 #### 三者同期（正本: `MarkdownDocument`）
 
@@ -171,7 +171,7 @@ Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdow
 
 #### 正常系
 
-1. ユーザーが `.md` を開くと Custom Editor が起動し、ディスク内容を `MarkdownDocument` に読み込み、初期モード **Raw**（表示ラベル Source）で Webview に表示する（`DEFAULT_EDITOR_MODE = 'raw'` / AD-016）。セッション永続モードは本タスクで新設しない
+1. ユーザーが `.md` を開くと Custom Editor が起動し、ディスク内容を `MarkdownDocument` に読み込み、VS Code 設定 `md-wysiwyg-editor.defaultMode`（未設定時デフォルト `visual` -> 内部モード `markdown`、表示ラベル Visual）に従った初期モードで Webview に表示する（AD-016）。セッション永続モードは新設しない
 2. **Markdown ↔ Raw 相互リアルタイム同期:** 一方の編集は postMessage 経由で Document に反映され、他方面も Document から再投影される。正本は常に Extension Host の `MarkdownDocument`
 3. **Preview** は Document の現在内容を **厳密 RO** で描画する一方通行。Preview 表示中に Document が更新されれば描画を追随する。**Preview への切替時**は Host が Document 最新を再投影する（Raw 離脱時の flush 後を含む）。非 Marp は rewrite 済み `docJson`、Marp 検出時は `previewMarpHtml` で `#preview-marp-root` を更新
 4. **モード切替**（Preview ↔ Markdown ↔ Raw）は表示面の切替のみであり、**ディスクへの書き込みを行わない**。内容に差分がなければ `dirty` も変化しない。Preview / Markdown への切替時は Document から視覚面を refresh する。Preview 離脱時は `#preview-marp-root` を空にし `#editor` を復帰
@@ -1334,4 +1334,5 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
 | 2026-10-22 | §14, 改訂履歴 | 数式レンダリング（`katex-math-rendering`）の仕様追加。LaTeX 構文（math / latex フェンス）を KaTeX でリアルタイム描画。三点モード（Visual: 図+ソース / Preview: 図のみ）を契約化 |
 | 2026-10-23 | §3, §15, 改訂履歴 | 表フォーマット切替（Aligned vs Compact）およびエディタ入力支援（`table-format-and-editor-assist`）: GFM パイプ表の区切り文字固定長整列／最小空白パディングの切替（設定 `md-wysiwyg-editor.table.pipeAlignment` および Table メニュー）、全角文字幅（CJK）対応、Source モードでの Tab / Shift+Tab 表自動整列およびセル移動・新行挿入、リスト編集支援（Enter 継続・終了、Tab インデント）、書式トグルショートカット、スマート URL ペースト、目次（TOC）自動生成・同期を契約化 |
 | 2026-10-24 | §16, 改訂履歴 | CSV ⇄ Markdown 表相互変換および Backlog 形式コピー＆ペースト（`table-csv-and-backlog-conversion`）: RFC 4180準拠のCSV/TSV相互変換（カンマ/タブ自動判別、改行・ダブルクォートエスケープ）、Backlog 表記法（`|h`、`LEFT:` / `CENTER:` / `RIGHT:`）およびドキュメント記法（見出し、リスト、コード、装飾、引用、リンク）のBacklog形式コピー＆Markdown形式ペーストを契約化 |
+| 2026-10-28 | §1, 改訂履歴 | デフォルトエディタモード設定（`default-editor-mode-config`）: 設定 `md-wysiwyg-editor.defaultMode`（`source` / `visual` / `preview`、デフォルト `visual`）により、Markdown オープン時の初期エディタモードのカスタマイズを契約化。未設定時デフォルトを Visual（`markdown`）に更新 |
 

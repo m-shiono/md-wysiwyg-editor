@@ -395,7 +395,7 @@ let tablePipeAlignment: TablePipeAlignment =
   "aligned";
 let readonly = false;
 /** Must match Host DEFAULT_EDITOR_MODE / initial HTML body[data-mode] (AD-016). */
-let editorMode: EditorMode = "raw";
+let editorMode: EditorMode = "markdown";
 let previewSurface: "tiptap" | "marp" = "tiptap";
 let suppressUpdate = false;
 let suppressRawUpdate = false;
@@ -3015,7 +3015,7 @@ window.addEventListener("message", (event) => {
       readonly = message.readonly;
       document.body.setAttribute("data-readonly", String(readonly));
       latestMarkdownText = message.markdownText ?? "";
-      editorMode = (message.editorMode as EditorMode) ?? "raw";
+      editorMode = (message.editorMode as EditorMode) ?? "markdown";
       pendingInitialDoc = JSON.parse(message.docJson);
       attachCommonHandlers();
 

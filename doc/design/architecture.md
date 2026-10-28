@@ -25,7 +25,7 @@
 | AD-013 | 保存時の整形ルールを固定し Git diff 可読性を確保 |
 | AD-014 | ビルトイン Markdown エディタとの共存（エディタ関連付けの切替可能） |
 | AD-015 | Output チャンネルで障害ログ。ユーザー向けはエディタ内インライン表示を優先 |
-| AD-016 | 同一 Custom Editor 内に **Preview / Markdown / Raw** 三点モード。初期モードは **Raw**（`DEFAULT_EDITOR_MODE = 'raw'`）。モード切替 alone ではディスク書き込みしない。**Default Preview**（§1 / §10・表示ラベル）は mode-toolbar の非モード導線であり、4 つ目の `editorMode` ではない |
+| AD-016 | 同一 Custom Editor 内に **Preview / Markdown / Raw** 三点モード。初期モードは設定 `md-wysiwyg-editor.defaultMode`（未設定時は `DEFAULT_EDITOR_MODE = 'markdown'`、Visual）。モード切替 alone ではディスク書き込みしない。**Default Preview**（§1 / §10・表示ラベル）は mode-toolbar の非モード導線であり、4 つ目の `editorMode` ではない |
 | AD-017 | GFM パイプ表フォーマットは設定 `md-wysiwyg-editor.table.pipeAlignment`（`'aligned'` \| `'compact'`）に基づき、列幅に合わせた固定長空白パディングまたは最小空白パディングを選択可能とする。全角文字（East Asian Width）を半角2幅として計算し、視覚的な垂直整列を保持する（§3） |
 | AD-018 | Source モード（textarea）での編集支援パイプライン。表内 Tab / Shift+Tab による自動整列・セル間移動・新規行自動追加、リスト自動継続（Enter でマーカー継続・解除、Tab でインデント）、書式トグルショートカット、スマート URL ペースト、目次（TOC）自動生成・同期を提供する（§3, §15） |
 

@@ -147,6 +147,22 @@
     "configuration": {
       "title": "MD WYSIWYG Editor",
       "properties": {
+        "md-wysiwyg-editor.defaultMode": {
+          "type": "string",
+          "scope": "resource",
+          "enum": [
+            "source",
+            "visual",
+            "preview"
+          ],
+          "default": "visual",
+          "enumDescriptions": [
+            "Source (Raw Markdown editor)",
+            "Visual (WYSIWYG rich editor)",
+            "Preview (Editor Preview)"
+          ],
+          "description": "Default editor mode when opening a Markdown file."
+        },
         "md-wysiwyg-editor.autoRestoreOnBuiltinSwitch": {
           "type": "boolean",
           "default": false,

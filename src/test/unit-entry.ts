@@ -32,4 +32,5 @@ import './suite/unit/editor-assist.test';
 import './suite/unit/csv-converter.test';
 import './suite/unit/backlog-converter.test';
 import './suite/unit/table-csv-backlog-commands.test';
+import './suite/unit/editor-mode-config.test';
 

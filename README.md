@@ -10,7 +10,7 @@ Extension ID: `mshiono.vsc-md-editor`
 ## Key Features
 
 ### 1. Flexible Editing & Viewing Modes
-You can easily switch between modes from the top toolbar at any time. For safety, files open in Source mode by default.
+You can easily switch between modes from the top toolbar at any time. The initial mode when opening a file can be customized via the `md-wysiwyg-editor.defaultMode` setting (default: Visual).
 
 - Visual: A visual WYSIWYG editor where you can format headings (H1-H6), italics, strikethrough, bullet lists, task lists, blockquotes, links, code blocks, and horizontal rules in real time.
 - Source: A plain-text editor to view and edit raw Markdown source code directly.
@@ -46,6 +46,8 @@ To always open Markdown files with this editor by default, add the following ent
 {
   "workbench.editorAssociations": {
     "*.md": "md-wysiwyg-editor.wysiwyg"
-  }
+  },
+  "md-wysiwyg-editor.defaultMode": "visual" // "visual" | "source" | "preview"
 }
 ```
+
