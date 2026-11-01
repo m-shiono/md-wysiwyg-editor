@@ -14,11 +14,11 @@
 | AD-002 | `*.md` を Custom Editor（viewType `md-wysiwyg-editor.wysiwyg`）で開く。Extension Host 上の `MarkdownDocument` が dirty・undo/redo・save および表示内容の正本 |
 | AD-003 | **Markdown モード**は Webview 内 TipTap（ProseMirror）WYSIWYG。対象ノードは見出し（h1–h6）、太字、斜体、取り消し線（GFM `~~`）、箇条書き、番号リスト、タスクリスト、リンク、インラインコード、コードブロック、引用、水平線、表（§3）等（書式ツールバー契約は §2） |
 | AD-004 | 編集内容 ↔ ディスク `.md` は remark/unified パイプラインで変換。HTML 混在・拡張ブロックを許容。出力は決定的（AD-013） |
-| AD-005 | 表は per-table `tableFormat`（`gfm` \| `html`）で永続化する。新規挿入のデフォルトは GFM パイプ表。形式切替は Table メニューの明示操作のみ（§3） |
+| AD-005 | 表は per-table `tableFormat`（`gfm` \| `html`）で永続化する。新規挿入のデフォルトは GFM パイプ表。形式切替は Table メニューの明示操作のみ（§3）。列アライメント（`textAlign`: `left` \| `center` \| `right` \| `null`）は GFM デリミタ行（`:---`, `:---:`, `---:`）および HTML `<th/td align="...">` と双方向マッピングし、Webview DOM では CSP 安全な `data-align` / `align` 属性＋外部 CSS で描画する |
 | AD-006 | ファイル単位 Readonly は **全編集面**（Markdown / Raw）をロック。Preview モードとは別概念。状態はワークスペースに永続化 |
 | AD-007 | Mermaid はコードブロック + リアルタイム描画。VS Code kind → Mermaid `redux` / `redux-dark` マップ、グローバル表示密度は `themeVariables.fontSize: '16px'`（固定 px。`var(--vscode-...)` 禁止。密度の主手段は `fontSize` — CSS `scale`/`zoom` を密度代替にしない）。ラベル `font-family` は Mermaid default 相当（`"trebuchet ms", verdana, arial, sans-serif`）、`line-height: 1.2`（エディタ本文 1.6 を継承しない）。flowchart は stock Mermaid 既定に近い hug→wrap（`wrappingWidth: 200`・`padding: 15`）。CSP 下では `mermaid.render` **測定時**にも Host 同一 nonce CSS でラベル `font-size: 16px`・同一 `font-family`・`line-height: 1.2` を効かせ、測定と描画の食い違いを防ぐ（`'unsafe-inline'` なし）。**密度（fontSize／ラベルタイポ）と閲覧用ビューポート変換（自然サイズ／Fit／ズーム／パン）は別契約**（§5 / `mermaid-label-metrics` / 継承 `mermaid-default-preview-parity` / `mermaid-readable-viewport`）。図タイトル全文がクリップされないこと。ビューポート UX（**初期・再 render・テーマ切替後は scale 1（自然サイズ）・自動 contain なし**・図がビューポートより小さい軸は中央寄せ・はみ出しは縮小せずスクロール・**Fit ボタン押下時のみ枠内 contain**・**ズーム原点はビューポート中央**・ズームイン／アウト・パン／ドラッグ・縦横スクロール・a11y `aria-label`）は **Editor Preview / Rich Editor の Mermaid NodeView のみ**（Default Preview 埋め込みなし）。**ズーム／パン／Fit は回帰必須で維持**（パン後の手動オフセットは次の Fit で中央寄せに戻す。再 render／テーマ切替は scale 1 に戻す）。CSP 下 Host 同一 nonce による presentation `<style>` 再注入、`@mermaid-js/layout-elk` 登録＋ frontmatter / `%%{init}%%` オプトイン ELK（遅延ロード・グローバル強制なし — §5）。classic `default`/`dark` マップおよび静的 Host CSS エッジフォールバック優先は撤回（`mermaid-redux-elk-fidelity`）。**Preview / Markdown とも図の下にソース併記**。編集はテキストのみ（Preview は厳密 RO・ズーム／パンは閲覧操作のみ）。`securityLevel: 'strict'`・HIP・`'unsafe-inline'` なしは不変 |
 | AD-008 | **Marp Preview** はサイド/パネル（§6）を維持。**Preview モード**（§1）でも `isMarpDocument(markdownText)` 検出時は同一 Webview 内 `#preview-marp-root` に Host 生成 HTML を RO 表示可。別 UI インスタンス・別責務は維持。編集は Markdown / Raw 側 |
-| AD-009 | 画像 paste → 同階層 `img/image-NNNN.ext` に保存し相対パスを挿入。表示時は Host が `img/` 配下のみ `asWebviewUri` で rewrite（§7 / §9）。serialize / ディスクは常に相対パス |
+| AD-009 | 画像 paste / D&D（`png`/`jpg`/`gif`/`svg`/`webp`） → 同階層 `img/image-NNNN.ext` に保存し相対パスを挿入。表示時は Host が `img/` 配下のみ `isSafeImagePath` 検証後に `asWebviewUri` で rewrite（§7 / §9）。serialize / ディスクは常に相対パス（`![alt](src)` または `<img src="img/..." ... />`）を維持し Webview URI を漏洩させない |
 | AD-010 | Webview CSP + HTML サニタイズ。許可タグ・属性を限定 |
 | AD-011 | Extension Host と Webview を別バンドルし `media/` に配置 |
 | AD-012 | シリアライズ round-trip のユニットテスト + Custom Editor 統合テスト |
@@ -28,6 +28,8 @@
 | AD-016 | 同一 Custom Editor 内に **Preview / Markdown / Raw** 三点モード。初期モードは設定 `md-wysiwyg-editor.defaultMode`（未設定時は `DEFAULT_EDITOR_MODE = 'markdown'`、Visual）。モード切替 alone ではディスク書き込みしない。**Default Preview**（§1 / §10・表示ラベル）は mode-toolbar の非モード導線であり、4 つ目の `editorMode` ではない |
 | AD-017 | GFM パイプ表フォーマットは設定 `md-wysiwyg-editor.table.pipeAlignment`（`'aligned'` \| `'compact'`）に基づき、列幅に合わせた固定長空白パディングまたは最小空白パディングを選択可能とする。全角文字（East Asian Width）を半角2幅として計算し、視覚的な垂直整列を保持する（§3） |
 | AD-018 | Source モード（textarea）での編集支援パイプライン。表内 Tab / Shift+Tab による自動整列・セル間移動・新規行自動追加、リスト自動継続（Enter でマーカー継続・解除、Tab でインデント）、書式トグルショートカット、スマート URL ペースト、目次（TOC）自動生成・同期を提供する（§3, §15） |
+| AD-019 | 表リッチ編集（`table-rich-editing`）: 列アライメントの一括更新・GFM/HTML 往復・Table Formatter 統合、行・列の入れ替え（`moveRowUp` / `moveRowDown` / `moveColumnLeft` / `moveColumnRight`）および行複製（`duplicateRow`）の 1 トランザクション実行（ヘッダ行 `th`/`td` 正規化・端 no-op・Table メニュー / コンテキストメニュー / `Alt+矢印` ショートカット統合）、ならびにクリップボード TSV（2行×2列以上・コードブロック等ガード）および HTML `<table>` の Visual / Source スマートペーストを提供する（§3, §8, §9, §15, §16） |
+| AD-020 | リッチ画像編集（`image-rich-editing`）: Visual モード画像選択時のドラッグリサイズ（最小 `32px`・アスペクト比維持）およびサイズプリセット（`25%`/`50%`/`75%`/`100%`）・配置切替（`left`/`center`/`right`/`null`）・Alt 編集ミニポップオーバー UI、CSP 安全描画（HTML `width` / `align` / `data-align` 属性＋外部 CSS、インライン `style` 禁止）、`width`/`align` 未指定時の `![alt](src)` と指定時の `<img src="img/..." alt="..." width="..." align="..." />` の決定的双方向往復シリアライズ（`originalSrc` / Host 逆変換による相対パス保護）、OS / ファイルツリーからの画像ファイル D&D 挿入（`webp` 対応・Webview 遷移抑止）、ならびに Preview シングルクリック / Visual ダブルクリックまたは Zoom ボタンによる Lightbox 拡大モーダル表示を提供する（§7, §8, §9） |
 
 ---
 
@@ -42,9 +44,9 @@
 
 | レイヤ | 責務 | 備考 |
 |--------|------|------|
-| Extension Host | `MarkdownDocument` 正本、コマンド、画像 URI rewrite、Marp Host HTML、CSP / nonce、永続化 | AD-002, AD-009, AD-010, AD-015 |
-| Webview（Custom Editor） | TipTap / Preview / Raw UI、Mermaid NodeView、表示層のみ | AD-003, AD-007, AD-016 |
-| Serialize pipeline | remark/unified 往復、決定的整形 | AD-004, AD-013 |
+| Extension Host | `MarkdownDocument` 正本、コマンド、画像 URI rewrite、Marp Host HTML、CSP / nonce、永続化 | AD-002, AD-009, AD-010, AD-015, AD-020 |
+| Webview（Custom Editor） | TipTap / Preview / Raw UI、Mermaid NodeView、表示層のみ | AD-003, AD-007, AD-016, AD-019, AD-020 |
+| Serialize pipeline | remark/unified 往復、決定的整形 | AD-004, AD-005, AD-013, AD-017, AD-019, AD-020 |
 | Bundles | Host と Webview を別バンドルし `media/` 配置 | AD-011 |
 | Tests | round-trip ユニット + Custom Editor 統合 | AD-012 |
 
@@ -52,7 +54,7 @@
 
 ## Related requirements
 
-- [doc/requirements/systemspec.md](../requirements/systemspec.md) — §1–§10、共通 Non-Goals、RK-*、Spec Gaps
+- [doc/requirements/systemspec.md](../requirements/systemspec.md) — §1–§16、共通 Non-Goals、RK-*、Spec Gaps
 
 ## 改訂履歴
 
@@ -65,3 +67,5 @@
 | 2026-09-19 | doc-reorg layout | 旧 `doc/systemspec.md` から AD-* 要約を分割移設。契約内容不変 |
 | 2026-10-03 | 識別子・命名の統一方針 | 識別子統一方針（package.json name のみ vsc-md-editor、他は md-wysiwyg-editor 統一）を記録 |
 | 2026-10-23 | AD-017, AD-018 | 表フォーマット切替（Aligned vs Compact）およびエディタ入力支援（`table-format-and-editor-assist`）: AD-017（表フォーマット形式制御、East Asian Width 対応）および AD-018（Source モード編集支援パイプライン、表 Tab 整列・セル移動、リスト継続、ショートカット、スマート URL ペースト、TOC）を追加 |
+| 2026-10-31 | AD-005, AD-019 | 表リッチ編集（`table-rich-editing`）: 列アライメント（CSP 安全描画・GFM/HTML 双方向往復・Table Formatter 統合）、行/列移動と行複製（`moveRowUp` / `moveRowDown` / `duplicateRow` / `moveColumnLeft` / `moveColumnRight`、メニュー・ショートカット統合）、TSV / HTML `<table>` スマートペースト（Visual / Source 両対応、誤変換防止ガード付き）を追加 |
+| 2026-11-01 | AD-009, AD-020 | リッチ画像編集（`image-rich-editing`）: 画像選択時のドラッグリサイズ・サイズプリセット・配置切替・Alt 編集ミニポップオーバー UI、CSP 安全描画（HTML `width` / `align` / `data-align` 属性＋外部 CSS）、`![alt](src)` ⇄ `<img src="img/..." alt="..." width="..." align="..." />` 決定的往復シリアライズと相対パス保護、画像ファイル D&D 挿入（`webp` 追加・遷移抑止）、Lightbox 拡大モーダル表示を追加 |

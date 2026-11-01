@@ -28,9 +28,12 @@ export function mimeToExtension(mime: string): string | undefined {
     'image/png': 'png',
     'image/gif': 'gif',
     'image/svg+xml': 'svg',
+    'image/webp': 'webp',
   };
   return map[mime.toLowerCase()];
 }
+
+export { planDroppedImageFiles } from './image-operations';
 
 /** Validate image path stays within workspace img/ directory. */
 export function isSafeImagePath(_mdUri: string, imageRelativePath: string): boolean {

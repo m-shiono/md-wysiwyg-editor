@@ -481,9 +481,163 @@ body[data-readonly='true'] #link-input-bar {
   background: var(--vscode-editorWidget-background);
 }
 
+/* CSP-safe table column alignment (AD-001, RK-023) */
+.ProseMirror td[data-align="left"],
+.ProseMirror th[data-align="left"],
+.ProseMirror td[align="left"],
+.ProseMirror th[align="left"],
+#preview-marp-root td[data-align="left"],
+#preview-marp-root th[data-align="left"],
+#preview-marp-root td[align="left"],
+#preview-marp-root th[align="left"] {
+  text-align: left;
+}
+
+.ProseMirror td[data-align="center"],
+.ProseMirror th[data-align="center"],
+.ProseMirror td[align="center"],
+.ProseMirror th[align="center"],
+#preview-marp-root td[data-align="center"],
+#preview-marp-root th[data-align="center"],
+#preview-marp-root td[align="center"],
+#preview-marp-root th[align="center"] {
+  text-align: center;
+}
+
+.ProseMirror td[data-align="right"],
+.ProseMirror th[data-align="right"],
+.ProseMirror td[align="right"],
+.ProseMirror th[align="right"],
+#preview-marp-root td[data-align="right"],
+#preview-marp-root th[data-align="right"],
+#preview-marp-root td[align="right"],
+#preview-marp-root th[align="right"] {
+  text-align: right;
+}
+
 .ProseMirror img {
   max-width: 100%;
   height: auto;
+}
+
+img[data-align="left"] {
+  display: block;
+  margin-right: auto;
+  margin-left: 0;
+}
+
+img[data-align="center"] {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+img[data-align="right"] {
+  display: block;
+  margin-left: auto;
+  margin-right: 0;
+}
+
+.image-popover {
+  position: absolute;
+  z-index: 1000;
+  background: var(--vscode-editorWidget-background);
+  color: var(--vscode-editorWidget-foreground);
+  border: 1px solid var(--vscode-editorWidget-border);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.image-popover.hidden {
+  display: none;
+}
+
+.image-popover button {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 2px;
+  padding: 2px 6px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.image-popover button:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.image-popover button.active {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.image-popover input[type="text"] {
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, var(--vscode-editorWidget-border));
+  border-radius: 2px;
+  padding: 2px 4px;
+  font-size: 11px;
+  width: 90px;
+}
+
+#image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#image-lightbox.hidden {
+  display: none;
+}
+
+.lightbox-backdrop {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.75);
+}
+
+.lightbox-content {
+  position: relative;
+  max-width: 90vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 1;
+}
+
+.lightbox-image {
+  max-width: 90vw;
+  max-height: 80vh;
+  object-fit: contain;
+}
+
+.lightbox-caption {
+  margin-top: 8px;
+  color: var(--vscode-foreground, rgba(255, 255, 255, 0.95));
+  font-size: 14px;
+  text-align: center;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: -32px;
+  right: -32px;
+  background: transparent;
+  border: none;
+  color: var(--vscode-foreground, rgba(255, 255, 255, 0.95));
+  font-size: 24px;
+  cursor: pointer;
+  padding: 4px 8px;
 }
 
 .mermaid-block {

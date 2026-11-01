@@ -332,6 +332,7 @@ Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdow
 
 Excel 的な表編集。各表は per-table `tableFormat`（`gfm` \| `html`）で永続化する。新規挿入のデフォルトは **GFM パイプ表**（GitHub 親和性）。HTML 形式ではセル内改行・箇条書き・チェックボックス等のリッチ表現を WYSIWYG で保持する（AD-005, UD-006）。形式変更は Table メニューの明示操作のみとし、編集操作による自動変換は行わない。
 また、GFM パイプ表の区切り文字 `|` の配置スタイルとして、各列の最大幅に合わせて固定長の空白で揃える **Aligned モード** と、余分な空白を省く最小パディングの **Compact モード** を切り替え可能とし、ソースモード（Source Editor）では Tab キーによる表ブロック自動整列およびセル間ナビゲーションを提供する（AD-017, AD-018）。
+さらに、**列アライメント（左寄せ / 中央寄せ / 右寄せ / 未指定）** の WYSIWYG 操作・リアルタイム描画・GFM/HTML 双方向往復、**行・列の入れ替え（上下左右移動）および行複製**、ならびに Excel / スプレッドシート等からの **TSV（タブ区切りテキスト）および HTML `<table>` スマートペースト** を Visual / Source 両モードで提供する（`table-rich-editing` AD-001〜AD-005 / アーキテクチャ AD-019）。
 
 ### Inputs & Types
 
@@ -340,7 +341,9 @@ Excel 的な表編集。各表は per-table `tableFormat`（`gfm` \| `html`）�
 | `tableFormat` | `'gfm'` \| `'html'` | はい（表ごと） | — | — | 当該表の永続化形式。読込時はソースから推論（既存 `gfmSource` / `html` 属性は互換推論に使用） |
 | `tablePipeAlignment` | `'aligned'` \| `'compact'` | 任意 | — | — | GFM パイプ表のフォーマットスタイル。既定値 `'aligned'`（VS Code 設定 `md-wysiwyg-editor.table.pipeAlignment` および Table メニューで切替可能）。`aligned` は列幅に合わせた固定長空白パディング、`compact` は区切り `|` 前後1スペースのみの最小配置 |
 | `insertTableFormat` | `'gfm'` \| `'html'` | はい（セッション） | — | — | 新規挿入のデフォルト形式。Webview 内メモリのみ（VS Code 再起動で `gfm` にリセット）。ワークスペース / ユーザー設定への永続化は MVP 非対象 |
-| `tableOperation` | 列挙 | 操作ごと | — | — | `insert`、行/列追加・削除（`addRowBefore` / `addRowAfter` / `deleteRow` / `addColumnBefore` / `addColumnAfter` / `deleteColumn`）、`deleteTable`、`convertToGfm`、`convertToHtml`、`setInsertDefault`、`setPipeAlignment`、`formatTable` |
+| `columnAlignment` (`textAlign`) | `'left'` \| `'center'` \| `'right'` \| `null` | 任意（列/セルごと） | — | — | 既定値 `null`（未指定）。TipTap `tableHeader` (`th`) / `tableCell` (`td`) の `textAlign` 属性として保持。Webview DOM 描画では CSP（`style-src` に `'unsafe-inline'` 禁止 — §9）遵守のためインライン `style` を出力せず、`data-align`（または `align`）属性と外部 CSS（`media/editor.css`）で描画する（`table-rich-editing` AD-001） |
+| `tableOperation` | 列挙 | 操作ごと | — | — | `insert`、行/列追加・削除（`addRowBefore` / `addRowAfter` / `deleteRow` / `addColumnBefore` / `addColumnAfter` / `deleteColumn`）、行/列移動・複製（`moveRowUp` / `moveRowDown` / `duplicateRow` / `moveColumnLeft` / `moveColumnRight`）、列アライメント変更（`alignLeft` / `alignCenter` / `alignRight` / `alignClear`）、`deleteTable`、`convertToGfm`、`convertToHtml`、`setInsertDefault`、`setPipeAlignment`、`formatTable` |
+| `smartPasteInput` | クリップボード（`text/plain` TSV \| `text/html` `<table>`） | 任意 | 2行×2列（TSV） / `<table>`（HTML） | ソフト上限 100行×20列（警告のみ） | Visual / Source モードでのペースト時に判定・変換。コードブロック / インラインコード内・Readonly 時は対象外（通常ペーストに委譲 — `table-rich-editing` AD-005） |
 | `cellContent` | テキスト / リッチ | 任意 | 空 | — | `gfm`: インラインマーク・プレーンテキスト。**セル内改行**は `<br />`（または同等 hard break）として永続化し、Markdown↔Raw で**単一改行**として往復する（連続 `<br />` による空行相当・多重改行は不可／単一改行へ正規化）。リスト等のブロック構造は不可。`html`: 改行・リスト・チェックボックス可（本項の GFM 改行契約は HTML リッチセル仕様を変更しない） |
 | 表サイズ | 行 × 列 | はい | 1 × 1 | ソフト上限 100 行 × 20 列 | 超過時 UI 警告、保存は許可 |
 
@@ -348,24 +351,28 @@ Excel 的な表編集。各表は per-table `tableFormat`（`gfm` \| `html`）�
 
 | 条件 | 戻り値 / ステータス | 備考 |
 |------|-------------------|------|
-| 成功（`gfm`・aligned） | 表 UI 更新、保存時固定長空白で列位置を揃えた GFM パイプ表出力 | 全角文字（East Asian Width）を半角2文字分として計算し、視覚的な垂直ラインを保持 |
-| 成功（`gfm`・compact） | 表 UI 更新、保存時パイプ `|` 前後最小スペース（1文字）の GFM パイプ表出力 | 余剰空白を排除した最小幅シリアライズ |
-| 成功（`html`） | 表 UI 更新、保存時 HTML `<table>` ブロック出力 | AD-005, AD-010, AD-013 |
+| 成功（`gfm`・aligned） | 表 UI 更新、保存時固定長空白で列位置を揃えた GFM パイプ表出力 | 全角文字（East Asian Width）を半角2文字分として計算し、視覚的な垂直ラインを保持。デリミタ行に列アライメント記号（`:---`, `:---:`, `---:`, `---`）を保持・整形（`table-rich-editing` AD-002） |
+| 成功（`gfm`・compact） | 表 UI 更新、保存時パイプ `|` 前後最小スペース（1文字）の GFM パイプ表出力 | 余剰空白を排除した最小幅シリアライズ。デリミタ行の列アライメント記号を保持 |
+| 成功（`html`） | 表 UI 更新、保存時 HTML `<table>` ブロック出力 | AD-005, AD-010, AD-013。列アライメントは `<th align="...">` / `<td align="...">` として出力（`table-rich-editing` AD-002） |
+| 成功（列アライメント変更） | 対象列の全行セル（`th` および全 `td`）の `textAlign` 属性を一括更新し、DOM（`data-align` / `align`）および Markdown シリアライズに反映 | 既に同一アライメントが設定されている場合は再実行で `null`（未指定）にトグル解除、または明示設定（`table-rich-editing` AD-001, AD-002, AD-004） |
+| 成功（行/列移動: `moveRowUp` / `moveRowDown` / `moveColumnLeft` / `moveColumnRight`） | 対象行または列を隣接行/列と入れ替え、移動先セルにキャレットを追随。1トランザクション（Undo/Redo 1段）で確定 | ヘッダ行（index 0）とデータ行の入れ替え時は先頭行を `th`・2行目以降を `td` に正規化。端（先頭行での `moveRowUp`、最終行での `moveRowDown`、最左列での `moveColumnLeft`、最右列での `moveColumnRight`）は安全に no-op（`table-rich-editing` AD-003） |
+| 成功（行複製: `duplicateRow`） | 現在行のセル内容・`textAlign` 属性をコピーし、直下にデータ行（`td`）として挿入。複製行の対応セルにキャレット移動 | ヘッダ行（index 0）で実行した場合も直下にデータ行（`td`）として複製挿入。Undo/Redo 1段で復元可（`table-rich-editing` AD-003） |
+| 成功（スマートペースト: TSV / HTML `<table>`） | Visual モードでは新規テーブルノード挿入（または表内セル展開/置換）、Source モードでは GFM パイプ表テキストに変換して挿入 | コードブロック / インラインコード内、単一行テキスト、タブインデントされたソースコード等は誤変換せず通常ペーストへ委譲（`table-rich-editing` AD-005, RK-022） |
 | 成功（Source モード Tab） | 表ブロック検出・整列（aligned時）、次セルへカーソル移動 | 最終セル押下時は新規行を自動生成し先頭セルへ移動 |
 | 成功（Source モード Shift+Tab） | 前セルへカーソル移動 | 先頭セルの場合は前行の末尾セルへ移動 |
-| `convertToHtml` 成功 | 当該表の `tableFormat` を `html` に更新。確認なし即時実行（プレーンテキスト昇格、実質ロスレス） | Undo 1 段で復元可 |
-| `convertToGfm` 成功 | 当該表の `tableFormat` を `gfm` に更新。リスト・チェックボックス等のブロックリッチはプレーンテキストへ flatten。セル内改行は GFM の `<br />`（または同等 hard break）として保持し、単一改行へ正規化する | 実行前に確認ダイアログ必須 |
+| `convertToHtml` 成功 | 当該表の `tableFormat` を `html` に更新。確認なし即時実行（プレーンテキスト昇格、実質ロスレス）。列アライメントも保持 | Undo 1 段で復元可 |
+| `convertToGfm` 成功 | 当該表の `tableFormat` を `gfm` に更新。リスト・チェックボックス等のブロックリッチはプレーンテキストへ flatten。セル内改行は GFM の `<br />`（または同等 hard break）として保持し、単一改行へ正規化する。列アライメントも保持 | 実行前に確認ダイアログ必須 |
 | `convertToGfm` キャンセル | 変換なし、表・`tableFormat` 不変 | ユーザーが確認を拒否 |
 | `setInsertDefault` 成功 | `insertTableFormat` 更新、Table ボタン色を反映。既存表の `tableFormat` は不変 | AD-004 |
-| ソフト上限超過 | UI 警告表示、編集・保存は継続可 | 100 行 × 20 列、両形式共通 |
-| RO 中 | 全 Table メニュー項目無効 | §5 |
+| ソフト上限超過 | UI 警告表示、編集・保存は継続可 | 100 行 × 20 列、両形式・スマートペースト共通（RK-024） |
+| RO 中 / Preview モード中 | 全 Table メニュー項目・コンテキストメニュー・ショートカット・スマートペースト無効 | §4, §1 |
 | サニタイズ拒否 | 危険タグ/属性を除去して表示 | AD-010, RK-003 |
 
 ### Preconditions
 
-- 編集モードであること（Readonly 時は §5 に従い全操作無効）
+- 編集モードであること（Readonly 時は §4、Preview モード時は §1 に従い全編集操作無効）
 - 表は WYSIWYG 内部の表モデル、または Source モードにおける連続したパイプ行ブロックとして存在すること
-- 行/列操作・形式変換はカーソルが当該表内にあること（挿入・セッションデフォルト切替を除く）
+- 行/列操作・アライメント変更・形式変換はカーソルが当該表内にあること（挿入・スマートペースト・セッションデフォルト切替を除く）
 
 ### Behavior
 
@@ -374,11 +381,16 @@ Excel 的な表編集。各表は per-table `tableFormat`（`gfm` \| `html`）�
 Table ボタン（▼ ドロップダウン）の構成:
 
 1. **Insert table** — 3×3・ヘッダ行あり。`insertTableFormat` に従い `tableFormat` を設定して挿入
-2. **行/列操作**（カーソルが表内のときのみ有効）— Add row above/below、Delete row、Add column left/right、Delete column、**Delete table**
-3. **Convert to GFM pipe table** — 当該表が `html` のときのみ有効
-4. **Convert to HTML table** — 当該表が `gfm` のときのみ有効
-5. **New tables default: GFM / HTML** — `insertTableFormat` とボタン色を更新（既存表の `tableFormat` は変更しない）
-6. **Table Style: Aligned / Compact** — GFM パイプ表のシリアライズおよび整形時の区切り配置スタイル（固定長空白揃え / 最小パディング）を切り替える
+2. **行/列追加・削除・移動・複製操作**（カーソルが表内のときのみ有効）:
+   - 行操作: **Add row above** / **Add row below** / **Move row up** / **Move row down** / **Duplicate row** / **Delete row**
+   - 列操作: **Add column left** / **Add column right** / **Move column left** / **Move column right** / **Delete column**
+   - 表削除: **Delete table**
+3. **列アライメント操作**（カーソルが表内のときのみ有効）:
+   - **Align Left** / **Align Center** / **Align Right**（現在列が既に該当アライメントの場合は再選択で `null` 解除または明示設定）
+4. **Convert to GFM pipe table** — 当該表が `html` のときのみ有効
+5. **Convert to HTML table** — 当該表が `gfm` のときのみ有効
+6. **New tables default: GFM / HTML** — `insertTableFormat` とボタン色を更新（既存表の `tableFormat` は変更しない）
+7. **Table Style: Aligned / Compact** — GFM パイプ表のシリアライズおよび整形時の区切り配置スタイル（固定長空白揃え / 最小パディング）を切り替える
 
 Table ボタンの色は **セッション挿入デフォルト**（`insertTableFormat`）を反映する。GFM = 通常ツールバースタイル、HTML = アクセント色。カーソルが表内にあるときはドロップダウン内チェックマークで **当該表の `tableFormat`** を示し、ボタン色とは分離する。
 
@@ -386,19 +398,73 @@ Table ボタンの色は **セッション挿入デフォルト**（`insertTable
 
 Visual（Markdown）モードにおいて、表（`td` / `th` / `table`）要素上で右クリック（`contextmenu` イベント）した際、ポインター位置に対象セルをターゲットとするコンテキストメニュー（`#table-context-menu`）を表示する。
 
-- **メニュー項目構成（英語表記・UD-1 A / UD-2 A）:**
+- **メニュー項目構成（英語表記・UD-1 A / UD-2 A / `table-rich-editing` AD-004）:**
   1. **Add row above**（行を上に追加）
   2. **Add row below**（行を下に追加）
-  3. **Delete row**（行を削除）
-  4. （セパレータ）
-  5. **Add column left**（列を左に追加）
-  6. **Add column right**（列を右に追加）
-  7. **Delete column**（列を削除）
-  8. （セパレータ）
-  9. **Delete table**（表を削除）
+  3. **Move row up**（行を上へ移動）
+  4. **Move row down**（行を下へ移動）
+  5. **Duplicate row**（行を複製）
+  6. **Delete row**（行を削除）
+  7. （セパレータ）
+  8. **Add column left**（列を左に追加）
+  9. **Add column right**（列を右に追加）
+  10. **Move column left**（列を左へ移動）
+  11. **Move column right**（列を右へ移動）
+  12. **Delete column**（列を削除）
+  13. （セパレータ）
+  14. **Align Left**（列を左寄せ）
+  15. **Align Center**（列を中央寄せ）
+  16. **Align Right**（列を右寄せ）
+  17. （セパレータ）
+  18. **Delete table**（表を削除）
 - **セル選択とフォーカス同期:** 右クリック時にポインター直下のセルにエディタのカーソル/選択を同期させ、クリックされたセルに対して操作を正確に適用する。
 - **メニュー非表示条件:** 項目選択時、メニュー外クリック時、`Escape` キー押下時、スクロールまたはリサイズ時にメニューを閉じる。
 - **配置境界調整:** 画面端（右端・下端）付近で開かれた場合、ビューポート内に収まるよう座標を調整する。
+
+#### 表内キーボードショートカット（Visual モード）
+
+Webview 内の Visual（`markdown`）モードにおいて、カーソルが表セル内にあるときのみ以下のショートカットを発火させる（`package.json` のグローバル `contributes.keybindings` は汚染しない — `table-rich-editing` AD-004）:
+
+| ショートカット | 対応操作 | 備考 |
+|----------------|----------|------|
+| `Alt+ArrowUp` | `moveRowUp`（Move row up） | 先頭行（index 0）では no-op |
+| `Alt+ArrowDown` | `moveRowDown`（Move row down） | 最終行では no-op |
+| `Alt+ArrowLeft` | `moveColumnLeft`（Move column left） | 最左列では no-op |
+| `Alt+ArrowRight` | `moveColumnRight`（Move column right） | 最右列では no-op |
+| `Shift+Alt+ArrowDown` | `duplicateRow`（Duplicate row） | 現在行を直下にデータ行（`td`）として複製 |
+
+#### 列アライメントの内部モデル・CSP 安全描画・往復シリアライズ（AD-001, AD-002）
+
+1. **内部モデルと DOM 描画（AD-001）:**
+   - TipTap の `tableHeader` (`th`) および `tableCell` (`td`) ノード属性として `textAlign: 'left' | 'center' | 'right' | null`（既定 `null`）を保持する。
+   - Webview の厳格 CSP（`style-src` に `'unsafe-inline'` 禁止 — §9）を遵守するため、DOM 要素にはインライン `style` 属性を出力せず、`data-align="left|center|right"`（または HTML 標準 `align` 属性）を付与し、`media/editor.css` の属性セレクタ（`td[data-align="center"], th[data-align="center"] { text-align: center; }` 等）によって Visual / Preview 両モードのセル配置を描画する。
+2. **列単位の一貫性（AD-002）:**
+   - Visual モードで列アライメントを変更した際、カーソルがある列の **全行（ヘッダ行および全データ行）の対象列セル** の `textAlign` 属性を一括更新する。
+3. **GFM / HTML 双方向往復と Table Formatter 統合（AD-002）:**
+   - **GFM パイプ表 (`tableFormat: 'gfm'`)**: mdast `table.align` 配列（`'left' | 'center' | 'right' | null`）と TipTap 各列の `textAlign` 属性を双方向マッピングする。シリアライズ時はデリミタ行を `:---`（left）、`:---:`（center）、`---:`（right）、`---`（null）として出力し、`src/utils/table-formatter.ts`（Aligned / Compact 両モード）でもデリミタ行のコロン記号を保持・整形する。
+   - **HTML 表 (`tableFormat: 'html'`)**: パース時は `<th/td align="...">` または既存の `style="text-align: ..."` から `textAlign`（`left | center | right`）を抽出し、シリアライズ時は `<th align="center">` / `<td align="right">` 形式で永続化する（サニタイザ許可属性に `th`/`td` の `align` / `data-align` を含める — §9）。
+
+#### 行・列の入れ替えおよび行複製の操作契約（AD-003）
+
+1. **トランザクションと Undo/Redo:**
+   - `moveRowUp`、`moveRowDown`、`moveColumnLeft`、`moveColumnRight`、`duplicateRow` はすべて 1 トランザクションとして実行し、Undo / Redo 1 段で復元可能とする。操作完了後は移動先または複製先の対応セルにキャレット/選択を追随させる。
+2. **ヘッダ行（先頭行）の境界保護と端の no-op:**
+   - 先頭行（index 0）での `moveRowUp`、最終行での `moveRowDown`、最左列での `moveColumnLeft`、最右列での `moveColumnRight` は安全に no-op とする。
+   - データ行（index 1）を先頭行（index 0）と入れ替える場合（または先頭行を `moveRowDown` する場合）は、入れ替え後の先頭行（index 0）のセルを `tableHeader` (`th`)、2行目以降（index ≥ 1）のセルを `tableCell` (`td`) に自動正規化し、データ欠損防止と GFM シリアライズ整合を両立する。
+3. **行複製 (`duplicateRow`):**
+   - カーソルがある行のセル内容および `textAlign` 属性をそのままコピーし、現在行の直下にデータ行（`td`）として挿入する（ヘッダ行 index 0 で実行した場合も、直下にデータ行 `td` として同一内容・同一アライメントで複製挿入する）。
+
+#### スマートペースト — TSV / HTML `<table>` の安全判定と Visual / Source 挿入契約（AD-005）
+
+Excel / Google スプレッドシート / Web ページの表等からクリップボード経由でペーストした際、以下のガード条件と変換規則に従い自動的にテーブルとして挿入・展開する。
+
+1. **発火ガード（誤変換防止）:**
+   - コードブロック（`codeBlock` / Mermaid / PlantUML / Math フェンス）内やインラインコード内へのペースト、および Readonly / Preview 時はスマートペーストを行わず通常ペーストに委譲する。
+   - **TSV 判定条件**: クリップボードの `text/plain` にタブ文字（`\t`）が含まれ、**2行以上**かつ**全有効行が2列以上（非空トークン間にタブ区切りが1個以上）**で構成され、各行の列数が概ね一致（または RFC 4180 TSV として2行×2列以上）する場合のみ TSV 表データと判定する。単一行のタブ混じりテキストや、行頭のみにタブがあるインデント付きソースコードは変換しない（RK-022）。
+   - **HTML `<table>` 判定条件**: クリップボードの `text/html` に `<table>` 要素が含まれ、かつ有効な行・セル構造を持つ場合、サニタイズまたは DOM パースにより安全なセルテキスト（およびセル内改行 `<br />`、列アライメント `align` / `text-align`）のみを抽出する（`<script>` や `on*` 等の危険属性は除去 — §9）。
+2. **モード別の挿入動作:**
+   - **Visual (`markdown`) モード**: カーソルが表の外にある場合は、現在の `insertTableFormat`（既定 `'gfm'`）に従い新規テーブルノード（先頭行をヘッダ `th`、2行目以降を `td`）として挿入する。カーソルが既存の表セル内にある場合は、複数セルの TSV / HTML 表ペーストであれば新規表またはセル展開（カーソル位置への表置換/挿入、単一セルテキストなら通常テキスト挿入）として扱う。
+   - **Source (`raw`) モード**: `<textarea id="raw-editor">` へのペースト時、上記 TSV 判定（または HTML `<table>` 抽出）に合致した場合、CSV/TSV 変換ユーティリティ（`src/utils/csv-table-converter.ts`）および `table-formatter.ts`（現在の `tablePipeAlignment` 設定: `'aligned' | 'compact'`）を通して GFM パイプ表テキストに変換し、カーソル位置（または選択範囲）へ挿入して Undo 履歴・Host 同期（`input` イベント）に乗せる。
 
 #### ソースモードでの表編集・Tab 自動整列（AD-018）
 
@@ -406,7 +472,7 @@ Source モード（`<textarea id="raw-editor">`）において、カーソルが
 
 1. **Tab キー押下時の挙動:**
    - カーソル位置の前後の空行または非テーブル行までの範囲を「現在の表ブロック」として抽出・解析する。
-   - `tablePipeAlignment` が `aligned` の場合、全列の最大表示文字幅（全角文字=2幅、半角文字=1幅）を算出し、全行のセルを固定長空白でパディングして垂直パイプラインを整列させる。
+   - `tablePipeAlignment` が `aligned` の場合、全列の最大表示文字幅（全角文字=2幅、半角文字=1幅）を算出し、全行のセルを固定長空白でパディングして垂直パイプラインを整列させる（デリミタ行の `:---`, `:---:`, `---:` アライメント記号も保持する）。
    - 整形後の表ブロックにおいて、カーソルを「次のセル」の入力開始位置（区切り `|` の直後の空白後）へ移動する。
    - 行末のセルにいる場合は次行の先頭セルへ移動する。
    - 表の最後の行・最後のセルで Tab を押下した場合は、**新しい行（`|   |   | ... |`）を自動的に挿入**し、新行の先頭セルへカーソルをフォーカスする。
@@ -417,22 +483,24 @@ Source モード（`<textarea id="raw-editor">`）において、カーソルが
 
 #### 正常系
 
-1. 表の挿入、行/列の追加・削除、セル編集ができる（ツールバー Table メニューおよび表セルの右クリックコンテキストメニューから実行可能）
+1. 表の挿入、行/列の追加・削除・上下左右移動・行複製、列アライメント変更（左/中央/右/解除）、セル編集ができる（ツールバー Table メニュー、表セルの右クリックコンテキストメニュー、および表内キーボードショートカットから実行可能）
 2. `tableFormat: 'html'` の表では、セル内に複数行テキスト、箇条書き、チェックボックスを入力できる（HTML リッチセルの既存仕様は変更しない）
 3. `tableFormat: 'gfm'` の表では、セル内容はインラインマーク・プレーンテキストに制限する。**セル内改行**はソース上 `<br />`（または同等 hard break）として永続化し、Markdown 面では単一改行として表示・編集する。Raw の `<br />` を Markdown へ投影するときも単一改行とする（空行相当の多重改行は作らない）。リスト・複数段落などのブロック構造は不可
-4. 保存後の `.md` は当該表の `tableFormat` に応じて GFM パイプ表または HTML `<table>` として記録される。GFM 表セル内の改行はパイプ行内の `<br />`（または同等 hard break）として出力する。`tablePipeAlignment` 設定に基づき、固定長揃え（aligned）または最小空白（compact）でフォーマットされる
-5. 既存 GFM パイプ表の読込 → `tableFormat: 'gfm'`、既存 HTML `<table>` の読込 → `tableFormat: 'html'`（サニタイズ後）。属性欠落時は `gfmSource` / `html` 属性から推論する。GFM セル内の `<br />`（または同等）は単一改行として Document / Markdown 面へ復元する
-6. **GFM→HTML** 変換は確認なしで即時実行する。**HTML→GFM** 変換は実行前に確認ダイアログを表示する（例: 「リスト・チェックボックス等はプレーンテキストに flatten されます。セル内改行は `<br />` として保持されます。続行しますか？」）。flatten はブロックリッチの除去を指し、セル内改行は上記 GFM 改行契約に従い保持する。MVP に「今後表示しない」オプションは設けない
+4. 保存後の `.md` は当該表の `tableFormat` に応じて GFM パイプ表（デリミタ行 `:---`, `:---:`, `---:`, `---` による列アライメント付き）または HTML `<table>`（`<th/td align="...">` 属性付き）として記録される。GFM 表セル内の改行はパイプ行内の `<br />`（または同等 hard break）として出力する。`tablePipeAlignment` 設定に基づき、固定長揃え（aligned）または最小空白（compact）でフォーマットされる
+5. 既存 GFM パイプ表の読込 → `tableFormat: 'gfm'`（デリミタ行から各列の `textAlign` を復元）、既存 HTML `<table>` の読込 → `tableFormat: 'html'`（サニタイズ後、`align` 属性または `style="text-align:..."` から `textAlign` を復元）。属性欠落時は `gfmSource` / `html` 属性から推論する。GFM セル内の `<br />`（または同等）は単一改行として Document / Markdown 面へ復元する
+6. **GFM→HTML** 変換は確認なしで即時実行する。**HTML→GFM** 変換は実行前に確認ダイアログを表示する（例: 「リスト・チェックボックス等はプレーンテキストに flatten されます。セル内改行は `<br />` として保持されます。続行しますか？」）。flatten はブロックリッチの除去を指し、セル内改行および列アライメント（`textAlign`）は上記契約に従い保持する。MVP に「今後表示しない」オプションは設けない
 7. 行数が 100 を超える、または列数が 20 を超える場合、エディタ内にソフト上限警告を表示する（保存は拒否しない）
-8. 表セル上で右クリックするとコンテキストメニューが表示され、選択した行列操作（追加・削除・表削除）が即座に対象セルに適用されてドキュメントが更新（dirty）される
-9. Source モードで表編集中に Tab キーを押下すると、設定が aligned の場合に自動的にパイプ位置が揃えられ、次のセルまたは新行へカーソルがジャンプする
+8. 表セル上で右クリックするとコンテキストメニューが表示され、選択した行列操作（追加・削除・移動・複製・列アライメント・表削除）が即座に対象セルに適用されてドキュメントが更新（dirty）される
+9. Source モードで表編集中に Tab キーを押下すると、設定が aligned の場合に列アライメント記号を保ったまま自動的にパイプ位置が揃えられ、次のセルまたは新行へカーソルがジャンプする
+10. Excel / スプレッドシート等からコピーした複数行・複数列の TSV または HTML `<table>` を Visual / Source モードにペーストすると、自動的に Markdown テーブルとして挿入・整形される
 
 #### 例外系
 
-1. 外部 HTML 表の読込時、サニタイズ後に表示する（RK-003）
+1. 外部 HTML 表またはクリップボード HTML `<table>` の読込・ペースト時、サニタイズ後に表示・変換する（RK-003）。インライン `style="text-align: ..."` はモデル属性 `textAlign` に正規化し、DOM 上は CSP 安全な `data-align` / `align` 属性で描画する（RK-023）
 2. 手書き GFM 表と HTML 表が同一リポジトリに混在しうる（RK-006 — スタイルガイド推奨）
-3. Readonly（§5）時、または Visual 以外のモード（Preview / Raw）では右クリックコンテキストメニューを表示しない（ツールバー項目も無効化）
-4. 不正なパイプ構文（列数が不一致な行など）を含む表ブロックで Tab を押下した場合、例外でクラッシュさせず、可能な限り行の列数を正規化して安全に整形を完了する
+3. Readonly（§4）時、または Visual 以外のモード（Preview / Raw）では右クリックコンテキストメニューおよび表内移動ショートカットを発火させない（ツールバー項目も無効化）
+4. 不正なパイプ構文（列数が不一致な行など）を含む表ブロックで Tab を押下した場合、またはスマートペースト・行列移動で不正な構造に遭遇した場合は、例外でクラッシュさせず、通常のペーストまたは no-op に安全にフォールバックする
+5. 端の行/列での移動操作（先頭行での `moveRowUp`、最終行での `moveRowDown`、最左列での `moveColumnLeft`、最右列での `moveColumnRight`）はエラーを出さず no-op とする
 
 #### 廃止（本機能以前の挙動）
 
@@ -441,7 +509,8 @@ Source モード（`<textarea id="raw-editor">`）において、カーソルが
 ### Non-Goals
 
 - 表内数式・ピボット等の Excel 高度機能
-- セル結合 / セル分割
+- セル結合（`colspan` / `rowspan`）の WYSIWYG 編集・分割
+- マウスドラッグ＆ドロップによる行・列の並び替え（メニュー・コンテキストメニュー・キーボードショートカットで提供）
 - 右クリックメニュー内での GFM/HTML 変換（ツールバー Table メニューで提供）
 - `insertTableFormat` のワークスペース / ユーザー設定への永続化（MVP）
 - HTML→GFM 変換確認ダイアログの「今後表示しない」オプション（MVP）
@@ -450,6 +519,7 @@ Source モード（`<textarea id="raw-editor">`）において、カーソルが
 ### Related Tests
 
 - [doc/test/testspec-vsc-md-wysiwyg.md](../test/testspec-vsc-md-wysiwyg.md) — TC-016–024, TC-065（既存）。**要追記:** 挿入デフォルト GFM、HTML 挿入、HTML→GFM 確認付き変換・flatten、GFM→HTML 変換、メニュー行/列操作、ボタン色 / セッションデフォルト切替、Readonly 無効、GFM/HTML round-trip（`table-gfm-html-mode`）。**要追記（回帰）:** GFM セル内改行 ↔ Raw `<br />` 単一改行往復、連続 `<br />` の単一改行正規化（`gfm-table-linebreak-fix`）。**右クリックコンテキストメニュー:** TC-160–165（`table-context-menu`）。**要追記（新機能）:** 表フォーマット切替（Aligned vs Compact）、全角文字幅整列、Source モードでの Tab / Shift+Tab 表自動整列およびセル移動・新行挿入（`table-format-and-editor-assist`）
+- [doc/test/testspec-table-rich-editing.md](../test/testspec-table-rich-editing.md) — 列アライメント（`left` \| `center` \| `right` \| `null`）の GFM/HTML 往復と CSP 安全描画、行/列移動と行複製（`moveRowUp` / `moveRowDown` / `duplicateRow` / `moveColumnLeft` / `moveColumnRight`）、Table メニュー・コンテキストメニュー・ショートカット統合、TSV / HTML `<table>` スマートペーストと誤変換防止ガード（`table-rich-editing`）
 
 ---
 
@@ -702,63 +772,92 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 
 ---
 
-## §7 画像貼付
+## §7 画像貼付・リッチ画像編集
 
 ### 概要
 
-クリップボードから画像を貼り付け、`.md` と同階層の `img/` に保存し、相対パス参照を挿入する（AD-009, UD-007）。**表示時**の画像 URI 解決は Extension Host が行い、Webview には `asWebviewUri` 済み URL のみ渡す（§9）。serialize / ディスク出力は **常に相対パス**を維持する（`preview-rich-embed`）。
+クリップボードからの画像貼り付け、および OS（Finder / Explorer）やファイルツリーからの画像ファイル（png/jpg/gif/svg/webp）ドラッグ＆ドロップにより、`.md` と同階層の `img/` に `img/image-NNNN.ext` 形式で保存し、相対パス参照を挿入する（AD-009, AD-020, UD-007）。**表示時**の画像 URI 解決は Extension Host が行い、Webview には `asWebviewUri` 済み URL のみ渡す（§9）。serialize / ディスク出力は **常に相対パス**を維持する（`preview-rich-embed` / `image-rich-editing` AD-002）。
+さらに、Visual モードで画像をクリック選択した際、**ドラッグリサイズハンドルおよびサイズプリセット（`25%` / `50%` / `75%` / `100%`）・配置切替（`left` \| `center` \| `right` \| `null`）・Alt テキスト編集**を備えたミニポップオーバー UI を提供し、`width` または `align` 指定時は決定的な HTML `<img src="img/..." alt="..." width="..." align="..." />`、ともに未指定（`null`）時は標準 Markdown `![alt](img/...)` で双方向往復（Round-trip）する。Preview モードクリック時および Visual モードの拡大アクション/ダブルクリック時には **Lightbox モーダル拡大表示**を提供する（`image-rich-editing` AD-001〜AD-005）。
 
 ### Inputs & Types
 
 | 入力 | 型 | 必須 | 最小 | 最大 | 備考 |
 |------|-----|------|------|------|------|
-| `clipboardImage` | `image/*` バイナリ | はい | 1 バイト | 実用上限未定（backlog） | jpg/png/gif/svg |
+| `clipboardOrDropImage` | `image/*` バイナリ / `FileList` | はい | 1 バイト | 実用上限未定（backlog） | クリップボード paste またはドラッグ＆ドロップ（`png` / `jpg`(`jpeg`) / `gif` / `svg` / `webp` — `image-rich-editing` AD-004）。複数ファイル同時ドロップ時は順次処理 |
 | `sequenceNumber` | 整数 | 自動 | 1 | 9999 | `image-NNNN` ゼロ埋め 4 桁 |
 | `targetMdUri` | `vscode.Uri` | はい | — | — | 同階層 `img/` 基準 |
-| `imageSrc` | `string` | 任意 | — | — | Document / `docJson` 内の相対パス（例: `img/image-0001.png`）。表示投影時に Host が rewrite |
+| `imageSrc` / `originalSrc` | `string` | 任意 | — | — | Document / シリアライズ用の相対パス（例: `img/image-0001.png` または外部 `https:` URL）。表示投影時に Host が `src` を webview URI へ rewrite し、シリアライズ時は `originalSrc`（または Host 逆変換）により元の相対パスへ復元する（`image-rich-editing` AD-001, AD-002） |
+| `imageAlt` (`alt`) | `string \| null` | 任意 | 空文字可 | — | ミニポップオーバーのインライン入力欄から編集可能。`<img />` 出力時は空文字でも `alt=""` として保持、特殊文字は HTML エスケープ（`image-rich-editing` AD-002, AD-003） |
+| `imageWidth` (`width`) | `string \| null` | 任意 | `32` (`32px`) / `'25%'` | 親コンテナ幅 / `'100%'` | ドラッグリサイズ時（px 整数値文字列、例: `'320'` または `'320px'`）またはプリセット選択時（`'25%'` \| `'50%'` \| `'75%'`）。`100% (Reset)` 選択時および初期値は `null`。CSP 厳守のため DOM ではインライン `style` を使わず HTML `width` 属性（および `data-width`）で描画する（`image-rich-editing` AD-001, AD-003, RK-025） |
+| `imageAlign` (`align`) | `'left' \| 'center' \| 'right' \| null` | 任意 | — | — | 既定値 `null`。同一配置の再クリックで `null` にトグル解除。CSP 厳守のため DOM ではインライン `style` を使わず `data-align` / `align` 属性と `media/editor.css` のセレクタで描画する（`image-rich-editing` AD-001, AD-003） |
+| `lightboxTrigger` | クリック / ダブルクリック / Zoom ボタン | 任意 | — | — | Preview モード（非 Marp・Marp とも）はシングルクリック、Visual モード（非 RO）はダブルクリックまたはミニポップオーバー Zoom ボタン（RO 時はクリック/ダブルクリック）で Lightbox を開く（`image-rich-editing` AD-005, RK-028） |
 
 ### Outputs & Failure Returns
 
 | 条件 | 戻り値 / ステータス | 備考 |
 |------|-------------------|------|
-| 成功（paste） | `img/image-NNNN.ext` 保存 + Markdown 画像参照挿入 | 上書きなし（UD-007）。Document 正本は相対パス |
-| 成功（表示投影） | TipTap `image.src` / Marp HTML `<img src>` が webview URI | Host rewrite。Document / serialize は相対パスのまま |
+| 成功（paste / D&D ドロップ） | `img/image-NNNN.ext` 保存 + Markdown 画像参照挿入 | 上書きなし（UD-007）。Document 正本は相対パス。複数画像ドロップ時はファイルリスト順に順次採番・挿入（`image-rich-editing` AD-004） |
+| 成功（表示投影） | TipTap `image.src`（Markdown 由来・HTML `<img>` 由来とも）および Marp HTML `<img src>` が webview URI | Host rewrite。Document / serialize は常に相対パス（`img/image-NNNN.ext`）のまま維持（Webview URI 漏洩厳禁 — RK-026） |
+| 成功（サイズ・配置・Alt 変更） | 1 トランザクションで TipTap `image` 属性更新、DOM（`width` / `data-align` / `align`）および Markdown/HTML シリアライズに反映 | Undo / Redo 1 段で復元可。`width` と `align` がともに `null` なら `![alt](src)`、いずれかが非 `null` なら `<img src="..." alt="..." width="..." align="..." />` で出力（`image-rich-editing` AD-002, AD-003） |
+| 成功（Lightbox 表示・閉鎖） | `#image-lightbox` モーダルに解決済み `src` と `alt` キャプションを拡大表示。`Escape` / 背景クリック / `×` ボタンで閉鎖 | 閲覧専用操作。Document 更新や `dirty` 変更は一切行わない（`image-rich-editing` AD-005） |
 | URI 解決不可 | broken image 表示 + Output debug ログ | ユーザー通知なし。`img/` 外・ワークスペース外・非 `https:` 絶対パスは rewrite しない |
-| 未保存新規 doc | paste 拒否、「Save document first」通知 | URI 未確定 |
-| RO 中 | 操作拒否 | §4（全編集面ロック） |
+| 未保存新規 doc（paste / D&D） | 拒否、「Save document first」通知 | URI 未確定（`untitled:` scheme 等） |
+| RO 中 / Preview モード中（編集・挿入） | paste・D&D 挿入・リサイズハンドル・ミニポップオーバー無効 | §4, §1。ただし Lightbox 拡大閲覧は Preview / RO でも利用可能（`image-rich-editing` AD-005） |
 | FS 書込失敗 | 通知、挿入なし | 権限・ディスク容量 |
-| 非画像 paste | 無視（通常 paste へ委譲） | — |
+| 非画像 paste / 非画像ファイル D&D | 無視（通常 paste / 通常 D&D へ委譲）。ただし OS ファイルドロップ時の Webview 画面遷移は `preventDefault()` で確実に防止 | `image-rich-editing` AD-004, RK-027 |
 
 ### Preconditions
 
-- 編集モードであること
-- 対象 `.md` がディスク上の保存済みパスを持つこと（未保存新規 Untitled doc への paste は拒否）
+- 挿入・編集操作（paste、D&D、リサイズ、配置変更、Alt 編集）は編集モード（Visual / Source かつ非 RO）であること
+- 対象 `.md` がディスク上の保存済みパスを持つこと（未保存新規 Untitled doc への paste / D&D は拒否）
 - `img/` が無ければ作成する
 
 ### Behavior
 
 #### 正常系
 
-1. paste イベントで clipboard の image/* を検出する
-2. 既存 `img/image-*.ext` の最大連番 + 1 でファイル名を採番する（欠番があっても重複しない）
-3. 拡張子は MIME から決定（jpg/png/gif/svg）
-4. Markdown に `img/image-NNNN.ext` 形式の相対パスを挿入する
-5. URI は `vscode.Uri` で正規化しパストラバーサルを防ぐ
-6. **表示投影時（Host）:** `.md` のディレクトリ基準で実ファイル URI を組み立て、`isSafeImagePath`（`..` 禁止・**`img/` プレフィックス必須**）を通過した場合のみ `webview.asWebviewUri` して TipTap `docJson` 内 `image.src` および Marp 出力 HTML 内 `<img src>` を書き換える
-7. **`docUpdated` / Preview 投影 / Marp 再描画**の各タイミングで画像 URI を再解決する
-8. **Markdown モード（Rich Editor）** も Host rewrite 済み `docJson` を投影する。paste 直後は Host が webview URI を返すか、相対パス挿入後に次投影で rewrite
-9. **`https:` / `data:`** 画像は Webview が直接解決（CSP 既存どおり — 挙動変更なし）
+1. **クリップボード貼付およびドラッグ＆ドロップ挿入（AD-004）:**
+   - paste イベントまたは drop イベント（`dataTransfer.files`）で `image/*`（`png`, `jpg`/`jpeg`, `gif`, `svg`, `webp`）を検出する。
+   - OS やファイルツリーからのファイルドロップ時は、`dragover` / `drop` イベントで `preventDefault()` を呼び出し、Webview 自体が画像ファイルへ画面遷移する事故を防止する（RK-027）。エディタ内の既存ノード移動やテキスト選択ドロップ等、ファイルを含まない通常の D&D は阻害しない。
+   - 既存 `img/image-*.ext` の最大連番 + 1 でファイル名を採番する（欠番があっても重複しない。複数ファイル同時ドロップ時は順番に連番採番）。
+   - 拡張子は MIME / ファイル名から決定（`jpg`/`png`/`gif`/`svg`/`webp`）し、`vscode.Uri` で正規化してパストラバーサルを防ぐ。
+   - Visual モードまたは Source モードに `img/image-NNNN.ext` 形式の相対パス画像を挿入する。
+2. **Host 側 URI Rewrite と相対パス保護（AD-001, AD-002）:**
+   - **表示投影時（Host）:** `.md` のディレクトリ基準で実ファイル URI を組み立て、`isSafeImagePath`（`..` 禁止・**`img/` プレフィックス必須**）を通過した場合のみ `webview.asWebviewUri` して TipTap `docJson` 内 `image.src`（標準 Markdown 画像および HTML `<img />` 由来の両方）および Marp 出力 HTML 内 `<img src>` を書き換える。
+   - **`docUpdated` / Preview 投影 / Marp 再描画**の各タイミングで画像 URI を再解決する。
+   - **Markdown モード（Rich Editor）** も Host rewrite 済み `docJson` を投影する。paste / D&D 直後は Host が webview URI を返すか、相対パス挿入後に次投影で rewrite する。
+   - **`https:` / `data:`** 画像は Webview が直接解決（CSP 既存どおり — 挙動変更なし）。
+   - **シリアライズ時の相対パス復元:** TipTap `image` ノードは `originalSrc`（または Host 側逆変換マップ）により元の相対パス `img/image-NNNN.ext` を保持し、Markdown 出力・HTML `<img />` 出力のいずれにおいても `vscode-webview-resource:` 等の Webview URI をディスク `.md` や Source モードへ漏洩させない（RK-026）。
+3. **画像ノードモデルと CSP 安全描画（AD-001）:**
+   - TipTap `image` ノード属性として `src`, `originalSrc`, `alt` (`string | null`), `title` (`string | null`), `width` (`string | null`), `align` (`'left' | 'center' | 'right' | null`) を保持する。
+   - Webview の厳格 CSP（`style-src` に `'unsafe-inline'` 禁止 — §9）を遵守するため、DOM 上でインライン `style` 属性は一切出力しない。幅は HTML 標準の `<img width="...">` 属性（および `data-width`）、配置はラッパー要素または `<img>` の `data-align="left|center|right"` / `align` 属性と `media/editor.css` の属性セレクタで描画する（RK-025）。
+4. **リサイズハンドル・サイズプリセット・配置・Alt 編集ミニポップオーバー UI（AD-003）:**
+   - Visual（`markdown`）モードかつ非 Readonly 時に画像をクリック選択すると、選択枠、ドラッグリサイズハンドル、およびミニポップオーバーツールバーを表示する。
+   - **ドラッグリサイズ:** ハンドルドラッグ中はアスペクト比を維持しつつ `<img width="...">` 属性の直接更新でプレビュー幅（最小 `32px`〜最大親コンテナ幅）を更新し、`pointerup` 時に 1 回の ProseMirror トランザクションとして `width` 属性を確定する（Undo / Redo 1 段で復元可能）。
+   - **サイズプリセット:** `25%` / `50%` / `75%` / `100% (Reset)` ボタンを提供する。`100% (Reset)` 選択時は `width: null` にリセットする。
+   - **配置切替:** `Align Left` (`left`) / `Align Center` (`center`) / `Align Right` (`right`) トグルボタンを提供する。現在と同じ配置を再クリックすると `align: null` に解除する。
+   - **Alt テキスト編集:** ミニポップオーバー内の入力欄で `alt` 属性を編集し、`Enter` または適用ボタンで確定、`Escape` でキャンセルする。
+   - **拡大表示（Zoom）ボタン:** クリックで Lightbox モーダルを起動する。
+5. **Markdown `![alt](src)` ⇄ HTML `<img />` 決定的往復シリアライズ（AD-002）:**
+   - `width` と `align` がともに `null`（未指定）の場合は、標準 Markdown 記法 `![alt](src)`（`title` がある場合は `![alt](src "title")`）として出力する。
+   - `width` または `align` のいずれかが非 `null` の場合は、属性順序を `src` → `alt` → `title`（存在時）→ `width`（存在時）→ `align`（存在時）に固定した単一 HTML タグ `<img src="img/..." alt="..." width="..." align="..." />`（未指定の `title`/`width`/`align` は省略、`alt` は空文字でも `alt=""` として保持、属性値は HTML エスケープ）として決定的に出力する（§8）。
+   - 読込（パース）時は標準 Markdown `![alt](src)` と HTML `<img ...>` タグ（ブロック HTML / インライン HTML）の双方から `src`, `alt`, `title`, `width`, `align`（既存の `style="width: ..."` がある場合は `width` 属性へ正規化抽出）を TipTap `image` ノードへ復元する。
+6. **Lightbox 画像拡大モーダル表示（AD-005）:**
+   - **Preview（`preview`）モード（非 Marp および Marp 内の画像）:** 画像（`<img>`）のシングルクリックで Lightbox モーダル（`#image-lightbox`）を起動する。
+   - **Visual（`markdown`）モード:** シングルクリックは画像選択（ミニポップオーバー表示）とし、画像の **ダブルクリック** またはミニポップオーバーの **Zoom ボタン** で Lightbox モーダルを起動する（Readonly 時は Visual 面でもクリックまたはダブルクリックで Lightbox を起動し、編集 UI は表示しない — RK-028）。
+   - **モーダル UI と閉鎖操作:** 画面全体を覆うオーバーレイ（`role="dialog"`, `aria-modal="true"`, `aria-label="Image Preview"`）に解決済み `src` を最大ビューポートサイズ（`max-width: 90vw; max-height: 85vh; object-fit: contain`）で表示し、下部に `alt` キャプションを表示する。背景クリック、閉じる（`×`）ボタンクリック、または `Escape` キー押下（Lightbox オープン中は最優先で消費）で閉じる。Lightbox 操作は Document や `dirty` 状態を変更しない。
 
 #### 例外系
 
-1. 未保存新規 `.md`（`untitled:` scheme 等）への paste は拒否し、**「Save document first」** を通知する
+1. 未保存新規 `.md`（`untitled:` scheme 等）への paste または画像ファイル D&D は拒否し、**「Save document first」** を通知する
 2. ファイル移動時のパス自動更新は行わない（UD-007）
 3. 参照されなくなった画像（孤児）は削除しない（RK-005 — backlog）
+4. HTML `<img />` に `onerror` / `onload` 等のイベントハンドラや `javascript:` URI が含まれる場合はサニタイザで除去する（§9）
 
 ### Non-Goals
 
-- 画像のリサイズ・圧縮の自動最適化
-- 外部 URL への自動アップロード
+- 画像ファイル自体のバイナリ編集（トリミング / 回転 / フィルタ / 色調補正 / 圧縮再エンコード）
+- 外部 URL（S3 / Imgur 等）への自動アップロード
 - 孤児画像の自動削除（backlog）
 - **`img/` 外**の手書き相対パス（例: `./assets/logo.png`）の Host URI 解決（RK-014）
 - Webview 内での file パス解決（Host 経由のみ）
@@ -766,6 +865,7 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 ### Related Tests
 
 - [doc/test/testspec-vsc-md-wysiwyg.md](../test/testspec-vsc-md-wysiwyg.md) — TC-043–051、TC-124–129（画像 URI Host rewrite・serialize 相対パス・TC-060 系 regression）
+- [doc/test/testspec-image-rich-editing.md](../test/testspec-image-rich-editing.md) — 画像サイズ変更（ドラッグリサイズ・プリセット `25%`/`50%`/`75%`/`100%`）・配置切替（`left`/`center`/`right`/`null`）・Alt 編集の CSP 安全描画と `![alt](src)` ⇄ `<img src="img/..." alt="..." width="..." align="..." />` 決定的往復シリアライズ（Webview URI 非漏洩）、画像ファイル D&D 挿入（`webp` 含む・遷移抑止・未保存/RO ガード）、Lightbox モーダル拡大表示（`image-rich-editing`）
 
 ---
 
@@ -809,7 +909,11 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 6. 同一内容に対し、連続保存で byte-identical 出力を目指す（アーキテクチャ AD-013）
 7. **モード切替だけでは本節の保存処理を起動しない**（§1）。**Default Preview** はモード切替ではないが、Document が dirty のときは次項のゲートで本節の save 経路を経由する
 8. **Default Preview dirty ゲート（§1 / §10）:** Document が dirty のときのみ Host が `showWarningMessage`（文言: `Document has unsaved changes. Save before opening the Markdown Preview?`。**Save** / **Cancel** 二択。「Don't Save で開く」は提供しない。文言に `to the side` を含めない）。Cancel またはダイアログ閉じはプレビュー非オープン。Save 選択時は既存 Custom Editor save（`MarkdownDocument` / provider）を待ち、**成功時のみ** `markdown.showPreview`（同一グループ補償 — §10）を実行する。save 失敗（本節の stringify 失敗・Raw パース失敗ブロック含む）時は ErrorMessage + Output（`MD WYSIWYG Editor`）、プレビュー非オープン。clean 時はダイアログなしで即開く。**`showPreviewToSide` へのフォールバックはしない**
-9. **画像参照:** serialize / ディスク出力は **常に相対パス**（例: `img/image-0001.png`）。Host の `asWebviewUri` rewrite は表示投影のみで Document 正本を変更しない（§7 / §9）
+9. **画像参照とリッチ画像属性の決定的往復（§7 / `image-rich-editing` AD-002）:**
+   - serialize / ディスク出力の `src` は **常に相対パス**（例: `img/image-0001.png` または外部 `https:` URL）。Host の `asWebviewUri` rewrite は表示投影のみで Document 正本を変更せず、`vscode-webview-resource:` 等の Webview URI は絶対に出力しない（§7 / §9 / RK-026）。
+   - `width` と `align` がともに `null`（未指定 / 100% リセット）の場合は、標準 Markdown `![alt](src)`（`title` 存在時は `![alt](src "title")`）として出力する。
+   - `width` または `align` のいずれかが非 `null` の場合は、属性順序を `src` → `alt` → `title`（存在時）→ `width`（存在時）→ `align`（存在時）に固定した `<img src="..." alt="..." width="..." align="..." />`（`alt` は空文字でも `alt=""` を維持、属性値は HTML エスケープ）として決定的に出力する。
+   - パース時は標準 Markdown `![alt](src)` と HTML `<img>` タグ（ブロック / インライン）の双方から `src`, `alt`, `title`, `width`, `align`（および `style="width: ..."` の `width` 正規化）を TipTap `image` ノードへ復元する。
 10. **GFM 書式ノードの往復（§2 In）:** 次を parse ↔ stringify で保持する（micromark/mdast の strikethrough・task-list を **direct dependency** として追加。既存 `gfm-table` は維持）
    - 取り消し線: 入力 `~~` および HTML `<del>` / `<s>` → モデル `strike` → 出力 **常に** `~~text~~`（`<del>`/`<s>` は出さない）
    - 見出し h1–h6: 既存スキーマどおり往復
@@ -819,6 +923,9 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
    - 水平線: mdast `thematicBreak` ↔ 出力 `---`（既存 `toMarkdown` `rule: '-'`）。前後空行は決定的整形に従う
 11. **複合 mark:** strike+bold / strike+italic 等は意味を保持。ネスト順の入れ替わりは許容（見た目同等なら byte 一致は要求しない）
 12. **非対象 GFM 拡張:** footnotes / GitHub Alerts / autolink-literal / tagfilter の新規有効化はしない（§2 Out）
+13. **表の列アライメント往復（§3 / `table-rich-editing` AD-002）:**
+   - **GFM パイプ表 (`tableFormat: 'gfm'`)**: mdast `table.align` 配列（`'left' | 'center' | 'right' | null`）と TipTap 各列の `textAlign` 属性を双方向マッピングし、デリミタ行を `:---`（left）、`:---:`（center）、`---:`（right）、`---`（null）として出力・整形する（`src/utils/table-formatter.ts` の Aligned / Compact 両モードでコロン記号を保持）。
+   - **HTML 表 (`tableFormat: 'html'`)**: パース時は `<th/td align="...">` または既存の `style="text-align: ..."` から `textAlign` を抽出し、シリアライズ時は `<th align="center">` / `<td align="right">` 形式で永続化する。
 
 #### 例外系
 
@@ -836,6 +943,8 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 
 - [doc/test/testspec-vsc-md-wysiwyg.md](../test/testspec-vsc-md-wysiwyg.md) — TC-052–056、Raw パース失敗 TC、および GFM 書式往復追記 TC（`gfm-format-toolbar`）
 - Default Preview dirty Save/Cancel ゲート: [doc/test/testspec-native-preview-side-and-default-raw.md](../test/testspec-native-preview-side-and-default-raw.md)
+- 表の列アライメント（GFM/HTML）往復シリアライズ: [doc/test/testspec-table-rich-editing.md](../test/testspec-table-rich-editing.md)
+- 画像の `![alt](src)` ⇄ `<img src="img/..." alt="..." width="..." align="..." />` 決定的往復シリアライズと相対パス保護: [doc/test/testspec-image-rich-editing.md](../test/testspec-image-rich-editing.md)
 
 ---
 
@@ -872,14 +981,15 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 
 #### 正常系
 
-1. Webview に厳格 CSP を設定する（nonce 付き script/style）。Custom Editor の `style-src` は `${webview.cspSource} 'nonce-${nonce}'` を維持し、**`'unsafe-inline'` を追加しない**。Mermaid presentation は Host 同一 nonce 付きの render 結果 `<style>` 再注入を優先し、静的 Host CSS は欠落時の最小安全網に限定する（§5 正常系 11 / `mermaid-redux-elk-fidelity`）。`img-src ${webview.cspSource} data: https: file:` は `getHtml` のまま維持。CSP / `localResourceRoots` / `on*` 除去の緩和は行わない
-2. 表示前に HTML をサニタイズする（表・画像・基本書式・Mermaid SVG を許可）。**許可タグに `del` / `s` を含める**（§2 取り消し線の HTML 混在入力を落とさない）。下線・highlight（`mark`）は許可追加しない。`input` checkbox は既存許可のまま
+1. Webview に厳格 CSP を設定する（nonce 付き script/style）。Custom Editor の `style-src` は `${webview.cspSource} 'nonce-${nonce}'` を維持し、**`'unsafe-inline'` を追加しない**。Mermaid presentation は Host 同一 nonce 付きの render 結果 `<style>` 再注入を優先し、静的 Host CSS は欠落時の最小安全網に限定する（§5 正常系 11 / `mermaid-redux-elk-fidelity`）。表の列アライメント描画および画像のサイズ・配置描画もインライン `style` 属性に依存せず、HTML `width` / `align` / `data-align` 属性と `media/editor.css` のセレクタで描画する（§3 / §7 / `table-rich-editing` AD-001 / `image-rich-editing` AD-001, RK-025）。`img-src ${webview.cspSource} data: https: file:` は `getHtml` のまま維持。CSP / `localResourceRoots` / `on*` 除去の緩和は行わない
+2. 表示前に HTML をサニタイズする（表・画像・基本書式・Mermaid SVG を許可）。**許可タグに `del` / `s` を含める**（§2 取り消し線の HTML 混在入力を落とさない）。**表セル（`th` / `td`）の許可属性に `align` および `data-align` を含める**（§3 列アライメントの保持・描画 — `table-rich-editing` AD-001, AD-002）。**画像（`img`）の許可属性に `src`, `alt`, `title`, `width`, `height`, `align`, `data-align` を含める**（§7 リッチ画像の保持・描画 — `image-rich-editing` AD-002。`onerror` / `onload` 等のイベントハンドラや `javascript:` URI は除去）。クリップボードから HTML `<table>` をスマートペーストする際も、`<script>` や `on*` 等の危険属性を除去し、安全なテキスト・`<br />`・アライメント属性のみを抽出する（§3 / `table-rich-editing` AD-005）。下線・highlight（`mark`）は許可追加しない。`input` checkbox は既存許可のまま
 3. **Mermaid SVG sanitize**（Webview NodeView）: Mermaid が出力した SVG を DOMPurify でサニタイズする際、**`HTML_INTEGRATION_POINTS: { foreignobject: true }`（または同等）により `foreignObject` シェルだけでなくラベル用 HTML 子を保持する**（§5 正常系 10 / `mermaid-contrast-readable` P0）。presentation `<style>` 再注入経路ではユーザー／ソース由来の任意 CSS を素通しせず、危険構文を落としたうえで Host 同一 nonce を付与する（§5 正常系 11）。`<script>` / イベントハンドラ属性等は除去し続ける。`securityLevel: 'strict'` は不変。allowlist / style 再注入の変更は XSS 面を広げない最小とし、実装後 security レビュー対象（AD-002 / `mermaid-redux-elk-fidelity` AD-008）
-4. 画像保存先はワークスペース内 `img/` に限定する
-5. **画像 URI rewrite（Host）:** `.md` のディレクトリ基準で実ファイル URI を組み立て、`isSafeImagePath(path)` — **`..` 禁止**、**`img/` プレフィックス必須** — を通過した場合のみ `webview.asWebviewUri` する。対象: TipTap `docJson` 内 `image.src`、Marp 出力 HTML 内 `<img src>`
+4. 画像保存先はワークスペース内 `img/` に限定する（クリップボード貼付・ドラッグ＆ドロップ共通。MIME タイプ `image/png`, `image/jpeg`, `image/gif`, `image/svg+xml`, `image/webp` を検証 — `image-rich-editing` AD-004）
+5. **画像 URI rewrite（Host）:** `.md` のディレクトリ基準で実ファイル URI を組み立て、`isSafeImagePath(path)` — **`..` 禁止**、**`img/` プレフィックス必須** — を通過した場合のみ `webview.asWebviewUri` する。対象: TipTap `docJson` 内 `image.src`（Markdown `![alt](src)` 由来および HTML `<img src="img/..." />` 由来の両方）、Marp 出力 HTML 内 `<img src>`
 6. **`https:` / `data:`** は CSP 上 Webview が直接解決（既存どおり — rewrite 不要）
 7. Marp Preview **パネル**の CSP（`enableScripts: false`）は本タスクでは Preview 整合のため AD-001 rewrite で足りる限り **img-src 拡張しない**
 8. **`img/` 内 SVG** は CSP + サニタイズ経路を通す（Mermaid SVG とは別経路 — RK-015）
+9. **OS ファイルドロップ時の遷移抑止:** Webview ルートでのファイル `dragover` / `drop` イベントに対して `preventDefault()` を適用し、ドロップされたローカルファイルへの Webview ナビゲーションを防止する（`image-rich-editing` AD-004, RK-027）
 
 #### 例外系
 
@@ -897,6 +1007,7 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 ### Related Tests
 
 - [doc/test/testspec-vsc-md-wysiwyg.md](../test/testspec-vsc-md-wysiwyg.md) — TC-057–061、TC-126–127（`isSafeImagePath` / `localResourceRoots` regression）、TC-152（Mermaid SVG `foreignObject` 保持 — 回帰）。HIP / ラベル HTML 残存・可読性: 後続 TC（`mermaid-contrast-readable`）
+- [doc/test/testspec-image-rich-editing.md](../test/testspec-image-rich-editing.md) — HTML `<img />` サニタイズ（`width`/`align`/`data-align` 許可・`onerror` 等除去）、CSP 準拠描画（インライン `style` 不使用）、HTML `<img src="img/...">` に対する `isSafeImagePath` 検証と Webview URI 非漏洩（`image-rich-editing`）
 
 ---
 
@@ -1151,9 +1262,10 @@ Source モード（`<textarea id="raw-editor">`）において、選択テキス
 - `Ctrl+M` / `Cmd+M`: インライン数式（`$text$`）トグル
 - `Ctrl+K`: リンク構文（`[text](url)`）挿入。クリップボードに URL 文字列が存在する場合は自動でリンク先として補完する
 
-### 3. スマート URL ペースト（Smart Link Paste）
+### 3. スマート URL ペースト（Smart Link Paste）および表スマートペースト連携
 
 Source モードおよび Visual モードにおいて、文字列を選択した状態でクリップボードの URL（`http://` または `https://`）を貼り付け（Paste）した場合、選択テキストをそのまま置換するのではなく、選択テキストをラベルとして `[選択テキスト](URL)` に自動変換して挿入する。
+また、クリップボードから複数行・複数列の TSV または HTML `<table>` を貼り付けた場合は、§3 のスマートペースト契約（`table-rich-editing` AD-005）に従い、自動的に Markdown テーブルとして挿入・整形する（コードブロック / インラインコード内・Readonly 時は除外）。
 
 ### 4. 目次（Table of Contents: TOC）生成・自動更新
 
@@ -1175,6 +1287,7 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
   - RFC 4180準拠。カンマ（`,`）およびタブ（`\t`）の出現頻度から区切り文字を自動判定。
   - セル内のカンマ、タブ、改行、二重引用符（`""` エスケープ）を適切にパースし、Markdownテーブルへ変換。
   - 変換後は既存の `table-formatter` ルールに沿ってアライメントおよびパディングを自動整形。
+  - **スマートペースト連携（§3 / `table-rich-editing` AD-005）**: クリップボードからの直接貼り付け（Paste）時にも、2行×2列以上の有効な TSV（または HTML `<table>`）と判定された場合は本変換および `table-formatter` を通して Visual / Source モードへ自動テーブル挿入を行う。
 - **Markdown 表形式 → CSV/TSV**:
   - Markdownテーブルのパイプ構文（エスケープパイプ `\|` を考慮）を各行・各セルへ分解。
   - カンマや改行、ダブルクォートを含むセルは `"` で囲み、内部の `"` は `""` にエスケープして出力。
@@ -1189,7 +1302,7 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
   - エディタの選択範囲（またはテーブル内にカーソルがある場合はそのテーブル、未選択時はドキュメント全体）をBacklog記法へ変換し、クリップボードに格納する。
   - **表形式の変換**:
     - ヘッダ行末尾に `|h` を付与。デリミタ行（`| --- |`）は除去。
-    - 各列のアライメント（左寄せ/中央/右寄せ）を各データセルの `LEFT:` / `CENTER:` / `RIGHT:` 接頭辞に変換。
+    - 各列のアライメント（§3 で設定・保持された左寄せ `:---` / 中央 `:---:` / 右寄せ `---:`）を各データセルの `LEFT:` / `CENTER:` / `RIGHT:` 接頭辞に変換。
   - **ドキュメント記法の変換**:
     - 見出し: `#` → `*`、`##` → `**`、`###` → `***`
     - 箇条書き: `-` / `*` のインデント階層 → `-`、`--`、`---`
@@ -1200,7 +1313,7 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
     - リンク: `[title](url)` → `[[title>url]]`
 - **Backlog形式 → Markdown形式で貼り付け (`pasteBacklogAsMarkdown`)**:
   - クリップボード内のBacklogテキストを読み取り、Markdown構文に逆変換してエディタのカーソル位置（または選択範囲）へ挿入する。
-  - Backlogテーブル（`|h` 行、`LEFT:` / `CENTER:` / `RIGHT:` 接頭辞）をGFM Markdownテーブル（デリミタ行 `|:---|` を含む）へ展開。
+  - Backlogテーブル（`|h` 行、`LEFT:` / `CENTER:` / `RIGHT:` 接頭辞）をGFM Markdownテーブル（デリミタ行 `|:---|` / `|:---:|` / `|---:|` を含む）へ展開し、Visual モードでも §3 の列アライメント（`textAlign`）として描画・保持する。
   - Backlog記法（見出し、リスト、コード、装飾、引用、リンク）をMarkdown記法へ自動復元。
 
 ### 3. エディタ UI / コンテキストメニュー統合
@@ -1233,6 +1346,13 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
 | RK-019 | Custom Editor フォーカス時、補償なしの `showPreview` は列 1 誤配置になりうる。公開 `TabGroups` に tab move API がない | Host の open 前記録 + open 後 `moveActiveEditor` を必須化（§10）。`by: 'group'` 失敗はスキップをログ、`by: 'tab'` 失敗は同グループ適用済みなら成功扱い。Beside 復帰しない |
 | RK-020 | 公開コマンド ID がドキュメント・外部手順と乖離する | 正本は `md-wysiwyg-editor.showNativeMarkdownPreview`。製品内別名 `…ToSide` は同一ハンドラ（§10 / AD-004）。概要表・package.json と同期する |
 | RK-021 | 貢献 ID と利用者設定・キーバインドが食い違う | 正本 ID は概要表 / `package.json`。初期製品のため旧 ID 互換・設定マイグレーションは実装しない。利用者向け Breaking / 再設定案内は出さない |
+| RK-022 | TSV スマートペーストとタブインデントされたプログラムコードの境界ケース | 行頭のみのタブ（インデント）ではなく、非空トークン間にタブ区切りが存在し、2行以上かつ全有効行が2列以上で列数が概ね一致することを TSV スマートペースト判定の必須条件とする（§3 / `table-rich-editing` AD-005, RK-001） |
+| RK-023 | HTML 表内の `style="text-align: ..."` 属性と Webview 厳格 CSP の相互作用 | パース時に `textAlign` モデル属性へ正規化し、Webview DOM では `data-align` / `align` 属性＋外部 CSS（`media/editor.css`）で描画することで CSP 違反を起こさずに中央/右寄せを反映する（§3, §9 / `table-rich-editing` AD-001, AD-002, RK-002） |
+| RK-024 | 大規模スプレッドシート貼り付け時のパフォーマンス | 既存のソフト上限（100行 × 20列 — §3）の警告表示（保存は許可）をそのまま適用し、DOM フリーズを防ぐ（`table-rich-editing` RK-003） |
+| RK-025 | CSP `style-src` 制約と画像ドラッグリサイズ中のプレビュー描画 | Webview の CSP でインライン `style` 属性が禁止されているため、ドラッグ中も `<img width="320">` 属性の直接更新と外部 CSS（`media/editor.css`）で行い、CSP 違反を回避する（§7, §9 / `image-rich-editing` AD-001, RK-001） |
+| RK-026 | HTML `<img>` シリアライズ時の Webview URI 混入リスク | TipTap モデル上の表示用 `src`（`vscode-webview-resource:` 等）が誤って `<img src="...">` として出力されないよう、`originalSrc` 属性または Host 側の逆変換・正規化経路を必ず通し、`img/image-NNNN.ext` への復元を保証する（§7, §8 / `image-rich-editing` AD-002, RK-002） |
+| RK-027 | OS ファイルドロップ時の Webview 画面遷移事故 | エディタルート全体でファイルの `dragover` / `drop` イベントに対して `preventDefault()` を適用し、VS Code Webview 自体がドロップされた画像ファイルへ画面遷移することを防止する（§7, §9 / `image-rich-editing` AD-004, RK-003） |
+| RK-028 | Visual モードでのクリック選択と Lightbox 起動の操作競合 | Preview モード（および Visual モードの Readonly 時）はシングルクリック、Visual モード（非 RO）はダブルクリックまたはミニポップオーバーの Zoom ボタンで Lightbox を開く役割分担とする（§7 / `image-rich-editing` AD-005, RK-004） |
 
 ---
 
@@ -1246,6 +1366,8 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
 | [doc/test/mermaid/testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) | **作成済** — ソース併記・Preview RO・HIP / strict。テーマ／CSS 前提は **`mermaid-redux-elk-fidelity` で更新要**。flowchart エッジ CSP＋nonce 再注入回帰必須；`'unsafe-inline'` なし |
 | [doc/test/mermaid/testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) | **未作成** — 後続 `spec-test-design`。kind→redux マップ、nonce 再注入、ELK オプトイン／遅延ロード、グローバル強制 ELK なし、strict / HIP / ソース併記 / Preview RO 回帰 |
 | [doc/test/testspec-table-csv-and-backlog-conversion.md](../test/testspec-table-csv-and-backlog-conversion.md) | **作成済** — CSV ⇄ Markdown 表相互変換および Backlog 形式コピー＆ペースト（§16） |
+| [doc/test/testspec-table-rich-editing.md](../test/testspec-table-rich-editing.md) | **作成済** — TC-TRE-001〜017 Green（`table-rich-editing`）。列アライメント（`left` \| `center` \| `right` \| `null`）の GFM/HTML 往復と CSP 安全描画、行/列移動と行複製（`moveRowUp` / `moveRowDown` / `duplicateRow` / `moveColumnLeft` / `moveColumnRight`）、Table メニュー・コンテキストメニュー・ショートカット、TSV / HTML `<table>` スマートペーストと誤変換防止ガード（§3, §8, §9, §15, §16） |
+| [doc/test/testspec-image-rich-editing.md](../test/testspec-image-rich-editing.md) | **未作成** — 後続 `spec-test-design`（`image-rich-editing`）。画像サイズ変更（ドラッグリサイズ・プリセット `25%`/`50%`/`75%`/`100%`）・配置切替（`left`/`center`/`right`/`null`）・Alt 編集の CSP 安全描画と `![alt](src)` ⇄ `<img src="img/..." alt="..." width="..." align="..." />` 決定的往復シリアライズ（Webview URI 非漏洩）、画像ファイル D&D 挿入（`webp` 含む・遷移抑止・未保存/RO ガード）、Lightbox モーダル拡大表示（§7, §8, §9） |
 | MVP 外項目 | [doc/requirements/backlog.md](backlog.md) |
 
 ---
@@ -1279,6 +1401,8 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
 | Mermaid ELK オプトイン | `@mermaid-js/layout-elk` 登録＋遅延ロード。frontmatter / `%%{init}%%` の `layout: elk` 時のみ ELK。グローバル強制なし。登録失敗は図単位エラー。Chart 依存 Out | 後続 TC（`mermaid-redux-elk-fidelity`） |
 | Mermaid 表示密度 | グローバル `themeVariables.fontSize: '16px'`（旧 `'12px'` / `'8px'` / `'13px'` 置換）。ラベル `font-family: "trebuchet ms", verdana, arial, sans-serif`・`line-height: 1.2`（エディタ 1.6 非継承）。測定用 Host nonce CSS も `font-size` / `font-family` / `line-height` 同値。`var(--vscode-...)` 禁止。CSS scale は密度の主手段にしない。per-diagram frontmatter 上書き可。redux / nonce / ELK / strict / HIP 不変 | 後続 TC（`mermaid-label-metrics`）／[testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) 追記 |
 | Mermaid 可読ビューポート | タイトル全文可視。Editor Preview / Rich Editor のみ: 初期・再 render・テーマ切替後は scale 1（自然サイズ・自動 contain なし）・小さい軸は中央寄せ・はみ出しはスクロール・Fit 押下時のみ contain・ズーム原点中央・ズームイン／アウト・パン／スクロール・a11y `aria-label`。密度（fontSize）とビューポート変換は別契約。Default Preview 埋め込みなし。セッション永続なし | 後続 TC（`doc/test/mermaid/testspec-mermaid.md` / `mermaid-label-metrics`） |
+| 表リッチ編集（列アライメント・行列移動と行複製・スマートペースト） | 列アライメント（`left` \| `center` \| `right` \| `null`）の CSP 安全描画（`data-align` / `align` 属性＋外部 CSS）および GFM（`:---`, `:---:`, `---:`）/ HTML（`<th/td align="...">`）往復シリアライズ・Table Formatter 統合。行・列移動（`moveRowUp` / `moveRowDown` / `moveColumnLeft` / `moveColumnRight`）および行複製（`duplicateRow`）の 1 トランザクション実行・ヘッダ境界正規化・端 no-op・Table メニュー / コンテキストメニュー / ショートカット（`Alt+矢印`, `Shift+Alt+ArrowDown`）統合。TSV（2行×2列以上・コードブロック等ガード）および HTML `<table>` の Visual / Source スマートペースト | [doc/test/testspec-table-rich-editing.md](../test/testspec-table-rich-editing.md)（`table-rich-editing`） |
+| リッチ画像編集（サイズ・配置・Alt・D&D・Lightbox） | 画像選択時のドラッグリサイズ（最小 `32px`・アスペクト比維持）およびサイズプリセット（`25%`/`50%`/`75%`/`100%`）・配置（`left`/`center`/`right`/`null`）・Alt 編集ミニポップオーバー UI。CSP 安全描画（HTML `width` / `align` / `data-align` 属性＋外部 CSS、インライン `style` 不使用）。`width`/`align` 未指定時は `![alt](src)`、指定時は `<img src="img/..." alt="..." width="..." align="..." />` で決定的に双方向往復し Webview URI 非漏洩を保証。OS / ファイルツリーからの画像 D&D 挿入（`webp` 追加・遷移抑止・未保存/RO ガード）。Preview シングルクリック / Visual ダブルクリックまたは Zoom ボタンによる Lightbox 拡大モーダル表示 | [doc/test/testspec-image-rich-editing.md](../test/testspec-image-rich-editing.md)（`image-rich-editing`） |
 
 ---
 
@@ -1335,4 +1459,6 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
 | 2026-10-23 | §3, §15, 改訂履歴 | 表フォーマット切替（Aligned vs Compact）およびエディタ入力支援（`table-format-and-editor-assist`）: GFM パイプ表の区切り文字固定長整列／最小空白パディングの切替（設定 `md-wysiwyg-editor.table.pipeAlignment` および Table メニュー）、全角文字幅（CJK）対応、Source モードでの Tab / Shift+Tab 表自動整列およびセル移動・新行挿入、リスト編集支援（Enter 継続・終了、Tab インデント）、書式トグルショートカット、スマート URL ペースト、目次（TOC）自動生成・同期を契約化 |
 | 2026-10-24 | §16, 改訂履歴 | CSV ⇄ Markdown 表相互変換および Backlog 形式コピー＆ペースト（`table-csv-and-backlog-conversion`）: RFC 4180準拠のCSV/TSV相互変換（カンマ/タブ自動判別、改行・ダブルクォートエスケープ）、Backlog 表記法（`|h`、`LEFT:` / `CENTER:` / `RIGHT:`）およびドキュメント記法（見出し、リスト、コード、装飾、引用、リンク）のBacklog形式コピー＆Markdown形式ペーストを契約化 |
 | 2026-10-28 | §1, 改訂履歴 | デフォルトエディタモード設定（`default-editor-mode-config`）: 設定 `md-wysiwyg-editor.defaultMode`（`source` / `visual` / `preview`、デフォルト `visual`）により、Markdown オープン時の初期エディタモードのカスタマイズを契約化。未設定時デフォルトを Visual（`markdown`）に更新 |
+| 2026-10-31 | §3, §8, §9, §15, §16, RK-022–024, Spec Gaps, Related Tests, 改訂履歴 | 表リッチ編集（`table-rich-editing`）: 列アライメント（`left` \| `center` \| `right` \| `null`）の CSP 安全描画（`data-align` / `align` 属性＋外部 CSS）と GFM/HTML 双方向往復・Table Formatter 統合、行/列移動と行複製（`moveRowUp` / `moveRowDown` / `duplicateRow` / `moveColumnLeft` / `moveColumnRight`）および Table メニュー・右クリックコンテキストメニュー・表内ショートカット（`Alt+矢印` / `Shift+Alt+ArrowDown`）統合、TSV / HTML `<table>` スマートペースト（Visual / Source 両対応、誤変換防止ガード付き）を契約化。Requirements Brief `table-rich-editing` AD-001〜AD-005 |
+| 2026-11-01 | §7, §8, §9, RK-025–028, Spec Gaps, Related Tests, 改訂履歴 | リッチ画像編集（`image-rich-editing`）: 画像選択時のドラッグリサイズ・サイズプリセット（`25%`/`50%`/`75%`/`100%`）・配置切替（`left`/`center`/`right`/`null`）・Alt 編集ミニポップオーバー UI、CSP 安全描画（HTML `width` / `align` / `data-align` 属性＋外部 CSS、インライン `style` 禁止）、`![alt](src)` ⇄ `<img src="img/..." alt="..." width="..." align="..." />` の決定的往復シリアライズと相対パス保護（Webview URI 非漏洩）、OS / ファイルツリーからの画像ファイル D&D 挿入（`webp` 追加・遷移抑止・未保存/RO ガード）、および Lightbox モーダル拡大表示を契約化。Requirements Brief `image-rich-editing` AD-001〜AD-005 |
 

@@ -116,17 +116,19 @@ export function parseDelimiterAlignment(cellText: string): 'left' | 'center' | '
  * Format delimiter cell with appropriate alignment colons and min width.
  */
 export function formatDelimiterCell(align: 'left' | 'center' | 'right' | 'none', width: number): string {
-  const hyphensNeeded = Math.max(3, width);
   if (align === 'center') {
-    return `:${'-'.repeat(Math.max(1, hyphensNeeded - 2))}:`;
+    const hyphens = Math.max(3, width - 2);
+    return `:${'-'.repeat(hyphens)}:`;
   }
   if (align === 'left') {
-    return `:${'-'.repeat(Math.max(2, hyphensNeeded - 1))}`;
+    const hyphens = Math.max(3, width - 1);
+    return `:${'-'.repeat(hyphens)}`;
   }
   if (align === 'right') {
-    return `${'-'.repeat(Math.max(2, hyphensNeeded - 1))}:`;
+    const hyphens = Math.max(3, width - 1);
+    return `${'-'.repeat(hyphens)}:`;
   }
-  return '-'.repeat(hyphensNeeded);
+  return '-'.repeat(Math.max(3, width));
 }
 
 /**
@@ -275,8 +277,12 @@ export function formatMarkdownTable(
       .join('\n');
   }
 
-  // Aligned: calculate max width for each column
-  const colWidths: number[] = new Array(columnCount).fill(3); // minimum width 3 for ---
+  // Aligned: calculate max width for each column (respect minimum delimiter width: :--- = 4, :---: = 5, --- = 3)
+  const colWidths: number[] = alignments.map((a) => {
+    if (a === 'center') return 5;
+    if (a === 'left' || a === 'right') return 4;
+    return 3;
+  });
   for (let rIdx = 0; rIdx < normalizedRows.length; rIdx++) {
     if (rIdx === delimiterIndex) {
       continue;

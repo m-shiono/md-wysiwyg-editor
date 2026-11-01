@@ -11,6 +11,16 @@ import Strike from "@tiptap/extension-strike";
 import Blockquote from "@tiptap/extension-blockquote";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import Image from "@tiptap/extension-image";
+import {
+  applyImageSizePreset,
+  normalizeImageDragWidth,
+  toggleImageAlign,
+  updateImageAlt,
+  isImageFileDrag,
+  shouldOpenLightbox,
+  shouldCloseLightbox,
+  type Align as ImageAlign,
+} from "../src/utils/image-operations";
 import { common, createLowlight } from "lowlight";
 import type mermaid from "mermaid";
 type MermaidApi = typeof mermaid;
@@ -50,6 +60,20 @@ import {
   handleSmartUrlPaste,
   updateOrInsertTableOfContents,
 } from "../src/utils/editor-assist";
+import { TextSelection } from "@tiptap/pm/state";
+import {
+  setColumnAlignment,
+  moveTableRow,
+  moveTableColumn,
+  duplicateTableRow,
+  type ColumnAlignment,
+  type TipTapNodeLike,
+} from "../src/utils/table-convert";
+import {
+  shouldTriggerSmartTablePaste,
+  convertSmartPasteToMarkdown,
+  convertSmartPasteToTipTapTable,
+} from "../src/utils/csv-converter";
 
 const MERMAID_MEASURE_FONT_STYLE_ID = "mermaid-density-measure-font";
 
@@ -64,6 +88,50 @@ const StrikeWithoutShortcut = Strike.extend({
 const BlockquoteWithoutShortcut = Blockquote.extend({
   addKeyboardShortcuts() {
     return {};
+  },
+});
+
+/** Rich image extension with CSP-safe data-width and data-align attributes (AD-001). */
+const RichImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      originalSrc: {
+        default: null,
+      },
+      width: {
+        default: null,
+        parseHTML: (element: HTMLElement) =>
+          element.getAttribute("width") ||
+          element.getAttribute("data-width") ||
+          null,
+        renderHTML: (attributes: Record<string, unknown>) => {
+          if (!attributes.width) {
+            return {};
+          }
+          return {
+            width: attributes.width,
+            "data-width": attributes.width,
+          };
+        },
+      },
+      align: {
+        default: null,
+        parseHTML: (element: HTMLElement) =>
+          element.getAttribute("align") ||
+          element.getAttribute("data-align") ||
+          null,
+        renderHTML: (attributes: Record<string, unknown>) => {
+          if (!attributes.align) {
+            return {};
+          }
+          return {
+            align: attributes.align,
+            "data-align": attributes.align,
+          };
+        },
+      },
+    };
   },
 });
 
@@ -423,7 +491,82 @@ const HtmlTableExtension = Extension.create({
           gfmContentFingerprint: { default: null },
         },
       },
+      {
+        types: ["tableCell", "tableHeader"],
+        attributes: {
+          textAlign: {
+            default: null,
+            parseHTML: (element: HTMLElement) => {
+              const dataAlign =
+                element.getAttribute("data-align") ||
+                element.getAttribute("align");
+              if (
+                dataAlign === "left" ||
+                dataAlign === "center" ||
+                dataAlign === "right"
+              ) {
+                return dataAlign;
+              }
+              const styleAlign = element.style?.textAlign;
+              if (
+                styleAlign === "left" ||
+                styleAlign === "center" ||
+                styleAlign === "right"
+              ) {
+                return styleAlign;
+              }
+              return null;
+            },
+            renderHTML: (attributes: Record<string, unknown>) => {
+              const align = attributes.textAlign;
+              if (align === "left" || align === "center" || align === "right") {
+                return { "data-align": align, align };
+              }
+              return {};
+            },
+          },
+        },
+      },
     ];
+  },
+  addKeyboardShortcuts() {
+    return {
+      "Alt-ArrowUp": () => {
+        if (readonly || editorMode !== "markdown" || !this.editor.isActive("table")) {
+          return false;
+        }
+        handleTableOperation("moveRowUp");
+        return true;
+      },
+      "Alt-ArrowDown": () => {
+        if (readonly || editorMode !== "markdown" || !this.editor.isActive("table")) {
+          return false;
+        }
+        handleTableOperation("moveRowDown");
+        return true;
+      },
+      "Alt-ArrowLeft": () => {
+        if (readonly || editorMode !== "markdown" || !this.editor.isActive("table")) {
+          return false;
+        }
+        handleTableOperation("moveColumnLeft");
+        return true;
+      },
+      "Alt-ArrowRight": () => {
+        if (readonly || editorMode !== "markdown" || !this.editor.isActive("table")) {
+          return false;
+        }
+        handleTableOperation("moveColumnRight");
+        return true;
+      },
+      "Shift-Alt-ArrowDown": () => {
+        if (readonly || editorMode !== "markdown" || !this.editor.isActive("table")) {
+          return false;
+        }
+        handleTableOperation("duplicateRow");
+        return true;
+      },
+    };
   },
 });
 
@@ -1549,7 +1692,7 @@ function getEditorExtensions() {
     TaskItem.configure({ nested: true }),
     ListKeymap,
     MermaidAwareCodeBlock,
-    Image.configure({ inline: true, allowBase64: false }),
+    RichImage.configure({ inline: true, allowBase64: false }),
     HtmlTableExtension,
     HtmlBlockNode,
     SearchAndReplace,
@@ -1907,6 +2050,295 @@ function flushPendingRawUpdate(): void {
   vscode.postMessage({ type: "updateRaw", markdown: raw.value });
 }
 
+// --- Image Rich Editing (Popover, Lightbox, Drag & Drop) ---
+// Popover UI string labels: '25%', '50%', '75%', '100%', 'Align left', 'Align center', 'Align right', 'Alt text', 'Zoom'
+
+let activeImageElement: HTMLImageElement | null = null;
+let imageEditingHandlersAttached = false;
+
+function getImagePopover(): HTMLElement | null {
+  return document.getElementById("image-popover");
+}
+
+function getImageLightbox(): HTMLElement | null {
+  return document.getElementById("image-lightbox");
+}
+
+function openLightbox(src: string, alt: string): void {
+  const lightbox = getImageLightbox();
+  if (!lightbox) {
+    return;
+  }
+  const img = lightbox.querySelector(".lightbox-image") as HTMLImageElement | null;
+  const caption = lightbox.querySelector(".lightbox-caption") as HTMLElement | null;
+  if (img) {
+    img.setAttribute("src", src);
+    img.setAttribute("alt", alt || "");
+  }
+  if (caption) {
+    caption.textContent = alt || "";
+  }
+  lightbox.classList.remove("hidden");
+}
+
+function closeLightbox(): void {
+  const lightbox = getImageLightbox();
+  if (!lightbox) {
+    return;
+  }
+  lightbox.classList.add("hidden");
+}
+
+function hideImagePopover(): void {
+  const popover = getImagePopover();
+  if (popover) {
+    popover.classList.add("hidden");
+  }
+  activeImageElement = null;
+}
+
+function positionImagePopover(img: HTMLImageElement): void {
+  const popover = getImagePopover();
+  if (!popover) {
+    return;
+  }
+  const rect = img.getBoundingClientRect();
+  const top = window.scrollY + rect.bottom + 6;
+  const left = window.scrollX + Math.max(8, rect.left);
+  popover.style.top = `${top}px`;
+  popover.style.left = `${left}px`;
+  popover.classList.remove("hidden");
+}
+
+function showImagePopover(img: HTMLImageElement): void {
+  if (readonly || editorMode !== "markdown") {
+    hideImagePopover();
+    return;
+  }
+  activeImageElement = img;
+  const popover = getImagePopover();
+  if (!popover) {
+    return;
+  }
+
+  const altInput = popover.querySelector("#image-alt-input") as HTMLInputElement | null;
+  if (altInput) {
+    altInput.value = img.getAttribute("alt") || "";
+  }
+
+  const currentWidth = img.getAttribute("width") || img.getAttribute("data-width") || "";
+  for (const btn of popover.querySelectorAll<HTMLButtonElement>("button[data-preset]")) {
+    const preset = btn.getAttribute("data-preset");
+    btn.classList.toggle("active", preset === currentWidth);
+  }
+
+  const currentAlign = img.getAttribute("align") || img.getAttribute("data-align") || "";
+  for (const btn of popover.querySelectorAll<HTMLButtonElement>("button[data-align]")) {
+    const a = btn.getAttribute("data-align");
+    btn.classList.toggle("active", a === currentAlign);
+  }
+
+  positionImagePopover(img);
+}
+
+function updateActiveImageAttributes(attrs: { width?: string | null; align?: ImageAlign; alt?: string }): void {
+  if (!editor || !activeImageElement) {
+    return;
+  }
+  try {
+    const pos = editor.view.posAtDOM(activeImageElement, 0);
+    if (typeof pos !== "number" || pos < 0) {
+      return;
+    }
+    const resolved = editor.state.doc.resolve(pos);
+    const node = resolved.nodeAfter || resolved.parent;
+    if (!node || node.type.name !== "image") {
+      return;
+    }
+    const updatedAttrs: Record<string, unknown> = {
+      ...node.attrs,
+    };
+    if (attrs.width !== undefined) {
+      updatedAttrs.width = attrs.width;
+    }
+    if (attrs.align !== undefined) {
+      updatedAttrs.align = attrs.align;
+    }
+    if (attrs.alt !== undefined) {
+      updatedAttrs.alt = attrs.alt;
+    }
+
+    const tr = editor.state.tr.setNodeMarkup(pos, undefined, updatedAttrs);
+    editor.view.dispatch(tr);
+    postDocUpdate();
+
+    setTimeout(() => {
+      const srcVal = String(node.attrs.src ?? "");
+      const newImg = editor?.view.dom.querySelector(`img[src="${CSS.escape(srcVal)}"]`) as HTMLImageElement | null;
+      if (newImg) {
+        showImagePopover(newImg);
+      }
+    }, 10);
+  } catch {
+    // DOM to node lookup failed
+  }
+}
+
+function attachImageEditingHandlers(): void {
+  if (imageEditingHandlersAttached) {
+    return;
+  }
+  imageEditingHandlersAttached = true;
+  const popover = getImagePopover();
+  if (popover) {
+    for (const btn of popover.querySelectorAll<HTMLButtonElement>("button[data-preset]")) {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const preset = btn.getAttribute("data-preset") || "";
+        const newWidth = applyImageSizePreset(preset);
+        updateActiveImageAttributes({ width: newWidth });
+      });
+    }
+
+    for (const btn of popover.querySelectorAll<HTMLButtonElement>("button[data-align]")) {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const clicked = btn.getAttribute("data-align") as "left" | "center" | "right";
+        const curAlign = (activeImageElement?.getAttribute("data-align") || activeImageElement?.getAttribute("align") || null) as ImageAlign;
+        const newAlign = toggleImageAlign(curAlign, clicked);
+        updateActiveImageAttributes({ align: newAlign });
+      });
+    }
+
+    const altInput = popover.querySelector("#image-alt-input") as HTMLInputElement | null;
+    if (altInput) {
+      altInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          updateActiveImageAttributes({ alt: altInput.value });
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          hideImagePopover();
+        }
+      });
+      altInput.addEventListener("change", () => {
+        updateActiveImageAttributes({ alt: altInput.value });
+      });
+    }
+
+    const zoomBtn = popover.querySelector("button[data-action='zoom']") as HTMLButtonElement | null;
+    if (zoomBtn) {
+      zoomBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (activeImageElement) {
+          openLightbox(activeImageElement.src, activeImageElement.alt);
+        }
+      });
+    }
+  }
+
+  const lightbox = getImageLightbox();
+  if (lightbox) {
+    lightbox.querySelector(".lightbox-backdrop")?.addEventListener("click", () => {
+      if (shouldCloseLightbox({ target: "backdrop" })) {
+        closeLightbox();
+      }
+    });
+    lightbox.querySelector(".lightbox-close")?.addEventListener("click", () => {
+      closeLightbox();
+    });
+    lightbox.querySelector(".lightbox-image")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+    });
+  }
+
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key === "Escape") {
+        const lb = getImageLightbox();
+        if (lb && !lb.classList.contains("hidden")) {
+          if (shouldCloseLightbox({ key: "Escape", target: "none" })) {
+            e.preventDefault();
+            e.stopPropagation();
+            closeLightbox();
+            return;
+          }
+        }
+        hideImagePopover();
+      }
+    },
+    true,
+  );
+
+  document.addEventListener("click", (e) => {
+    const target = e.target as HTMLElement | null;
+    if (target && target.tagName === "IMG" && !target.classList.contains("lightbox-image")) {
+      const img = target as HTMLImageElement;
+      const mode = editorMode === "preview" ? "preview" : "visual";
+      if (shouldOpenLightbox({ mode, readonly, trigger: "click" })) {
+        openLightbox(img.src, img.alt);
+      } else if (!readonly && editorMode === "markdown") {
+        showImagePopover(img);
+      }
+      return;
+    }
+    if (popover && !popover.contains(target) && target !== activeImageElement) {
+      hideImagePopover();
+    }
+  });
+
+  document.addEventListener("dblclick", (e) => {
+    const target = e.target as HTMLElement | null;
+    if (target && target.tagName === "IMG" && !target.classList.contains("lightbox-image")) {
+      const img = target as HTMLImageElement;
+      const mode = editorMode === "preview" ? "preview" : "visual";
+      if (shouldOpenLightbox({ mode, readonly, trigger: "dblclick" })) {
+        openLightbox(img.src, img.alt);
+      }
+    }
+  });
+
+  window.addEventListener("dragover", (event) => {
+    const types = Array.from(event.dataTransfer?.types ?? []);
+    if (isImageFileDrag(types)) {
+      event.preventDefault();
+    }
+  });
+
+  window.addEventListener("drop", (event) => {
+    const types = Array.from(event.dataTransfer?.types ?? []);
+    if (isImageFileDrag(types)) {
+      event.preventDefault();
+      if (readonly || editorMode === "preview") {
+        return;
+      }
+      const files = event.dataTransfer?.files;
+      if (files && files.length > 0) {
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          if (file.type.startsWith("image/") || /\.(png|jpe?g|gif|svg|webp)$/i.test(file.name)) {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const result = reader.result as string;
+              const base64 = result.split(",")[1] ?? "";
+              vscode.postMessage({
+                type: "pasteImage",
+                mime: file.type || "image/png",
+                dataBase64: base64,
+              });
+            };
+            reader.readAsDataURL(file);
+          }
+        }
+      }
+    }
+  });
+}
+
 let pendingInitialDoc: TipTapDoc | undefined;
 let commonHandlersAttached = false;
 
@@ -1918,6 +2350,7 @@ function attachCommonHandlers(): void {
   attachModeToolbarHandlers();
   attachRawEditorHandlers();
   attachPreviewGuard();
+  attachImageEditingHandlers();
 }
 
 function ensureTipTapInitialized(): void {
@@ -2385,11 +2818,12 @@ function attachRawEditorHandlers(): void {
     if (readonly || editorMode !== "raw") {
       return;
     }
-    const pasted = e.clipboardData?.getData("text/plain");
-    if (!pasted) {
+    const pasted = e.clipboardData?.getData("text/plain") ?? "";
+    const htmlPasted = e.clipboardData?.getData("text/html") ?? "";
+    if (!pasted && !htmlPasted) {
       return;
     }
-    if (raw.selectionStart !== raw.selectionEnd) {
+    if (pasted && raw.selectionStart !== raw.selectionEnd) {
       const selected = raw.value.slice(raw.selectionStart, raw.selectionEnd);
       const smartLink = handleSmartUrlPaste(selected, pasted);
       if (smartLink) {
@@ -2405,10 +2839,130 @@ function attachRawEditorHandlers(): void {
         return;
       }
     }
+
+    const inCodeBlock = isRawOffsetInsideCodeFence(
+      raw.value,
+      raw.selectionStart,
+    );
+    if (
+      shouldTriggerSmartTablePaste({
+        plainText: pasted,
+        htmlText: htmlPasted,
+        inCodeBlock,
+        readonly,
+        editorMode,
+      })
+    ) {
+      const mdTable = convertSmartPasteToMarkdown(
+        { plainText: pasted, htmlText: htmlPasted },
+        tablePipeAlignment,
+      );
+      if (mdTable) {
+        e.preventDefault();
+        const start = raw.selectionStart;
+        const end = raw.selectionEnd;
+        applyRawTextChange(
+          raw.value.slice(0, start) + mdTable + raw.value.slice(end),
+          start + mdTable.length,
+          start + mdTable.length,
+        );
+        return;
+      }
+    }
   });
 }
 
 function attachToolbarHandlers(): void {
+
+function isRawOffsetInsideCodeFence(text: string, offset: number): boolean {
+  const before = text.slice(0, offset);
+  const lines = before.split(/\r?\n/);
+  let inFence = false;
+  for (const line of lines) {
+    if (/^\s*(`{3,}|~{3,})/.test(line)) {
+      inFence = !inFence;
+    }
+  }
+  return inFence;
+}
+
+function getActiveTableCellPosition(ed: Editor): {
+  tablePos: number;
+  tableNode: TipTapNodeLike;
+  rowIndex: number;
+  colIndex: number;
+} | null {
+  const { $from } = ed.state.selection;
+  let tableDepth = -1;
+  let rowDepth = -1;
+  let cellDepth = -1;
+  for (let d = $from.depth; d > 0; d--) {
+    const name = $from.node(d).type.name;
+    if (cellDepth < 0 && (name === "tableCell" || name === "tableHeader")) {
+      cellDepth = d;
+    } else if (rowDepth < 0 && name === "tableRow") {
+      rowDepth = d;
+    } else if (tableDepth < 0 && name === "table") {
+      tableDepth = d;
+      break;
+    }
+  }
+  if (tableDepth < 0 || rowDepth < 0 || cellDepth < 0) {
+    return null;
+  }
+  const tablePos = $from.before(tableDepth);
+  const tableNode = $from.node(tableDepth).toJSON() as TipTapNodeLike;
+  const rowIndex = $from.index(tableDepth);
+  const colIndex = $from.index(rowDepth);
+  return { tablePos, tableNode, rowIndex, colIndex };
+}
+
+function applyModifiedTableNode(
+  ed: Editor,
+  tablePos: number,
+  updatedTableJson: TipTapNodeLike,
+  targetRowIndex: number,
+  targetColIndex: number,
+): void {
+  const { state, view } = ed;
+  const oldTableNode = state.doc.nodeAt(tablePos);
+  if (!oldTableNode) {
+    return;
+  }
+  const newTablePmNode = state.schema.nodeFromJSON(updatedTableJson);
+  const tr = state.tr.replaceWith(
+    tablePos,
+    tablePos + oldTableNode.nodeSize,
+    newTablePmNode,
+  );
+
+  // Compute position inside target cell to keep caret following the moved/duplicated cell
+  let offsetInTable = 1; // inside table
+  const safeRow = Math.max(
+    0,
+    Math.min(targetRowIndex, newTablePmNode.childCount - 1),
+  );
+  for (let r = 0; r < safeRow; r++) {
+    offsetInTable += newTablePmNode.child(r).nodeSize;
+  }
+  const rowNode = newTablePmNode.child(safeRow);
+  offsetInTable += 1; // inside tableRow
+  const safeCol = Math.max(0, Math.min(targetColIndex, rowNode.childCount - 1));
+  for (let c = 0; c < safeCol; c++) {
+    offsetInTable += rowNode.child(c).nodeSize;
+  }
+  const targetPos = Math.min(
+    tr.doc.content.size,
+    tablePos + offsetInTable + 2,
+  );
+  try {
+    tr.setSelection(TextSelection.near(tr.doc.resolve(targetPos)));
+  } catch {
+    // Fallback if position resolution fails
+  }
+  view.dispatch(tr.scrollIntoView());
+  ed.view.focus();
+}
   document.querySelectorAll("#toolbar button").forEach((btn) => {
     // Avoid stacking handlers across re-inits.
     const clone = btn.cloneNode(true) as HTMLElement;
@@ -2646,10 +3200,18 @@ function updateTableMenuState(): void {
     } else if (
       op === "addRowBefore" ||
       op === "addRowAfter" ||
+      op === "moveRowUp" ||
+      op === "moveRowDown" ||
+      op === "duplicateRow" ||
       op === "deleteRow" ||
       op === "addColumnBefore" ||
       op === "addColumnAfter" ||
+      op === "moveColumnLeft" ||
+      op === "moveColumnRight" ||
       op === "deleteColumn" ||
+      op === "alignLeft" ||
+      op === "alignCenter" ||
+      op === "alignRight" ||
       op === "deleteTable" ||
       op === "convertToGfm" ||
       op === "convertToHtml"
@@ -2781,6 +3343,99 @@ function handleTableOperation(op: string): void {
       editor.chain().focus().deleteColumn().run();
       postDocUpdate();
       break;
+    case "moveRowUp":
+    case "moveRowDown": {
+      const cellPos = getActiveTableCellPosition(editor);
+      if (!cellPos) {
+        return;
+      }
+      const res = moveTableRow(
+        cellPos.tableNode,
+        cellPos.rowIndex,
+        op === "moveRowUp" ? "up" : "down",
+      );
+      if (!res.moved) {
+        return;
+      }
+      applyModifiedTableNode(
+        editor,
+        cellPos.tablePos,
+        res.table,
+        res.targetRowIndex,
+        cellPos.colIndex,
+      );
+      postDocUpdate();
+      break;
+    }
+    case "duplicateRow": {
+      const cellPos = getActiveTableCellPosition(editor);
+      if (!cellPos) {
+        return;
+      }
+      const res = duplicateTableRow(cellPos.tableNode, cellPos.rowIndex);
+      applyModifiedTableNode(
+        editor,
+        cellPos.tablePos,
+        res.table,
+        res.targetRowIndex,
+        cellPos.colIndex,
+      );
+      postDocUpdate();
+      break;
+    }
+    case "moveColumnLeft":
+    case "moveColumnRight": {
+      const cellPos = getActiveTableCellPosition(editor);
+      if (!cellPos) {
+        return;
+      }
+      const res = moveTableColumn(
+        cellPos.tableNode,
+        cellPos.colIndex,
+        op === "moveColumnLeft" ? "left" : "right",
+      );
+      if (!res.moved) {
+        return;
+      }
+      applyModifiedTableNode(
+        editor,
+        cellPos.tablePos,
+        res.table,
+        cellPos.rowIndex,
+        res.targetColIndex,
+      );
+      postDocUpdate();
+      break;
+    }
+    case "alignLeft":
+    case "alignCenter":
+    case "alignRight":
+    case "alignClear": {
+      const cellPos = getActiveTableCellPosition(editor);
+      if (!cellPos) {
+        return;
+      }
+      const alignMap: Record<string, ColumnAlignment> = {
+        alignLeft: "left",
+        alignCenter: "center",
+        alignRight: "right",
+        alignClear: null,
+      };
+      const updatedTable = setColumnAlignment(
+        cellPos.tableNode,
+        cellPos.colIndex,
+        alignMap[op] ?? null,
+      );
+      applyModifiedTableNode(
+        editor,
+        cellPos.tablePos,
+        updatedTable,
+        cellPos.rowIndex,
+        cellPos.colIndex,
+      );
+      postDocUpdate();
+      break;
+    }
     case "deleteTable":
       editor.chain().focus().deleteTable().run();
       postDocUpdate();
@@ -2944,6 +3599,33 @@ function attachPasteHandler(): void {
     // 同時にプレビュー用 image/png が含まれることがあるが、テキストがある場合は通常ペーストへ委譲する。
     const clipboardData = event.clipboardData;
     if (shouldDelegateToTextPaste(clipboardData)) {
+      if (editor) {
+        const plainText = clipboardData.getData("text/plain") ?? "";
+        const htmlText = clipboardData.getData("text/html") ?? "";
+        const inCodeBlock = editor.isActive("codeBlock");
+        const inInlineCode = editor.isActive("code");
+        if (
+          shouldTriggerSmartTablePaste({
+            plainText,
+            htmlText,
+            inCodeBlock,
+            inInlineCode,
+            readonly,
+            editorMode,
+          })
+        ) {
+          const tableNode = convertSmartPasteToTipTapTable(
+            { plainText, htmlText },
+            insertTableFormat,
+          );
+          if (tableNode) {
+            event.preventDefault();
+            editor.chain().focus().insertContent(tableNode as JSONContent).run();
+            postDocUpdate();
+            return;
+          }
+        }
+      }
       return;
     }
 

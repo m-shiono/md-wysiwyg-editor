@@ -723,10 +723,21 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
         <hr class="toolbar-dropdown-sep" />
         <button type="button" data-table-op="addRowBefore" role="menuitem">Add row above</button>
         <button type="button" data-table-op="addRowAfter" role="menuitem">Add row below</button>
+        <button type="button" data-table-op="moveRowUp" role="menuitem">Move row up</button>
+        <button type="button" data-table-op="moveRowDown" role="menuitem">Move row down</button>
+        <button type="button" data-table-op="duplicateRow" role="menuitem">Duplicate row</button>
         <button type="button" data-table-op="deleteRow" role="menuitem">Delete row</button>
+        <hr class="toolbar-dropdown-sep" />
         <button type="button" data-table-op="addColumnBefore" role="menuitem">Add column left</button>
         <button type="button" data-table-op="addColumnAfter" role="menuitem">Add column right</button>
+        <button type="button" data-table-op="moveColumnLeft" role="menuitem">Move column left</button>
+        <button type="button" data-table-op="moveColumnRight" role="menuitem">Move column right</button>
         <button type="button" data-table-op="deleteColumn" role="menuitem">Delete column</button>
+        <hr class="toolbar-dropdown-sep" />
+        <button type="button" data-table-op="alignLeft" role="menuitem">Align Left</button>
+        <button type="button" data-table-op="alignCenter" role="menuitem">Align Center</button>
+        <button type="button" data-table-op="alignRight" role="menuitem">Align Right</button>
+        <hr class="toolbar-dropdown-sep" />
         <button type="button" data-table-op="deleteTable" role="menuitem">Delete table</button>
         <hr class="toolbar-dropdown-sep" />
         <button type="button" data-table-op="convertToGfm" role="menuitem">Convert to GFM pipe table</button>
@@ -782,13 +793,41 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
   <div id="table-context-menu" class="context-menu hidden" role="menu" aria-label="Table Context Menu">
     <button type="button" data-table-op="addRowBefore" role="menuitem">Add row above</button>
     <button type="button" data-table-op="addRowAfter" role="menuitem">Add row below</button>
+    <button type="button" data-table-op="moveRowUp" role="menuitem">Move row up</button>
+    <button type="button" data-table-op="moveRowDown" role="menuitem">Move row down</button>
+    <button type="button" data-table-op="duplicateRow" role="menuitem">Duplicate row</button>
     <button type="button" data-table-op="deleteRow" role="menuitem">Delete row</button>
     <hr class="toolbar-dropdown-sep" />
     <button type="button" data-table-op="addColumnBefore" role="menuitem">Add column left</button>
     <button type="button" data-table-op="addColumnAfter" role="menuitem">Add column right</button>
+    <button type="button" data-table-op="moveColumnLeft" role="menuitem">Move column left</button>
+    <button type="button" data-table-op="moveColumnRight" role="menuitem">Move column right</button>
     <button type="button" data-table-op="deleteColumn" role="menuitem">Delete column</button>
     <hr class="toolbar-dropdown-sep" />
+    <button type="button" data-table-op="alignLeft" role="menuitem">Align Left</button>
+    <button type="button" data-table-op="alignCenter" role="menuitem">Align Center</button>
+    <button type="button" data-table-op="alignRight" role="menuitem">Align Right</button>
+    <hr class="toolbar-dropdown-sep" />
     <button type="button" data-table-op="deleteTable" role="menuitem">Delete table</button>
+  </div>
+  <div id="image-popover" class="image-popover hidden" role="toolbar" aria-label="Image Options">
+    <button type="button" data-preset="25%" title="25%">25%</button>
+    <button type="button" data-preset="50%" title="50%">50%</button>
+    <button type="button" data-preset="75%" title="75%">75%</button>
+    <button type="button" data-preset="100%" title="100%">100%</button>
+    <button type="button" data-align="left" title="Align left">Align left</button>
+    <button type="button" data-align="center" title="Align center">Align center</button>
+    <button type="button" data-align="right" title="Align right">Align right</button>
+    <input type="text" id="image-alt-input" placeholder="Alt text" aria-label="Alt text" />
+    <button type="button" data-action="zoom" title="Zoom">Zoom</button>
+  </div>
+  <div id="image-lightbox" class="hidden" role="dialog" aria-modal="true" aria-label="Image Preview">
+    <div class="lightbox-backdrop"></div>
+    <div class="lightbox-content">
+      <button type="button" class="lightbox-close" aria-label="Close">×</button>
+      <img class="lightbox-image" src="" alt="" />
+      <div class="lightbox-caption"></div>
+    </div>
   </div>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>

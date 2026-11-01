@@ -52,7 +52,6 @@ const ALLOWED_ATTR = new Set([
   'src',
   'alt',
   'title',
-  'class',
   'type',
   'checked',
   'disabled',
@@ -76,6 +75,8 @@ const ALLOWED_ATTR = new Set([
   'r',
   'points',
   'transform',
+  'align',
+  'data-align',
 ]);
 
 /** Strip dangerous event-handler attributes explicitly. */

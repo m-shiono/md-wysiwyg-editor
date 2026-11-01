@@ -12,7 +12,22 @@ import { sanitizeHtml } from '../utils/sanitize';
 import {
   convertTableToGfmAtIndex,
   flattenTipTapNodesToText,
+  setColumnAlignment,
+  moveTableRow,
+  moveTableColumn,
+  duplicateTableRow,
+  normalizeTableRowCellTypes,
+  type ColumnAlignment,
 } from '../utils/table-convert';
+export {
+  setColumnAlignment,
+  moveTableRow,
+  moveTableColumn,
+  duplicateTableRow,
+  normalizeTableRowCellTypes,
+  type ColumnAlignment,
+};
+export * from '../utils/image-operations';
 import { calculateStringWidth, TablePipeAlignment } from '../utils/table-formatter';
 
 /** mdast GFM delete node (strikethrough). */
@@ -121,7 +136,7 @@ export function serializeMarkdown(
   if (opts.deterministic) {
     return normalizeOutput(result);
   }
-  return result;
+  return normalizeGfmTableDelimiters(result);
 }
 
 /** Round-trip helper for tests. */
@@ -130,8 +145,34 @@ export function roundTrip(markdown: string): string {
   return serializeMarkdown(doc);
 }
 
+function normalizeGfmTableDelimiters(markdown: string): string {
+  const lines = markdown.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) {
+      continue;
+    }
+    const inner = trimmed.slice(1, -1);
+    const cells = inner.split('|');
+    if (cells.length > 0 && cells.every((c) => /^\s*:?-+:?\s*$/.test(c))) {
+      const normalizedCells = cells.map((cell) => {
+        const match = cell.match(/^(\s*)(:?)(-+)((?::)?)(\s*)$/);
+        if (!match) {
+          return cell;
+        }
+        const [, lead, leftColon, hyphens, rightColon, trail] = match;
+        const fixedHyphens = hyphens.length < 3 ? '---' : hyphens;
+        return `${lead}${leftColon}${fixedHyphens}${rightColon}${trail}`;
+      });
+      lines[i] = `|${normalizedCells.join('|')}|`;
+    }
+  }
+  return lines.join('\n');
+}
+
 function normalizeOutput(text: string): string {
-  return text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
+  const normalized = normalizeGfmTableDelimiters(text.replace(/\r\n/g, '\n'));
+  return normalized.replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
 }
 
 function extractGfmTableSources(markdown: string): string[] {
@@ -276,6 +317,130 @@ function mdastToTipTap(
   }
 }
 
+function cleanImageSrc(src?: string | null, originalSrc?: string | null): string {
+  if (originalSrc && !/vscode-resource|vscode-cdn|vscode-webview/.test(originalSrc)) {
+    return originalSrc;
+  }
+  if (!src) {
+    return '';
+  }
+  if (/vscode-resource|vscode-cdn|vscode-webview/.test(src)) {
+    const imgMatch = /(?:^|\/)(img\/[^?#]+)/.exec(src);
+    if (imgMatch) {
+      return imgMatch[1];
+    }
+    const urlMatch = /^(?:https?:\/\/[^/]+|vscode-webview:\/\/[^/]+)\/(.+)$/.exec(src);
+    if (urlMatch) {
+      return urlMatch[1].replace(/^(?:[^/]+\/)*?(img\/)/, '$1');
+    }
+    return '';
+  }
+  return src;
+}
+
+function escapeHtmlAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function unescapeHtmlAttr(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+function serializeHtmlImageTag(attrs: Record<string, unknown> | undefined, cleanSrc: string): string {
+  const alt = typeof attrs?.alt === 'string' ? attrs.alt : '';
+  const title = typeof attrs?.title === 'string' && attrs.title ? attrs.title : null;
+  const width = typeof attrs?.width === 'string' && attrs.width.trim() ? attrs.width.trim() : null;
+  const align = (attrs?.align === 'left' || attrs?.align === 'center' || attrs?.align === 'right') ? attrs.align : null;
+
+  let tag = `<img src="${escapeHtmlAttr(cleanSrc)}" alt="${escapeHtmlAttr(alt)}"`;
+  if (title) {
+    tag += ` title="${escapeHtmlAttr(title)}"`;
+  }
+  if (width) {
+    tag += ` width="${escapeHtmlAttr(width)}"`;
+  }
+  if (align) {
+    tag += ` align="${escapeHtmlAttr(align)}"`;
+  }
+  tag += ' />';
+  return tag;
+}
+
+function parseHtmlImgToTipTapNode(html: string): TipTapNode | null {
+  const match = /<img\b([^>]*)>/i.exec(html);
+  if (!match) {
+    return null;
+  }
+  const attrsStr = match[1];
+  const getAttr = (name: string): string | null => {
+    const m = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i').exec(attrsStr);
+    if (!m) return null;
+    return unescapeHtmlAttr(m[1] ?? m[2] ?? m[3] ?? '');
+  };
+
+  const src = getAttr('src') ?? '';
+  const alt = getAttr('alt') ?? '';
+  const title = getAttr('title');
+
+  let rawWidth = getAttr('width') ?? getAttr('data-width');
+  if (!rawWidth) {
+    const styleVal = getAttr('style');
+    if (styleVal) {
+      const wMatch = /width\s*:\s*([^;]+)/i.exec(styleVal);
+      if (wMatch) {
+        rawWidth = wMatch[1].trim();
+      }
+    }
+  }
+
+  let width: string | null = null;
+  if (rawWidth) {
+    const trimmedWidth = rawWidth.trim();
+    const pxMatch = /^(\d+)(?:px)?$/i.exec(trimmedWidth);
+    const pctMatch = /^(\d+)%$/i.exec(trimmedWidth);
+    if (pxMatch && parseInt(pxMatch[1], 10) > 0) {
+      width = pxMatch[1];
+    } else if (pctMatch && parseInt(pctMatch[1], 10) > 0) {
+      width = trimmedWidth;
+    }
+  }
+
+  let rawAlign = (getAttr('align') ?? getAttr('data-align') ?? '').trim().toLowerCase();
+  if (!rawAlign) {
+    const styleVal = getAttr('style');
+    if (styleVal) {
+      const aMatch = /text-align\s*:\s*(left|center|right)\b/i.exec(styleVal);
+      if (aMatch) {
+        rawAlign = aMatch[1].toLowerCase();
+      }
+    }
+  }
+  let align: 'left' | 'center' | 'right' | null = null;
+  if (rawAlign === 'left' || rawAlign === 'center' || rawAlign === 'right') {
+    align = rawAlign;
+  }
+
+  return {
+    type: 'image',
+    attrs: {
+      src,
+      alt,
+      title: title ?? null,
+      width,
+      align,
+    },
+  };
+}
+
 function phrasingToTipTap(nodes: PhrasingContent[]): TipTapNode[] {
   const result: TipTapNode[] = [];
   let htmlStrikeDepth = 0;
@@ -340,6 +505,8 @@ function phrasingToTipTap(nodes: PhrasingContent[]): TipTapNode[] {
               src: node.url,
               alt: node.alt ?? '',
               title: node.title ?? null,
+              width: null,
+              align: null,
             },
           });
           break;
@@ -360,6 +527,13 @@ function phrasingToTipTap(nodes: PhrasingContent[]): TipTapNode[] {
               result.push({ type: 'hardBreak' });
             }
             break;
+          }
+          if (/<img[\s>]/i.test(trimmed)) {
+            const imgNode = parseHtmlImgToTipTapNode(trimmed);
+            if (imgNode) {
+              result.push(imgNode);
+              break;
+            }
           }
           pushText(node.value, marks);
           break;
@@ -396,17 +570,23 @@ function inferTableFormat(attrs?: Record<string, unknown>): TableFormat {
 }
 
 function gfmTableToHtmlTable(table: Table, _context: MdastToTipTapContext): TipTapNode {
-  const rows = table.children.map((row: TableRow) => {
-    const cells = row.children.map((cell: TableCell) => ({
-      type: row.children.indexOf(cell) === 0 && table.align ? 'tableHeader' : 'tableCell',
-      // phrasing として扱う。mdastToTipTap だと <br /> が htmlBlock になる
-      content: [
-        {
-          type: 'paragraph',
-          content: phrasingToTipTap(cell.children),
-        },
-      ],
-    }));
+  const rows = table.children.map((row: TableRow, rowIndex: number) => {
+    const cells = row.children.map((cell: TableCell, colIndex: number) => {
+      const colAlign = table.align?.[colIndex] ?? null;
+      const textAlign =
+        colAlign === 'left' || colAlign === 'center' || colAlign === 'right' ? colAlign : null;
+      return {
+        type: rowIndex === 0 ? 'tableHeader' : 'tableCell',
+        ...(textAlign ? { attrs: { textAlign } } : {}),
+        // phrasing として扱う。mdastToTipTap だと <br /> が htmlBlock になる
+        content: [
+          {
+            type: 'paragraph',
+            content: phrasingToTipTap(cell.children),
+          },
+        ],
+      };
+    });
     return { type: 'tableRow', content: cells };
   });
   return {
@@ -416,13 +596,32 @@ function gfmTableToHtmlTable(table: Table, _context: MdastToTipTapContext): TipT
   };
 }
 
+function extractCellAlignFromAttrs(attrStr: string): 'left' | 'center' | 'right' | null {
+  const alignMatch = attrStr.match(/\b(?:data-)?align\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+  if (alignMatch) {
+    const val = (alignMatch[1] ?? alignMatch[2] ?? alignMatch[3] ?? '').trim().toLowerCase();
+    if (val === 'left' || val === 'center' || val === 'right') {
+      return val;
+    }
+  }
+  const styleMatch = attrStr.match(/\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+  if (styleMatch) {
+    const styleVal = styleMatch[1] ?? styleMatch[2] ?? styleMatch[3] ?? '';
+    const textAlignMatch = styleVal.match(/text-align\s*:\s*(left|center|right)\b/i);
+    if (textAlignMatch) {
+      return textAlignMatch[1].toLowerCase() as 'left' | 'center' | 'right';
+    }
+  }
+  return null;
+}
+
 function htmlToTipTap(node: Html): TipTapNode {
-  const sanitized = sanitizeHtml(node.value);
-  if (/<table[\s>]/i.test(sanitized)) {
-    const parsed = parseHtmlTableToTipTap(sanitized);
+  if (/<table[\s>]/i.test(node.value)) {
+    const parsed = parseHtmlTableToTipTap(node.value);
     if (parsed) {
       return parsed;
     }
+    const sanitized = sanitizeHtml(node.value);
     // Fallback: keep raw HTML only when structure cannot be recovered
     return {
       type: 'table',
@@ -430,6 +629,16 @@ function htmlToTipTap(node: Html): TipTapNode {
       content: [],
     };
   }
+  if (/<img[\s>]/i.test(node.value)) {
+    const parsed = parseHtmlImgToTipTapNode(node.value);
+    if (parsed) {
+      return {
+        type: 'paragraph',
+        content: [parsed],
+      };
+    }
+  }
+  const sanitized = sanitizeHtml(node.value);
   return {
     type: 'htmlBlock',
     attrs: { html: sanitized },
@@ -440,25 +649,42 @@ function htmlToTipTap(node: Html): TipTapNode {
  * Parse HTML `<table>` into an editable TipTap table model (AD-005).
  * Prefer structured rows/cells over atom htmlBlock so WYSIWYG edits persist.
  */
-function parseHtmlTableToTipTap(html: string): TipTapNode | null {
-  const rowMatches = [...html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)];
+export function parseHtmlTableToTipTap(
+  rawHtml: string,
+  tableFormat: TableFormat = 'html',
+): TipTapNode | null {
+  // Strip dangerous scripts/handlers first, then extract alignment (including style="text-align:...") before sanitizeHtml strips style
+  const withoutScripts = rawHtml
+    .replace(/<\s*script\b[^>]*>[\s\S]*?<\s*\/\s*script\s*>/gi, '')
+    .replace(/<\s*script\b[^>]*\/?\s*>/gi, '');
+  const rowMatches = [...withoutScripts.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)];
   if (rowMatches.length === 0) {
     return null;
   }
+  const colAlignments: Array<'left' | 'center' | 'right' | null> = [];
   const rows: TipTapNode[] = [];
-  for (const rowMatch of rowMatches) {
+  for (let rowIndex = 0; rowIndex < rowMatches.length; rowIndex++) {
+    const rowMatch = rowMatches[rowIndex];
     const cellsHtml = rowMatch[1] ?? '';
-    const cellMatches = [...cellsHtml.matchAll(/<(td|th)\b[^>]*>([\s\S]*?)<\/\1>/gi)];
+    const cellMatches = [...cellsHtml.matchAll(/<(td|th)\b([^>]*)>([\s\S]*?)<\/\1>/gi)];
     if (cellMatches.length === 0) {
       continue;
     }
-    const cells: TipTapNode[] = cellMatches.map((cellMatch) => {
+    const cells: TipTapNode[] = cellMatches.map((cellMatch, colIndex) => {
       const tag = (cellMatch[1] ?? 'td').toLowerCase();
-      const inner = cellMatch[2] ?? '';
-      const cellType = tag === 'th' ? 'tableHeader' : 'tableCell';
+      const attrStr = cellMatch[2] ?? '';
+      const rawInner = cellMatch[3] ?? '';
+      const sanitizedInner = sanitizeHtml(rawInner);
+      const cellAlign = extractCellAlignFromAttrs(attrStr) ?? colAlignments[colIndex] ?? null;
+      if (cellAlign && !colAlignments[colIndex]) {
+        colAlignments[colIndex] = cellAlign;
+      }
+      const isHeader = rows.length === 0 ? tag === 'th' || tableFormat === 'gfm' : tag === 'th' && tableFormat === 'html';
+      const cellType = isHeader ? 'tableHeader' : 'tableCell';
       return {
         type: cellType,
-        content: htmlCellInnerToTipTap(inner),
+        ...(cellAlign ? { attrs: { textAlign: cellAlign } } : {}),
+        content: htmlCellInnerToTipTap(sanitizedInner),
       };
     });
     rows.push({ type: 'tableRow', content: cells });
@@ -466,9 +692,25 @@ function parseHtmlTableToTipTap(html: string): TipTapNode | null {
   if (rows.length === 0) {
     return null;
   }
+  // Propagate column alignments across all rows for column consistency (AD-002)
+  if (colAlignments.some((a) => a !== null)) {
+    for (const row of rows) {
+      for (let cIdx = 0; cIdx < (row.content?.length ?? 0); cIdx++) {
+        const cell = row.content![cIdx];
+        const align = (cell.attrs?.textAlign as 'left' | 'center' | 'right' | null | undefined) ?? colAlignments[cIdx] ?? null;
+        if (align) {
+          cell.attrs = { ...cell.attrs, textAlign: align };
+        }
+      }
+    }
+  }
   return {
     type: 'table',
-    attrs: { tableFormat: 'html', gfmSource: false, converted: true },
+    attrs: {
+      tableFormat,
+      gfmSource: tableFormat === 'gfm',
+      converted: tableFormat === 'html',
+    },
     content: rows,
   };
 }
@@ -596,18 +838,28 @@ function tipTapNodeToMdast(node: TipTapNode): Content | undefined {
       return { type: 'html', value: (node.attrs?.html as string) ?? '' };
     case 'horizontalRule':
       return { type: 'thematicBreak' };
-    case 'image':
+    case 'image': {
+      const cleanSrc = cleanImageSrc(node.attrs?.src as string, node.attrs?.originalSrc as string);
+      const width = typeof node.attrs?.width === 'string' && node.attrs.width.trim() ? node.attrs.width.trim() : null;
+      const align = (node.attrs?.align === 'left' || node.attrs?.align === 'center' || node.attrs?.align === 'right') ? node.attrs.align : null;
+      if (width || align) {
+        return {
+          type: 'html',
+          value: serializeHtmlImageTag(node.attrs, cleanSrc),
+        };
+      }
       return {
         type: 'paragraph',
         children: [
           {
             type: 'image',
-            url: (node.attrs?.src as string) ?? '',
+            url: cleanSrc,
             alt: (node.attrs?.alt as string) ?? '',
             title: (node.attrs?.title as string | null | undefined) ?? null,
           },
         ],
       };
+    }
     case 'taskList':
       return {
         type: 'list',
@@ -645,12 +897,22 @@ function tipTapPhrasingToMdast(nodes: TipTapNode[]): PhrasingContent[] {
   const result: PhrasingContent[] = [];
   for (const node of nodes) {
     if (node.type === 'image') {
-      result.push({
-        type: 'image',
-        url: (node.attrs?.src as string) ?? '',
-        alt: (node.attrs?.alt as string) ?? '',
-        title: (node.attrs?.title as string | null | undefined) ?? null,
-      });
+      const cleanSrc = cleanImageSrc(node.attrs?.src as string, node.attrs?.originalSrc as string);
+      const width = typeof node.attrs?.width === 'string' && node.attrs.width.trim() ? node.attrs.width.trim() : null;
+      const align = (node.attrs?.align === 'left' || node.attrs?.align === 'center' || node.attrs?.align === 'right') ? node.attrs.align : null;
+      if (width || align) {
+        result.push({
+          type: 'html',
+          value: serializeHtmlImageTag(node.attrs, cleanSrc),
+        });
+      } else {
+        result.push({
+          type: 'image',
+          url: cleanSrc,
+          alt: (node.attrs?.alt as string) ?? '',
+          title: (node.attrs?.title as string | null | undefined) ?? null,
+        });
+      }
       continue;
     }
     if (node.type === 'hardBreak') {
@@ -693,6 +955,25 @@ function tipTapPhrasingToMdast(nodes: TipTapNode[]): PhrasingContent[] {
   return result;
 }
 
+function extractTableColumnAlignments(
+  node: TipTapNode,
+): Array<'left' | 'center' | 'right' | null> {
+  const rows = node.content ?? [];
+  const colCount = Math.max(...rows.map((r) => r.content?.length ?? 0), 0);
+  const aligns: Array<'left' | 'center' | 'right' | null> = new Array(colCount).fill(null);
+  for (let c = 0; c < colCount; c++) {
+    for (const row of rows) {
+      const cell = row.content?.[c];
+      const val = cell?.attrs?.textAlign;
+      if (val === 'left' || val === 'center' || val === 'right') {
+        aligns[c] = val;
+        break;
+      }
+    }
+  }
+  return aligns;
+}
+
 function tipTapTableToMdast(node: TipTapNode): Table {
   const rows = (node.content ?? []).map((row) => ({
     type: 'tableRow' as const,
@@ -701,9 +982,10 @@ function tipTapTableToMdast(node: TipTapNode): Table {
       children: cellToPhrasing(cell.content ?? []),
     })),
   }));
+  const aligns = extractTableColumnAlignments(node);
   return {
     type: 'table',
-    align: null,
+    align: aligns.length > 0 ? aligns : null,
     children: rows,
   };
 }
@@ -770,11 +1052,19 @@ function tableToHtmlBlock(node: TipTapNode): Html {
 
 function tipTapTableToHtml(node: TipTapNode): string {
   const rows = node.content ?? [];
+  const colAligns = extractTableColumnAlignments(node);
   let html = '<table>\n';
   for (const row of rows) {
     html += '  <tr>\n';
-    for (const cell of row.content ?? []) {
+    const cells = row.content ?? [];
+    for (let cIdx = 0; cIdx < cells.length; cIdx++) {
+      const cell = cells[cIdx];
       const tag = cell.type === 'tableHeader' ? 'th' : 'td';
+      const rawAlign = cell.attrs?.textAlign ?? colAligns[cIdx] ?? null;
+      const alignAttr =
+        rawAlign === 'left' || rawAlign === 'center' || rawAlign === 'right'
+          ? ` align="${rawAlign}"`
+          : '';
       const inner = (cell.content ?? [])
         .map((c) => {
           if (c.type === 'paragraph') {
@@ -798,7 +1088,7 @@ function tipTapTableToHtml(node: TipTapNode): string {
           return '';
         })
         .join('<br/>');
-      html += `    <${tag}>${sanitizeHtml(inner)}</${tag}>\n`;
+      html += `    <${tag}${alignAttr}>${sanitizeHtml(inner)}</${tag}>\n`;
     }
     html += '  </tr>\n';
   }
