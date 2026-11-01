@@ -5,7 +5,7 @@ import {
   type MdFileUri,
   type WebviewUriResolver,
 } from './image-uri-rewrite';
-import { renderMarpPreviewFragment } from './marp-render';
+import { renderMarpPreviewFragment, type MarpRenderOptions } from './marp-render';
 import { isMarpDocument } from './is-marp-document';
 import type { WebviewOutboundMessage } from '../webviews/messages';
 
@@ -67,12 +67,13 @@ export function buildPreviewProjectionMessages(
   editorMode: string,
   docJson: string,
   markdownText: string,
+  marpOptions?: MarpRenderOptions,
 ): WebviewOutboundMessage[] {
   if (editorMode !== 'preview') {
     return [];
   }
   if (resolvePreviewSurface(editorMode, markdownText) === 'marp') {
-    const html = renderMarpPreviewFragment(markdownText) ?? '';
+    const html = renderMarpPreviewFragment(markdownText, marpOptions) ?? '';
     return [{ type: 'previewMarpHtml', html }];
   }
   return [{ type: 'docUpdated', docJson, markdownText }];

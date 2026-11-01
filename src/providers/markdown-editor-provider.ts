@@ -31,6 +31,7 @@ import { buildModeSwitchMessages } from '../utils/editor-mode-sync';
 import { applyDisplayUriRewrite } from '../utils/preview-projection';
 import type { WebviewUriResolver } from '../utils/image-uri-rewrite';
 import { buildPreviewProjectionMessages } from '../utils/preview-projection';
+import type { MarpRenderOptions } from '../utils/marp-render';
 import { handleCustomEditorDisposed } from '../utils/editor-switch-guard';
 import { shouldAcceptWebviewUpdate } from '../utils/webview-update-epoch';
 import { buildThemeUpdatedMessage, mapColorThemeKind } from '../utils/theme-sync';
@@ -97,6 +98,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
         next,
         document.docJson,
         document.markdownText,
+        this.marpRenderOptions(panel.webview),
       )) {
         this.postDisplayMessage(document, panel.webview, outbound);
       }
@@ -321,6 +323,15 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     );
   }
 
+  /** Webview-local URI of the bundled KaTeX fonts, for Marp math rendering. */
+  private marpRenderOptions(webview: vscode.Webview): MarpRenderOptions {
+    return {
+      katexFontPath: webview
+        .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'fonts'))
+        .toString(),
+    };
+  }
+
   private webviewUriResolver(webview: vscode.Webview): WebviewUriResolver {
     return {
       asWebviewUri: (uri) => webview.asWebviewUri(vscode.Uri.file(uri.fsPath)),
@@ -334,6 +345,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
       mode,
       document.docJson,
       document.markdownText,
+      this.marpRenderOptions(webview),
     )) {
       this.postDisplayMessage(document, webview, message);
     }
@@ -390,6 +402,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
             next,
             document.docJson,
             document.markdownText,
+            this.marpRenderOptions(panel.webview),
           )) {
             this.postDisplayMessage(document, panel.webview, outbound);
           }

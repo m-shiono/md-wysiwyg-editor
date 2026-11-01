@@ -8,7 +8,19 @@
  */
 declare module '@marp-team/marp-core' {
   export class Marp {
-    constructor(opts?: Record<string, unknown>);
+    constructor(opts?: {
+      markdown?: { highlight?: (code: string, lang: string) => string } & Record<string, unknown>;
+      [key: string]: unknown;
+    });
+    use(plugin: (md: unknown) => void, ...params: unknown[]): this;
     render(markdown: string, env?: Record<string, unknown>): { html: string; css: string };
   }
+}
+
+declare module '@marp-team/marp-core/plugins/katex' {
+  const katexMarpCorePlugin: (opts?: {
+    options?: Record<string, unknown>;
+    fontPath?: string | false;
+  }) => (md: unknown) => void;
+  export default katexMarpCorePlugin;
 }

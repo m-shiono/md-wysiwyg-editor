@@ -50,7 +50,11 @@ export class MarpPreviewManager {
           `<div class="guidance"><h2>${NO_MARP_MESSAGE}</h2><p>Add Marp front matter to enable slide preview:</p><pre>---\nmarp: true\n---</pre></div>`,
         );
       }
-      const fragment = renderMarpPreviewFragment(content);
+      const fragment = renderMarpPreviewFragment(content, {
+        katexFontPath: this.panel!.webview
+          .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'fonts'))
+          .toString(),
+      });
       if (!fragment) {
         return wrapPreviewHtml(
           `<div class="guidance"><h2>${NO_MARP_MESSAGE}</h2><p>Add Marp front matter to enable slide preview:</p><pre>---\nmarp: true\n---</pre></div>`,
@@ -59,7 +63,7 @@ export class MarpPreviewManager {
       const rewritten = rewriteImageUrisInHtml(fragment, uri, {
         asWebviewUri: (localUri) => this.panel!.webview.asWebviewUri(vscode.Uri.file(localUri.fsPath)),
       });
-      return wrapPreviewHtml(rewritten);
+      return wrapPreviewHtml(rewritten, this.panel!.webview.cspSource);
     } catch (error) {
       logError('Marp parse error', error);
       return wrapPreviewHtml(
@@ -69,12 +73,12 @@ export class MarpPreviewManager {
   }
 }
 
-function wrapPreviewHtml(body: string): string {
+function wrapPreviewHtml(body: string, cspSource?: string): string {
   const csp = [
     "default-src 'none'",
     "style-src 'unsafe-inline'",
     "img-src data: https:",
-    "font-src data:",
+    `font-src data:${cspSource ? ` ${cspSource}` : ''}`,
   ].join('; ');
   return `<!DOCTYPE html>
 <html><head>
