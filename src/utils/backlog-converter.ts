@@ -185,7 +185,6 @@ export function markdownToBacklog(markdownText: string): string {
   const resultLines: string[] = [];
 
   let inCodeBlock = false;
-  let codeBlockLang = '';
   let inTable = false;
   const tableLines: string[] = [];
   let inQuote = false;
@@ -218,7 +217,7 @@ export function markdownToBacklog(markdownText: string): string {
       flushQuote();
       if (!inCodeBlock) {
         inCodeBlock = true;
-        codeBlockLang = line.trim().slice(3).trim();
+        const codeBlockLang = line.trim().slice(3).trim();
         resultLines.push(codeBlockLang ? `{code:${codeBlockLang}}` : '{code}');
       } else {
         inCodeBlock = false;

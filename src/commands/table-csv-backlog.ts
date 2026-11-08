@@ -60,7 +60,7 @@ export function registerTableCsvBacklogCommands(
         const document = editor.document;
         const selection = editor.selection;
 
-        let tableText = '';
+        let tableText: string;
         let targetRange: vscode.Range;
 
         if (!selection.isEmpty) {
@@ -103,7 +103,7 @@ export function registerTableCsvBacklogCommands(
         const document = editor.document;
         const selection = editor.selection;
 
-        let tableText = '';
+        let tableText: string;
         if (!selection.isEmpty) {
           tableText = document.getText(selection);
         } else {
@@ -138,7 +138,7 @@ export function registerTableCsvBacklogCommands(
         const document = editor.document;
         const selection = editor.selection;
 
-        let backlogText = '';
+        let backlogText: string;
 
         if (!selection.isEmpty) {
           const text = document.getText(selection);

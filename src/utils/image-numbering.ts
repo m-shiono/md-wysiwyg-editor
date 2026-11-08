@@ -37,7 +37,7 @@ export { planDroppedImageFiles } from './image-operations';
 
 /** Validate image path stays within workspace img/ directory. */
 export function isSafeImagePath(_mdUri: string, imageRelativePath: string): boolean {
-  let decoded = imageRelativePath;
+  let decoded: string;
   try {
     decoded = decodeURIComponent(imageRelativePath);
   } catch {
