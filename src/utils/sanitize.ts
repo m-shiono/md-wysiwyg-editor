@@ -77,7 +77,11 @@ const ALLOWED_ATTR = new Set([
   'transform',
   'align',
   'data-align',
+  'aria-hidden',
 ]);
+
+/** CSP-safe rich markup (KaTeX, highlight.js) — not allowed on img/a where class can widen attack surface. */
+const CLASS_ALLOWED_TAGS = new Set(['span', 'code', 'pre', 'div', 'p']);
 
 /** Strip dangerous event-handler attributes explicitly. */
 export function stripEventHandlers(html: string): string {
@@ -87,6 +91,7 @@ export function stripEventHandlers(html: string): string {
 /**
  * Sanitize untrusted HTML for Extension Host / Marp preview.
  * Lightweight whitelist (no jsdom) — scripts and disallowed tags/attrs removed.
+ * `class` is kept only on tags used by KaTeX / highlight.js preview output.
  */
 export function sanitizeHtml(html: string): string {
   let result = stripEventHandlers(html);
@@ -103,7 +108,13 @@ export function sanitizeHtml(html: string): string {
     }
     const selfClosing = /\/\s*$/.test(attrs);
     const cleanedAttrs = [...attrs.matchAll(/([a-zA-Z_:][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g)]
-      .filter((m) => ALLOWED_ATTR.has(m[1].toLowerCase()))
+      .filter((m) => {
+        const attrName = m[1].toLowerCase();
+        if (attrName === 'class') {
+          return CLASS_ALLOWED_TAGS.has(name);
+        }
+        return ALLOWED_ATTR.has(attrName);
+      })
       .map((m) => {
         const value = m[2] ?? m[3] ?? m[4] ?? '';
         if (/^\s*javascript:/i.test(value)) {

@@ -143,8 +143,23 @@ export class PlantUmlRenderer {
     return new Promise<string>((resolve, reject) => {
       let stdout = '';
       let timedOut = false;
+      let settled = false;
+
+      const finish = (result: 'resolve' | 'reject', value?: string | Error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        if (result === 'reject' && value instanceof Error) {
+          reject(value);
+        } else {
+          resolve(typeof value === 'string' ? value : '');
+        }
+      };
 
       let proc: child_process.ChildProcess;
+      let timer: ReturnType<typeof setTimeout>;
       try {
         proc = child_process.spawn(execInfo.command, execInfo.args, {
           stdio: ['pipe', 'pipe', 'pipe'],
@@ -153,14 +168,18 @@ export class PlantUmlRenderer {
         return resolve('');
       }
 
-      const timer = setTimeout(() => {
+      timer = setTimeout(() => {
         timedOut = true;
+        const stdin = proc.stdin;
+        if (stdin && !stdin.destroyed) {
+          stdin.destroy();
+        }
         try {
           proc.kill('SIGKILL');
         } catch {
           // ignore
         }
-        reject(new Error(`PlantUML render timeout after ${timeoutMs}ms`));
+        finish('reject', new Error(`PlantUML render timeout after ${timeoutMs}ms`));
       }, timeoutMs);
 
       proc.stdout?.on('data', (chunk: Buffer) => {
@@ -168,15 +187,13 @@ export class PlantUmlRenderer {
       });
 
       proc.on('error', () => {
-        clearTimeout(timer);
         if (!timedOut) {
           // Process failed to spawn or execute
-          resolve('');
+          finish('resolve', '');
         }
       });
 
       proc.on('close', (code) => {
-        clearTimeout(timer);
         if (timedOut) {
           return;
         }
@@ -190,19 +207,36 @@ export class PlantUmlRenderer {
             : stdout;
 
           this.cache.set(hash, finalSvg);
-          resolve(finalSvg);
+          finish('resolve', finalSvg);
         } else {
           // Process exited with non-zero or invalid SVG
-          resolve('');
+          finish('resolve', '');
         }
       });
 
+      const stdin = proc.stdin;
+      if (!stdin) {
+        finish('resolve', '');
+        return;
+      }
+      stdin.on('error', () => {
+        /* EPIPE after kill/timeout — ignore */
+      });
       try {
-        proc.stdin?.write(normalizedSource, 'utf-8');
-        proc.stdin?.end();
+        const ok = stdin.write(normalizedSource, 'utf-8');
+        if (!ok) {
+          stdin.once('drain', () => {
+            try {
+              stdin.end();
+            } catch {
+              /* ignore */
+            }
+          });
+        } else {
+          stdin.end();
+        }
       } catch {
-        clearTimeout(timer);
-        resolve('');
+        finish('resolve', '');
       }
     });
   }
