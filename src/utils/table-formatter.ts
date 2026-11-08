@@ -464,7 +464,7 @@ export function navigateTable(
       }
     }
 
-    let cellOffsetInFormattedLine = 0;
+    let cellOffsetInFormattedLine: number;
     if (targetPipeIdx !== -1) {
       let targetNextPipeIdx = formattedLine.indexOf('|', targetPipeIdx + 1);
       while (targetNextPipeIdx > 0 && formattedLine[targetNextPipeIdx - 1] === '\\') {
