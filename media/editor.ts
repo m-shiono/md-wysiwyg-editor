@@ -570,6 +570,88 @@ const HtmlTableExtension = Extension.create({
   },
 });
 
+const FrontmatterNode = Node.create({
+  name: "frontmatter",
+  group: "block",
+  atom: true,
+  selectable: true,
+  addAttributes() {
+    return {
+      text: { default: "" },
+    };
+  },
+  parseHTML() {
+    return [{ tag: 'div[data-frontmatter-block="true"]' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "div",
+      {
+        "data-frontmatter-block": "true",
+        class: "frontmatter-block",
+      },
+      ["pre", {}, ["code", { class: "frontmatter-yaml" }, HTMLAttributes.text as string]],
+    ];
+  },
+  addNodeView() {
+    return ({ node, getPos, editor: tiptapEditor }) => {
+      const dom = document.createElement("div");
+      dom.className = "frontmatter-block";
+      dom.setAttribute("data-frontmatter-block", "true");
+
+      const pre = document.createElement("pre");
+      const code = document.createElement("code");
+      code.className = "frontmatter-yaml";
+      code.setAttribute("spellcheck", "false");
+      code.textContent = (node.attrs.text as string) ?? "";
+      pre.appendChild(code);
+      dom.appendChild(pre);
+
+      const syncAttrs = () => {
+        const next = code.textContent ?? "";
+        if (next === ((node.attrs.text as string) ?? "")) {
+          return;
+        }
+        const pos = getPos();
+        if (typeof pos !== "number") {
+          return;
+        }
+        tiptapEditor.commands.command(({ tr }) => {
+          tr.setNodeMarkup(pos, undefined, { text: next });
+          return true;
+        });
+      };
+
+      const refreshEditable = () => {
+        const editable =
+          !readonly && editorMode === "markdown";
+        code.contentEditable = editable ? "true" : "false";
+      };
+      refreshEditable();
+
+      code.addEventListener("blur", syncAttrs);
+
+      return {
+        dom,
+        update(updatedNode) {
+          if (updatedNode.type.name !== "frontmatter") {
+            return false;
+          }
+          const text = (updatedNode.attrs.text as string) ?? "";
+          if (code.textContent !== text) {
+            code.textContent = text;
+          }
+          refreshEditable();
+          return true;
+        },
+        ignoreMutation(mutation) {
+          return mutation.target === code;
+        },
+      };
+    };
+  },
+});
+
 const HtmlBlockNode = Node.create({
   name: "htmlBlock",
   group: "block",
@@ -1694,6 +1776,7 @@ function getEditorExtensions() {
     MermaidAwareCodeBlock,
     RichImage.configure({ inline: true, allowBase64: false }),
     HtmlTableExtension,
+    FrontmatterNode,
     HtmlBlockNode,
     SearchAndReplace,
   ];
@@ -1905,6 +1988,12 @@ function setModeUi(mode: EditorMode): void {
     editor?.setEditable(false, false);
     editor?.commands.blur();
   }
+  editor?.view?.dom
+    .querySelectorAll<HTMLElement>(".frontmatter-yaml")
+    .forEach((code) => {
+      code.contentEditable =
+        !readonly && mode === "markdown" ? "true" : "false";
+    });
   if (rawEl) {
     rawEl.readOnly = !canEdit || mode !== "raw";
   }

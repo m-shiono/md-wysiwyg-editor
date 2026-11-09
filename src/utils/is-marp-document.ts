@@ -1,12 +1,13 @@
+import { splitYamlFrontmatter } from './yaml-frontmatter';
+
 /** Detect Marp slide deck from YAML front matter (shared by Preview and panel). */
 export function isMarpDocument(content: string): boolean {
-  const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
-  if (!fmMatch) {
+  const { frontmatterBody: fm, body: afterFrontmatter } = splitYamlFrontmatter(content);
+  if (fm === null) {
     return false;
   }
-  const fm = fmMatch[1];
   if (/marp\s*:\s*true/i.test(fm)) {
     return true;
   }
-  return /^---\s*$/m.test(content.slice(fmMatch[0].length));
+  return /^---\s*$/m.test(afterFrontmatter);
 }
