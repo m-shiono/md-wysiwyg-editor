@@ -125,6 +125,7 @@ export function serializeMarkdown(
     ...DEFAULT_SERIALIZE_OPTIONS,
     ...options,
   };
+  // Only index-0 `frontmatter` is emitted as `---` fences (parse always unshifts there).
   const leadingFrontmatter =
     doc.content[0]?.type === 'frontmatter'
       ? String((doc.content[0].attrs?.text as string | undefined) ?? '')
