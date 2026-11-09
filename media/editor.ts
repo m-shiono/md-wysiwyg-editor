@@ -609,11 +609,13 @@ const FrontmatterNode = Node.create({
 
       const syncAttrs = () => {
         const next = code.textContent ?? "";
-        if (next === ((node.attrs.text as string) ?? "")) {
-          return;
-        }
         const pos = getPos();
         if (typeof pos !== "number") {
+          return;
+        }
+        const currentText =
+          (tiptapEditor.state.doc.nodeAt(pos)?.attrs?.text as string | undefined) ?? "";
+        if (next === currentText) {
           return;
         }
         tiptapEditor.commands.command(({ tr }) => {
@@ -1928,7 +1930,49 @@ function applyPreviewTipTap(): void {
   }
 }
 
+/** Persist in-progress YAML front matter edits before leaving Visual (blur may not fire). */
+function flushFrontmatterEditsBeforeModeLeave(): void {
+  if (!editor?.view) {
+    return;
+  }
+  editor.view.dom
+    .querySelectorAll<HTMLElement>(".frontmatter-yaml")
+    .forEach((code) => {
+      if (document.activeElement === code) {
+        code.blur();
+      }
+    });
+  const tr = editor.state.tr;
+  let dirty = false;
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name !== "frontmatter") {
+      return;
+    }
+    const nodeDom = editor!.view.nodeDOM(pos);
+    if (!(nodeDom instanceof HTMLElement)) {
+      return;
+    }
+    const code = nodeDom.querySelector<HTMLElement>(".frontmatter-yaml");
+    if (!code) {
+      return;
+    }
+    const next = code.textContent ?? "";
+    const current = (node.attrs.text as string) ?? "";
+    if (next !== current) {
+      tr.setNodeMarkup(pos, undefined, { text: next });
+      dirty = true;
+    }
+  });
+  if (dirty) {
+    editor.view.dispatch(tr);
+  }
+}
+
 function setModeUi(mode: EditorMode): void {
+  const previousMode = editorMode;
+  if (previousMode === "markdown" && mode !== "markdown") {
+    flushFrontmatterEditsBeforeModeLeave();
+  }
   editorMode = mode;
   document.body.setAttribute("data-mode", mode);
 

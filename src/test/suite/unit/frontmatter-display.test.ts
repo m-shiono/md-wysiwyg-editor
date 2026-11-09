@@ -60,6 +60,18 @@ suite('frontmatter-display', () => {
     assert.ok(rt.includes('## Workflow'));
   });
 
+  test('serialize emits YAML fences only when frontmatter is the first block', () => {
+    const doc = parseMarkdown('# Body only\n');
+    doc.content.push({
+      type: 'frontmatter',
+      attrs: { text: 'name: orphan' },
+    });
+    const out = serializeMarkdown(doc);
+    assert.ok(!out.startsWith('---'));
+    assert.ok(!out.includes('name: orphan'), 'non-leading frontmatter must not be serialized');
+    assert.ok(out.includes('# Body only'));
+  });
+
   test('hash inside frontmatter does not create document h1', () => {
     const md = '---\nname: x\n# yaml comment treated as markdown if unguarded\n---\n\nPara\n';
     const doc = parseMarkdown(md);

@@ -6,6 +6,8 @@ import './suite/unit/table-convert.test';
 import './suite/unit/markdown-serializer.test';
 import './suite/unit/yaml-frontmatter.test';
 import './suite/unit/frontmatter-display.test';
+import './suite/unit/is-marp-document.test';
+import './suite/unit/frontmatter-mode-sync.test';
 import './suite/unit/gfm-format-toolbar.test';
 import './suite/unit/image-numbering.test';
 import './suite/unit/markdown-document.test';
