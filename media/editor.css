@@ -427,6 +427,39 @@ body[data-readonly='true'] #link-input-bar {
   padding: 0;
 }
 
+/* Document YAML front matter (SKILL.md etc.) — not parsed as headings */
+.ProseMirror .frontmatter-block {
+  margin: 0 0 1em;
+}
+
+.ProseMirror .frontmatter-block pre {
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+  background: var(--vscode-textCodeBlock-background);
+  overflow-x: auto;
+}
+
+.ProseMirror .frontmatter-block .frontmatter-yaml {
+  display: block;
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+  font-weight: var(--vscode-editor-font-weight, normal);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  color: var(--vscode-editor-foreground);
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+body[data-mode='preview'] .ProseMirror .frontmatter-block .frontmatter-yaml {
+  line-height: 1.5;
+}
+
 .ProseMirror a {
   color: var(--vscode-textLink-foreground);
 }

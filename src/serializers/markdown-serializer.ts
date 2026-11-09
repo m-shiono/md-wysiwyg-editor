@@ -29,6 +29,7 @@ export {
 };
 export * from '../utils/image-operations';
 import { calculateStringWidth, TablePipeAlignment } from '../utils/table-formatter';
+import { splitYamlFrontmatter, joinYamlFrontmatter } from '../utils/yaml-frontmatter';
 
 /** mdast GFM delete node (strikethrough). */
 type DeleteNode = { type: 'delete'; children: PhrasingContent[] };
@@ -86,7 +87,9 @@ export function parseMarkdown(markdown: string): TipTapDoc {
   if (markdown.includes('\0')) {
     throw new Error('Invalid markdown: null byte');
   }
-  const tree = fromMarkdown(markdown, {
+  const { frontmatterBody, body } = splitYamlFrontmatter(markdown);
+  const parseSource = frontmatterBody !== null ? body : markdown;
+  const tree = fromMarkdown(parseSource, {
     extensions: [
       gfmTable(),
       // singleTilde: false — 単独 ~ は取り消し線にしない（AD-002 / TC-121）
@@ -99,8 +102,15 @@ export function parseMarkdown(markdown: string): TipTapDoc {
       gfmTaskListItemFromMarkdown(),
     ],
   });
-  const gfmTableSources = extractGfmTableSources(markdown);
-  return mdastToTipTap(tree, { gfmTableSources, gfmTableSourceIndex: 0 }) as TipTapDoc;
+  const gfmTableSources = extractGfmTableSources(parseSource);
+  const doc = mdastToTipTap(tree, { gfmTableSources, gfmTableSourceIndex: 0 }) as TipTapDoc;
+  if (frontmatterBody !== null) {
+    doc.content.unshift({
+      type: 'frontmatter',
+      attrs: { text: frontmatterBody },
+    });
+  }
+  return doc;
 }
 
 /** Serialize TipTap document model to deterministic Markdown. */
@@ -115,7 +125,15 @@ export function serializeMarkdown(
     ...DEFAULT_SERIALIZE_OPTIONS,
     ...options,
   };
-  const mdast = tipTapToMdast(doc);
+  const leadingFrontmatter =
+    doc.content[0]?.type === 'frontmatter'
+      ? String((doc.content[0].attrs?.text as string | undefined) ?? '')
+      : null;
+  const bodyDoc: TipTapDoc =
+    leadingFrontmatter !== null
+      ? { type: 'doc', content: doc.content.slice(1) }
+      : doc;
+  const mdast = tipTapToMdast(bodyDoc);
   const pipeAlign = opts.tablePipeAlignment !== 'compact';
   const result = toMarkdown(mdast, {
     extensions: [
@@ -133,10 +151,13 @@ export function serializeMarkdown(
     listItemIndent: 'one',
     fences: true,
   });
-  if (opts.deterministic) {
-    return normalizeOutput(result);
+  const bodyMarkdown = opts.deterministic
+    ? normalizeOutput(result)
+    : normalizeGfmTableDelimiters(result);
+  if (leadingFrontmatter !== null) {
+    return joinYamlFrontmatter(leadingFrontmatter, bodyMarkdown);
   }
-  return normalizeGfmTableDelimiters(result);
+  return bodyMarkdown;
 }
 
 /** Round-trip helper for tests. */
