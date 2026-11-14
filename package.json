@@ -300,7 +300,7 @@
     "@tiptap/extension-task-item": "3.32.2",
     "@tiptap/extension-task-list": "3.32.2",
     "@tiptap/pm": "3.32.2",
-    "@tiptap/starter-kit": "3.32.2",
+    "@tiptap/starter-kit": "3.33.1",
     "dompurify": "^3.4.17",
     "highlight.js": "^11.12.0",
     "katex": "^0.18.2",
