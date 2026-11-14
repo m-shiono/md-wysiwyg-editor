@@ -272,7 +272,7 @@
     "@types/dompurify": "^3.0.5",
     "@types/mdast": "^4.0.4",
     "@types/mocha": "^10.0.10",
-    "@types/node": "^20.17.0",
+    "@types/node": "^26.6.6",
     "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
