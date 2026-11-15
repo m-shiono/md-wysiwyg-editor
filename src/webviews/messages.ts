@@ -12,16 +12,26 @@ export type WebviewOutboundMessage =
       editorMode: EditorMode;
     }
   /** docJson omitted for Markdown-originated sync (markdownText only — TC-067). */
-  | { type: 'docUpdated'; docJson?: string; markdownText: string }
+  | { type: 'docUpdated'; docJson?: string; markdownText: string; updateEpoch?: number }
   | { type: 'convertToGfmCancelled' }
   | { type: 'readonlyChanged'; readonly: boolean }
   | { type: 'tableLimitWarning'; exceeded: boolean; message?: string; rows: number; cols: number }
-  | { type: 'imageInserted'; relativePath: string }
+  | { type: 'imageInserted'; relativePath: string; displaySrc?: string }
   | { type: 'rawParseFailed'; failed: boolean; message?: string }
   | { type: 'modeChanged'; editorMode: EditorMode }
   | { type: 'previewMarpHtml'; html: string }
   | { type: 'themeUpdated'; kind: 'light' | 'dark' | 'highContrast' }
-  | { type: 'plantUmlRendered'; id: string; svg: string; available: boolean };
+  | { type: 'plantUmlRendered'; id: string; svg: string; available: boolean }
+  | { type: 'testDiagnosticRequest'; requestId: string };
+
+export type WebviewDiagnosticSnapshot = {
+  readyReceived?: boolean;
+  hasProseMirror: boolean;
+  editorText: string;
+  mermaidSvgCount: number;
+  mermaidErrors: string[];
+  csp: string;
+};
 
 export type WebviewInboundMessage =
   | { type: 'ready' }
@@ -46,7 +56,8 @@ export type WebviewInboundMessage =
   | { type: 'renderPlantUml'; id: string; source: string }
   | { type: 'setTablePipeAlignment'; alignment: 'aligned' | 'compact' }
   | { type: 'log'; message: string }
-  | { type: 'openNativePreview' };
+  | { type: 'openNativePreview' }
+  | ({ type: 'testDiagnosticResponse'; requestId: string } & WebviewDiagnosticSnapshot);
 
 export interface VsCodeApi {
   postMessage(message: WebviewInboundMessage): void;

@@ -1,141 +1,56 @@
-/**
- * TC-MATH-001–006: KaTeX Math Rendering Support (katex-math-rendering).
- */
 import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
-import katex from 'katex';
+import { bootEditorWebviewInJsdom } from '../../helpers/webview-jsdom-harness';
 
-function readRepoFile(...parts: string[]): string {
-  const filePath = path.resolve(process.cwd(), ...parts);
-  if (!fs.existsSync(filePath)) {
-    return '';
-  }
-  return fs.readFileSync(filePath, 'utf8');
-}
+suite('KaTeX Math Block Tests (JSDOM runtime)', () => {
+  test('TC-I31-021a: package.json includes katex and media/editor.css defines math-block styles', () => {
+    const pkgRaw = fs.readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf8');
+    const pkg = JSON.parse(pkgRaw) as { dependencies?: Record<string, string> };
+    assert.ok(pkg.dependencies?.katex, 'package.json must depend on katex');
 
-suite('katex-math-rendering (TC-MATH-001–006)', () => {
-  const packageJsonSrc = readRepoFile('package.json');
-  const editorTsSrc = readRepoFile('media/editor.ts');
-  const editorCssSrc = readRepoFile('media/editor.css');
-
-  suite('TC-MATH-001: Package dependency and import', () => {
-    test('package.json declares katex dependency', () => {
-      const pkg = JSON.parse(packageJsonSrc);
-      assert.ok(pkg.dependencies?.katex, 'katex must be in dependencies');
-    });
-
-    test('editor.ts imports katex', () => {
-      assert.ok(
-        editorTsSrc.includes('import katex from "katex"') || editorTsSrc.includes("import katex from 'katex'"),
-        'editor.ts must import katex',
-      );
-    });
+    const css = fs.readFileSync(path.resolve(process.cwd(), 'media/editor.css'), 'utf8');
+    assert.ok(css.includes('.math-block'), 'media/editor.css must define .math-block styles');
   });
 
-  suite('TC-MATH-002: Math NodeView structure', () => {
-    test('handles both math and latex code blocks', () => {
-      assert.ok(
-        editorTsSrc.includes('language === "math"') && editorTsSrc.includes('language === "latex"'),
-        'editor.ts must handle math and latex languages',
-      );
+  test('TC-I31-021b: MathBlock renders KaTeX for math/LaTeX/latex blocks, handles syntax errors gracefully, and blocks XSS', () => {
+    const docJson = JSON.stringify({
+      type: 'doc',
+      content: [
+        { type: 'codeBlock', attrs: { language: 'math' }, content: [{ type: 'text', text: 'E = mc^2' }] },
+        { type: 'codeBlock', attrs: { language: 'LaTeX' }, content: [{ type: 'text', text: '\\frac{1}{' }] },
+        { type: 'codeBlock', attrs: { language: 'latex' }, content: [{ type: 'text', text: '<img src=x onerror=alert(1)><script>alert(2)</script>' }] },
+        { type: 'codeBlock', attrs: { language: 'math' } },
+      ],
     });
 
-    test('creates .math-block with .math-preview and .math-source', () => {
-      assert.ok(
-        editorTsSrc.includes('math-block') &&
-          editorTsSrc.includes('math-preview') &&
-          editorTsSrc.includes('math-source'),
-        'NodeView must contain math-block, math-preview, and math-source',
-      );
+    const harness = bootEditorWebviewInJsdom({
+      initMessage: {
+        docJson,
+        markdownText: '```math\nE = mc^2\n```',
+        readonly: false,
+        editorMode: 'markdown',
+      },
     });
-  });
+    try {
+      const blocks = harness.document.getElementById('editor')!.querySelectorAll('.math-block');
+      assert.strictEqual(blocks.length, 4, 'All math/LaTeX/tex codeBlocks should mount .math-block');
 
-  suite('TC-MATH-003 & TC-MATH-004: KaTeX rendering & error fallback', () => {
-    test('renders valid LaTeX expressions with katex.renderToString', () => {
-      const latex = 'E = mc^2';
-      const html = katex.renderToString(latex, { displayMode: true, throwOnError: false });
-      assert.ok(html.includes('class="katex"'), 'Output must contain katex class');
-      assert.ok(html.includes('class="katex-html"'), 'Output must contain katex-html element');
-    });
+      const firstPreview = blocks[0].querySelector('.math-preview')!;
+      assert.ok(firstPreview.querySelector('.katex'), 'Valid math should render .katex output');
+      assert.ok(blocks[0].querySelector('.math-source')?.textContent?.includes('E = mc^2'));
 
-    test('gracefully handles syntax error when throwOnError is false', () => {
-      const invalidLatex = '\\invalidCommand{foo}';
-      const html = katex.renderToString(invalidLatex, { displayMode: true, throwOnError: false });
-      assert.ok(html.includes('katex-error') || html.includes('color:'), 'Output must handle error safely');
-    });
+      const secondPreview = blocks[1].querySelector('.math-preview')!;
+      assert.ok(secondPreview.querySelector('.katex-error'), 'Invalid LaTeX command should render .katex-error via throwOnError: false');
 
-    test('editor.ts configures katex with throwOnError: false', () => {
-      assert.ok(
-        editorTsSrc.includes('throwOnError: false'),
-        'editor.ts must set throwOnError: false for resilience',
-      );
-    });
-  });
+      const xssPreview = blocks[2].querySelector('.math-preview')!;
+      assert.strictEqual(xssPreview.querySelectorAll('script').length, 0);
+      assert.strictEqual(xssPreview.innerHTML.includes('onerror'), false);
 
-  suite('TC-MATH-005 & TC-MATH-006: Sanitization & Preview mode styling', () => {
-    test('editor.ts invokes DOMPurify.sanitize on math output', () => {
-      assert.ok(
-        editorTsSrc.includes('DOMPurify.sanitize(html'),
-        'editor.ts must sanitize math HTML using DOMPurify',
-      );
-    });
-
-    test('editor.css hides .math-source in Preview mode', () => {
-      assert.ok(
-        editorCssSrc.includes("body[data-mode='preview'] .math-source") &&
-          editorCssSrc.includes('display: none;'),
-        'Preview mode must hide .math-source in CSS',
-      );
-    });
-  });
-
-  suite('Edge Cases & Complex Formulas', () => {
-    test('TC-MATH-007: renders complex multi-line and advanced formulas correctly', () => {
-      const complex = '\\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi} \\quad \\sum_{k=1}^n k = \\frac{n(n+1)}{2}';
-      const html = katex.renderToString(complex, { displayMode: true, throwOnError: false });
-      assert.ok(html.includes('class="katex"'), 'Must render integrals and summations');
-    });
-
-    test('TC-MATH-008: handles empty and whitespace-only math blocks gracefully', () => {
-      const empty = '   \n  \t  ';
-      assert.strictEqual(empty.trim(), '');
-      // editor.ts handles !source.trim() by clearing preview without katex call
-      assert.ok(editorTsSrc.includes('!source.trim()') && editorTsSrc.includes('preview.innerHTML = ""'));
-    });
-
-    test('TC-MATH-009: renders text macros with Unicode/Japanese safely', () => {
-      const withText = 'f(x) = x^2 \\quad \\text{（二次関数）}';
-      const html = katex.renderToString(withText, { displayMode: true, throwOnError: false });
-      assert.ok(html.includes('class="katex"'));
-    });
-
-    test('TC-MATH-010: handles case-insensitive language identifiers (Math, LaTeX)', () => {
-      assert.ok(
-        editorTsSrc.includes('((node.attrs.language as string) ?? "").toLowerCase()'),
-        'Must lowercase language attribute on node initialization',
-      );
-      assert.ok(
-        editorTsSrc.includes('((updatedNode.attrs.language as string) ?? "").toLowerCase()'),
-        'Must lowercase language attribute on node update',
-      );
-    });
-
-    test('TC-MATH-011: configures katex with displayMode: true', () => {
-      assert.ok(
-        editorTsSrc.includes('displayMode: true'),
-        'editor.ts must configure KaTeX with displayMode: true for block rendering',
-      );
-    });
-
-    test('TC-MATH-012: markdown-editor-provider.ts links katex.min.css in Webview head', () => {
-      const providerSrc = readRepoFile('src/providers/markdown-editor-provider.ts');
-      assert.ok(
-        providerSrc.includes('katex.min.css'),
-        'Provider must resolve and link katex.min.css in Webview head',
-      );
-    });
+      const emptyPreview = blocks[3].querySelector('.math-preview')!;
+      assert.ok(emptyPreview, 'Empty math block should still render preview container cleanly');
+    } finally {
+      harness.dispose();
+    }
   });
 });
-
-

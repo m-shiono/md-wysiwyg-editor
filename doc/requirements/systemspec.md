@@ -8,7 +8,7 @@ VS Code 拡張 **md-wysiwyg-editor** の振る舞い仕様（WHAT）。実装詳
 
 ## 概要
 
-チーム向け技術ドキュメントを Git 管理しながら、Word/Excel に近い WYSIWYG 体験で Markdown（`.md`）を編集する VS Code 拡張機能。MVP では同一 Custom Editor 上の **Preview / Markdown / Raw 三点モード**、**GFM 書式ツールバー**（§2 — 取り消し線・H1–H6・インラインコード・引用・タスクリスト・水平線等）、**GFM / HTML 二形式表編集**（§3・アーキテクチャ AD-005）、ファイル単位 Readonly 切替、Mermaid リアルタイム描画（VS Code kind → Mermaid `redux` / `redux-dark`、表示密度 `themeVariables.fontSize: '16px'`・ラベル `font-family` は Mermaid default 相当・`line-height: 1.2`、タイトル全文可視、Editor Preview / Rich Editor のみビューポート自然サイズ（scale 1）／Fit 時 contain／中央寄せ／ズーム／パン／スクロール、CSP 下 Host 同一 nonce による presentation `<style>` 再注入、frontmatter オプトイン ELK、Preview / Markdown で図下ソース併記 — §5）、**Marp プレビュー**（§6 — サイド/パネル。**Preview モードでも Marp 検出時は同一 Webview 内にスライド描画可** — §1 / AD-008）、**Host 側 `img/` 画像 URI 解決**（§7 / §9）、クリップボード画像のローカル保存を提供する。リッチ表現（拡張記法・HTML 混在）を Markdown 厳密互換より優先する（UD-001）。今回追加の書式ノードは GFM として往復できること（§8）。
+チーム向け技術ドキュメントを Git 管理しながら、Word/Excel に近い WYSIWYG 体験で Markdown（`.md`）を編集する VS Code 拡張機能。MVP では同一 Custom Editor 上の **Preview / Markdown / Raw 三点モード**、**GFM 書式ツールバー**（§2 — 取り消し線・H1–H6・インラインコード・引用・タスクリスト・水平線等）、**GFM / HTML 二形式表編集**（§3・アーキテクチャ AD-005）、ファイル単位 Readonly 切替、Mermaid リアルタイム描画（VS Code kind → Mermaid `redux` / `redux-dark`、表示密度 `themeVariables.fontSize: '16px'`・ラベル `font-family` は Mermaid default 相当・`line-height: 1`（`line-height: 1 !important` で `createText` 既定を上書き）、タイトル全文可視、Editor Preview / Rich Editor のみビューポート自然サイズ（scale 1）／Fit 時 contain／中央寄せ／ズーム／パン／スクロール、CSP 下 Host 同一 nonce による presentation `<style>` 再注入、frontmatter オプトイン ELK、Visual のみ図下ソース併記・Preview では非表示 — §5）、**Marp プレビュー**（§6 — サイド/パネル。**Preview モードでも Marp 検出時は同一 Webview 内にスライド描画可** — §1 / AD-008）、**Host 側 `img/` 画像 URI 解決**（§7 / §9）、クリップボード画像のローカル保存を提供する。リッチ表現（拡張記法・HTML 混在）を Markdown 厳密互換より優先する（UD-001）。今回追加の書式ノードは GFM として往復できること（§8）。
 
 **feature-slug:** `vsc-md-wysiwyg`（既存 MVP testspec ファイル名。製品識別子は下表）
 
@@ -46,9 +46,9 @@ AD-* の HOW 境界・レイヤ方針の正本は [architecture.md](../design/ar
 
 | 入力 | 型 | 必須 | 最小 | 最大 | 備考 |
 |------|-----|------|------|------|------|
-| `documentUri` | `vscode.Uri` | はい | — | — | ワークスペース内 `.md` |
+| `documentUri` | `vscode.Uri` | はい | — | — | `file` / `untitled` / `vscode-remote` 各スキームの `.md`。URI 結合・読込は `vscode.Uri.joinPath` と `vscode.workspace.fs` でスキーム/authority を保全（`fsPath` / `vscode.Uri.file` 前提禁止 — AD-005） |
 | `fileContent` | `string` (UTF-8) | はい | 0 B | 推奨 500 KB 未満 | 超過時は警告のみ（RK-004） |
-| `extensionActivation` | イベント | はい | — | — | Custom Editor オープン時に限定起動（AD-002） |
+| `extensionActivation` | イベント | はい | — | — | `onCustomEditor:md-wysiwyg-editor.wysiwyg` / `onLanguage:markdown`、および `contributes.commands` 全 16 コマンド（`toggleReadonly`, `showMarpPreview` 含む全 `onCommand:md-wysiwyg-editor.*`）を `package.json` `activationEvents` に明示列挙（AD-006） |
 | `editorMode` | `"preview" \| "markdown" \| "raw"` | はい | — | — | 初期値は設定 `md-wysiwyg-editor.defaultMode` に従う（未設定時デフォルト `"visual"` -> `markdown` / AD-016）。第 4 の mode id は持たない |
 | `modeSwitchCommand` | コマンド / UI 切替 | 任意 | — | — | 三点モード変更のみ。ディスク I/O なし。Default Preview は対象外 |
 | `openNativePreview` | Webview → Host postMessage | 任意 | — | — | Default Preview ボタン押下。payload 型は `messages.ts`（旧名 `openNativePreviewToSide` は廃止）。Host のみ dirty/save/コマンド実行 |
@@ -57,12 +57,12 @@ AD-* の HOW 境界・レイヤ方針の正本は [architecture.md](../design/ar
 
 | 条件 | 戻り値 / ステータス | 備考 |
 |------|-------------------|------|
-| 成功（オープン） | Custom Editor タブ表示、Webview ロード完了、設定に基づく初期モード（デフォルト **Visual**、表示ラベル Visual） | AD-016 |
+| 成功（オープン） | Custom Editor タブ表示、Webview ロード完了、設定に基づく初期モード（デフォルト **Visual**、表示ラベル Visual） | AD-016。`backupId` 指定時は Hot Exit バッファ復元 |
 | 成功（モード切替） | 対象面を表示、Document 内容は維持、**ディスク未書込** | dirty 状態も変更しない（内容未変更時）。三点往復可（下記受け入れ） |
 | 成功（Default Preview・clean） | 現在面不変のまま `markdown.showPreview` で標準 Preview を開き、**アクティブ WYSIWYG と同一 editor group** に配置する | Host コマンド §10。Beside（新規グループ）を作らない。`editorMode` は変更しない |
 | 成功（Default Preview・dirty→Save） | Save 成功後のみ標準 Preview を同一グループに開く | Cancel / 閉じる / save 失敗時は開かない |
 | 成功（保存） | ディスク上 `.md` 更新、`dirty` 解除 | AD-013 整形後 |
-| ファイル読込失敗 | エディタ未表示、通知 + Output | 権限・存在エラー |
+| ファイル読込失敗（`openCustomDocument`） | プロバイダ側で予期せぬ例外を throw せず、安全なフォールバック状態（または空ドキュメント）でハンドリングし通知 + Output | VS Code に予期せぬエラーダイアログを表示させない（C-2 / `scm-diff-config-defaults`） |
 | シリアライズ失敗 | 保存拒否、`dirty` 維持、通知 + Output | Document 正本は維持。Default Preview も開かない |
 | Raw パース失敗 | Document **を更新しない**、通知 + Output、**save ブロック** | 失敗中フラグ。直前の有効 Document を保持。Default Preview Save ゲートも拒否 |
 | Default Preview URI 解決不能 | Warning（`Open a Markdown file first` 相当）、プレビュー非オープン | アクティブ WYSIWYG `TabInputCustom.uri` 前提 |
@@ -71,7 +71,7 @@ AD-* の HOW 境界・レイヤ方針の正本は [architecture.md](../design/ar
 
 ### Preconditions
 
-- VS Code が AD-001 で定める最小 `engines.vscode` を満たすこと
+- VS Code が `engines.vscode`（`^1.85.0`）を満たすこと。拡張が使用するすべての `vscode` API は `@types/vscode: ^1.85.0` 互換範囲に限定し、1.86+ 限定 API を使用しないこと（AD-001 / AD-007）
 - 対象 URI が対応スキーム（`file`, `untitled`, `vscode-remote`）であること（`package.json` の `customEditors.selector` で明示的に制限）
 - Source Control（Git 差分など `git:` スキーム）は、`contributes.configurationDefaults`（`workbench.diffEditorAssociations` および `workbench.editorAssociations`）およびセレクタ制限により、VS Code 標準のテキスト Diff Editor（Monaco Diff Editor）へ自動フォールバックさせること（AD-001 / AD-002 / UD-001）
 - Webview でスクリプト有効化が許可されること
@@ -96,8 +96,8 @@ Webview `#mode-toolbar`（`role="toolbar"`）は、編集モード（Visual / So
 
 | 区分 / 順序 | 種別 | mode id / action | 表示ラベル（ボタン文言） | `title` / `aria-label` | 備考 |
 |---|---|---|---|---|---|
-| セグメント 1 | モード | `markdown` | `Visual` | `Visual Editor` | WYSIWYG 編集 |
-| セグメント 2 | モード | `raw` | `Source` | `Source Editor` | Markdown ソース直接編集（初期アクティブ） |
+| セグメント 1 | モード | `markdown` | `Visual` | `Visual Editor` | WYSIWYG 編集（未設定時の既定初期アクティブ） |
+| セグメント 2 | モード | `raw` | `Source` | `Source Editor` | Markdown ソース直接編集 |
 | 単独 3 | モード | `preview` | `Preview` | `Editor Preview` | Read-only 表示（非編集） |
 | アクション 4 | 非モード | `data-action="native-preview"`（**`data-mode` なし**） | `Default Preview` | `Open Default Markdown Preview` | VS Code 標準プレビュー（同一グループ） |
 
@@ -175,14 +175,14 @@ Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdow
 2. **Markdown ↔ Raw 相互リアルタイム同期:** 一方の編集は postMessage 経由で Document に反映され、他方面も Document から再投影される。正本は常に Extension Host の `MarkdownDocument`
 3. **Preview** は Document の現在内容を **厳密 RO** で描画する一方通行。Preview 表示中に Document が更新されれば描画を追随する。**Preview への切替時**は Host が Document 最新を再投影する（Raw 離脱時の flush 後を含む）。非 Marp は rewrite 済み `docJson`、Marp 検出時は `previewMarpHtml` で `#preview-marp-root` を更新
 4. **モード切替**（Preview ↔ Markdown ↔ Raw）は表示面の切替のみであり、**ディスクへの書き込みを行わない**。内容に差分がなければ `dirty` も変化しない。Preview / Markdown への切替時は Document から視覚面を refresh する。Preview 離脱時は `#preview-marp-root` を空にし `#editor` を復帰
-5. Markdown / Raw での内容変更は既存の CustomDocument フローに乗り `dirty` となる。`save` / `saveAs` で Document 内容をシリアライズし UTF-8 で書き込む（§8）
+5. Markdown / Raw での内容変更は既存の CustomDocument フローに乗り `dirty` となる。`save` / `saveAs` で Document 内容をシリアライズし UTF-8 で書き込む（§8）。`revert` / `backup`（Hot Exit 復元含む）および `onDidDispose` によるパネル/ドキュメント/Switch Guard のクリーンアップを完了する
 6. undo/redo は Document 経由で一貫して動作する（モードをまたいでも同一 Document 履歴）
 7. エディタを閉じる際、未保存変更があれば VS Code 標準の確認ダイアログが表示される
 8. **Default Preview:** ツールバー **Default Preview** 押下で Host が対象 URI を解決し、Document が clean なら即 `markdown.showPreview`（同一グループ補償付き — §10）。dirty のときは §8 / §10 の Save/Cancel ゲートに従う。押下は三点モード面（`editorMode`）を変更しない
 
 #### 例外系
 
-1. オープン時にパース不能な Markdown/HTML 混在は可能な範囲で表示し、保存時にシリアライズエラーを報告する
+1. オープン時に `openCustomDocument` が読込不能や不正内容に遭遇した場合でも例外を throw して VS Code 標準の予期せぬエラー表示を誘発させず、安全なフォールバック文書またはエラー通知＋Output 記録でハンドリングする（C-2）。パース不能な Markdown/HTML 混在は可能な範囲で表示し、保存時にシリアライズエラーを報告する
 2. **Raw 編集中のパース失敗:** Document を破壊・上書きしない。ユーザーへ通知し Output に記録する。パース失敗が解消されるまで **save をブロック**する（直前の有効 Document 内容を正本として維持）
 3. 外部プロセスによるファイル変更は VS Code の標準リロード/競合フローに従う
 4. **Default Preview 失敗:** URI 解決不能・Save Cancel・save 失敗・`markdown.showPreview` 失敗時はプレビューを開かず、Warning / ErrorMessage + Output（§10）。**`markdown.showPreviewToSide` へのフォールバックはしない**
@@ -206,12 +206,12 @@ Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdow
 
 ### Related Tests
 
-- [doc/test/testspec-vsc-md-wysiwyg.md](../test/testspec-vsc-md-wysiwyg.md) — TC-001–009（基盤）および三点モード追加 TC。Preview Marp 分岐・`previewMarpHtml`・`isMarpDocument` 共用: TC-124–142（`preview-rich-embed`）。Preview 可読性・`themeUpdated`: 後続 TC（`preview-mode-quality`）
-- 初期 Raw・Default Preview・dirty Save/Cancel・Pattern A 非干渉・三点往復・表示ラベル・同一グループ配置: [doc/test/testspec-native-preview-side-and-default-raw.md](../test/testspec-native-preview-side-and-default-raw.md)（`native-preview-side-and-default-raw` / `default-preview-same-tab-group`）
+- [doc/test/testspec-vsc-md-wysiwyg.md](../test/testspec-vsc-md-wysiwyg.md) — TC-001–009（基盤）および三点モード追加 TC。Preview Marp 分岐・`previewMarpHtml`・`isMarpDocument` 共用: TC-124–142（`preview-rich-embed`）。Preview 可読性・`themeUpdated`: TC-146–148（`preview-mode-quality`）
+- 既定エディタモード設定・Default Preview・dirty Save/Cancel・Pattern A 非干渉・三点往復・表示ラベル・同一グループ配置: [doc/test/testspec-default-editor-mode-config.md](../test/testspec-default-editor-mode-config.md)、[doc/test/testspec-native-preview-side-and-default-raw.md](../test/testspec-native-preview-side-and-default-raw.md)（`native-preview-side-and-default-raw` / `default-preview-same-tab-group`）
 
 ### Spec Gaps
 
-- なし（モード初期値 Raw・Raw パース失敗時 save ブロック・モード切替でディスク非書込・Preview Marp 分岐・画像 Host rewrite・Preview 可読性 CSS・`themeUpdated`・Default Preview 同一グループ配置は本節および §5 / §6 / §7 / §8 / §9 / §10 で確定）
+- なし（モード初期値 `Visual` / `markdown`・`defaultMode` 設定・`openCustomDocument` 安全読込・Raw パース失敗時 save ブロック・モード切替でディスク非書込・Preview Marp 分岐・画像 Host rewrite・Preview 可読性 CSS・`themeUpdated`・Default Preview 同一グループ配置・`engines.vscode: ^1.85.0` API 下限は本節および §5 / §6 / §7 / §8 / §9 / §10 で確定）
 
 ---
 
@@ -540,8 +540,8 @@ Source モード（`<textarea id="raw-editor">`）において、カーソルが
 
 | 条件 | 戻り値 / ステータス | 備考 |
 |------|-------------------|------|
-| 成功（RO ON） | Markdown / Raw とも編集不可、バッジ表示 | Webview `editable: false`（全編集面） |
-| 成功（RO OFF） | 編集可（現在モードに応じる） | Preview モード自体は常に非編集 |
+| 成功（RO ON） | Markdown / Raw とも編集不可、バッジ表示（`panel.title` に ` (Readonly)` サフィックスを 1 回のみ付与） | Webview `editable: false`（全編集面）。既に付与済みなら重複付与しない |
+| 成功（RO OFF） | 編集可（現在モードに応じる）、`panel.title` から ` (Readonly)` サフィックスを確実に除去 | ON/OFF 繰り返しによる多重付与や解除漏れを防止（AD-006）。Preview モード自体は常に非編集 |
 | 未オープン URI | 次回オープン時に状態復元 | workspaceState |
 
 ### Preconditions
@@ -580,7 +580,7 @@ Source モード（`<textarea id="raw-editor">`）において、カーソルが
 
 ### 概要
 
-` ```mermaid ` フェンスブロックをリアルタイムに図として描画する。編集はテキストのみ（UD-004, AD-007）。**Edit Rich Editor（`markdown`）** ではブロック内順は **図（`.mermaid-preview`）→ ソース（`.mermaid-source`）**（図の下にソース併記）。**Editor Preview（`preview`）** では `body[data-mode='preview'] .mermaid-source { display: none; }` によりソース領域を非表示とし、図のみを表示する（厳密 RO — §1）。フェンス内 YAML frontmatter / `%%{init:...}%%` は Mermaid ネイティブに委譲する（`preview-mode-quality` AD-003）— per-diagram の `theme` / `layout` はグローバル initialize より優先。グローバル見た目は **VS Code kind → Mermaid redux 系マップ**（`light`→`redux`、`dark`/`highContrast`→`redux-dark`）とし、classic `default`/`dark` マップおよび島ライト強制・全 kind `theme: 'default'` は **撤回**する（`mermaid-redux-elk-fidelity` / `fix-mermaid-edge-styles`）。**表示密度**はグローバル `themeVariables.fontSize: '16px'`（固定 px。VS Code 既定 Markdown Preview / Mermaid 既定相当。旧 `'12px'`／`'8px'`／`'10px'`／`'13px'` を置換 — `mermaid-default-preview-parity` / 継承 `mermaid-readable-viewport`）。**ラベルタイポ**は Mermaid default テーマに寄せ、`font-family: "trebuchet ms", verdana, arial, sans-serif`・**`line-height: 1.2`**（エディタ本文の `line-height: 1.6` を継承しない — `mermaid-label-metrics`）。flowchart ノード寸法は stock Mermaid に近い **hug→wrap**（グローバル `flowchart.wrappingWidth: 200`・`flowchart.padding: 15`。htmlLabels 既定 true のまま）。`themeVariables` に `var(--vscode-...)` は置かない。**密度の主手段は `themeVariables.fontSize`** であり、CSS `transform: scale(...)` / `zoom` を密度の代替にしない。CSP が SVG 内インライン `<style>` を無効化する前提で、`mermaid.render` **測定前**にも Host 同一 nonce の密度 CSS（ラベル `font-size: 16px`・同一 `font-family`・`line-height: 1.2`）を効かせ、測定時と presentation 再注入後の食い違いを防ぐ。一方、**閲覧用ビューポート変換**（初期・再 render・テーマ切替後は **scale 1（自然サイズ）**・自動 contain なし・図が小さい軸は中央寄せ・はみ出しはスクロール・**Fit ボタン押下時のみ**枠内 contain・ズーム原点中央・ズームイン／アウト・パン／スクロール）は密度契約とは別であり、Editor Preview / Rich Editor の Mermaid NodeView で提供する（Default Preview への UI 埋め込み・別 Webview 化はしない）。図タイトル全文がクリップされないこと（表示層の viewBox / overflow / 余白調整。Document / serialize 非干渉）。per-diagram frontmatter / `%%{init}%%` による上書きは従来どおり可。Mermaid `render` 結果の presentation `<style>` を抽出し **Host 発行と同一 nonce** を付与して Webview に再注入する（セレクタは `.mermaid-preview` / 当該図スコープ）。静的 Host CSS エッジフォールバックは再注入が効く前提で **縮小または撤廃**する。`style-src` に `'unsafe-inline'` は追加しない（§9）。`@mermaid-js/layout-elk` を登録し、図が `layout: elk`（等）を要求したときのみ ELK を用いる（グローバル強制なし・遅延ロード）。HIP sanitize・`securityLevel: 'strict'`・DOMPurify・**`HTML_INTEGRATION_POINTS: { foreignobject: true }`** は不変（§9）。Mermaid Chart 拡張依存・ピクセル完全一致は Out。
+` ```mermaid ` フェンスブロックをリアルタイムに図として描画する。編集はテキストのみ（UD-004, AD-007）。**Edit Rich Editor（`markdown`）** ではブロック内順は **図（`.mermaid-preview`）→ ソース（`.mermaid-source`）**（図の下にソース併記）。**Editor Preview（`preview`）** では `body[data-mode='preview'] .mermaid-source { display: none; }` によりソース領域を非表示とし、図のみを表示する（厳密 RO — §1）。フェンス内 YAML frontmatter / `%%{init:...}%%` は Mermaid ネイティブに委譲する（`preview-mode-quality` AD-003）— per-diagram の `theme` / `layout` はグローバル initialize より優先。グローバル見た目は **VS Code kind → Mermaid redux 系マップ**（`light`→`redux`、`dark`/`highContrast`→`redux-dark`）とし、classic `default`/`dark` マップおよび島ライト強制・全 kind `theme: 'default'` は **撤回**する（`mermaid-redux-elk-fidelity` / `fix-mermaid-edge-styles`）。**表示密度**はグローバル `themeVariables.fontSize: '16px'`（固定 px。VS Code 既定 Markdown Preview / Mermaid 既定相当。旧 `'12px'`／`'8px'`／`'10px'`／`'13px'` を置換 — `mermaid-default-preview-parity` / 継承 `mermaid-readable-viewport`）。**ラベルタイポ**は Mermaid default テーマに寄せ、`font-family: "trebuchet ms", verdana, arial, sans-serif`・**`line-height: 1`**（`line-height: 1 !important` で Mermaid `createText` 既定 `1.5` を上書きし、エディタ本文の `line-height: 1.6` を継承しない — `mermaid-label-metrics`）。flowchart ノード寸法は stock Mermaid に近い **hug→wrap**（グローバル `flowchart.wrappingWidth: 200`・`flowchart.padding: 2`。htmlLabels 既定 true のまま）。`themeVariables` に `var(--vscode-...)` は置かない。**密度の主手段は `themeVariables.fontSize`** であり、CSS `transform: scale(...)` / `zoom` を密度の代替にしない。CSP が SVG 内インライン `<style>` を無効化する前提で、`mermaid.render` **測定前**にも Host 同一 nonce の密度 CSS（ラベル `font-size: 16px`・同一 `font-family`・`line-height: 1 !important`）を効かせ、測定時と presentation 再注入後の食い違いを防ぐ。一方、**閲覧用ビューポート変換**（初期・再 render・テーマ切替後は **scale 1（自然サイズ）**・自動 contain なし・図が小さい軸は中央寄せ・はみ出しはスクロール・**Fit ボタン押下時のみ**枠内 contain・ズーム原点中央・ズームイン／アウト・パン／スクロール）は密度契約とは別であり、Editor Preview / Rich Editor の Mermaid NodeView で提供する（Default Preview への UI 埋め込み・別 Webview 化はしない）。図タイトル全文がクリップされないこと（表示層の viewBox / overflow / 余白調整。Document / serialize 非干渉）。per-diagram frontmatter / `%%{init}%%` による上書きは従来どおり可。Mermaid `render` 結果の presentation `<style>` を抽出し **Host 発行と同一 nonce** を付与して Webview に再注入する（セレクタは `.mermaid-preview` / 当該図スコープ）。静的 Host CSS エッジフォールバックは再注入が効く前提で **縮小または撤廃**する。`style-src` に `'unsafe-inline'` は追加しない（§9）。`@mermaid-js/layout-elk` を登録し、図が `layout: elk`（等）を要求したときのみ ELK を用いる（グローバル強制なし・遅延ロード）。HIP sanitize・`securityLevel: 'strict'`・DOMPurify・**`HTML_INTEGRATION_POINTS: { foreignobject: true }`** は不変（§9）。Mermaid Chart 拡張依存・ピクセル完全一致は Out。
 
 ### Inputs & Types
 
@@ -598,7 +598,7 @@ Source モード（`<textarea id="raw-editor">`）において、カーソルが
 
 | 条件 | 戻り値 / ステータス | 備考 |
 |------|-------------------|------|
-| 成功 | ブロック内に SVG/図表示＋ソース表示（Markdown）／図のみ表示（Preview）＋ビューポート | ソースは Document に保持。Markdown では `.mermaid-source` を表示（図の下）、Preview では `.mermaid-source` を非表示（`display: none`）。presentation CSS は Host 同一 nonce 再注入後に効く。グローバル密度は `fontSize: '16px'`（図単位上書きがなければ）。ラベルは Mermaid default 相当の `font-family`・`line-height: 1.2`。タイトル全文可視。初期・再 render・テーマ切替後は scale 1（自然サイズ・自動 contain なし）；図がビューポートより小さい軸は中央寄せ；はみ出しはスクロール。Fit 押下時のみ枠内 contain |
+| 成功 | ブロック内に SVG/図表示＋ソース表示（Markdown）／図のみ表示（Preview）＋ビューポート | ソースは Document に保持。Markdown では `.mermaid-source` を表示（図の下）、Preview では `.mermaid-source` を非表示（`display: none`）。presentation CSS は Host 同一 nonce 再注入後に効く。グローバル密度は `fontSize: '16px'`（図単位上書きがなければ）。ラベルは Mermaid default 相当の `font-family`・`line-height: 1`（`line-height: 1 !important`）。タイトル全文可視。初期・再 render・テーマ切替後は scale 1（自然サイズ・自動 contain なし）；図がビューポートより小さい軸は中央寄せ；はみ出しはスクロール。Fit 押下時のみ枠内 contain |
 | 構文エラー | ブロック内にエラーメッセージ | ソースは Document に保持。Markdown ではソース表示のまま error、Preview ではソース非表示のまま preview 領域に `.mermaid-error`。ビューポート UI は隠すか無効化。Output に記録（AD-015） |
 | ELK 登録・ロード失敗 | 当該図のみエラー表示 | Webview 全体は止めない（既存 try-catch 隔離）。Output に記録可 |
 | レンダリングタイムアウト | エラー表示 | RK-004 |
@@ -620,7 +620,7 @@ Source モード（`<textarea id="raw-editor">`）において、カーソルが
 6. **フェンス全文レンダリング**（`preview-mode-quality` AD-003 / `mermaid-redux-elk-fidelity` AD-013）: `mermaid.render(id, source)` にはフェンス内 **全文**を渡す。YAML frontmatter および `%%{init:...}%%` による per-diagram 設定（`theme`・`layout` 含む）は Mermaid ネイティブに委譲し、Webview 側で frontmatter を strip しない。per-diagram 設定はグローバル `mermaid.initialize` より優先（Mermaid v11 仕様）
 7. **グローバルテーマ（redux kind マップ）**（`mermaid-redux-elk-fidelity` / `mermaid-theme-crash-fix` 継承）: `buildMermaidThemeConfig`（または同等）は VS Code kind を次のとおりマップする — `light` → Mermaid `theme: 'redux'`、`dark` / `highContrast` → Mermaid `theme: 'redux-dark'`（同等の redux 系が必要なら同系に限る）。いずれも `securityLevel: 'strict'`。classic `default`/`dark` マップおよび全 kind 強制 `theme: 'default'` は廃止。`themeVariables` への `var(--vscode-...)` 指定は再導入しない（`mermaid-theme-crash-fix`）。`highContrast` 専用パレット・Chart テーマピッカーは本タスク Out。
 
-7a. **表示密度（グローバル `fontSize`）＋ ラベルタイポグラフィ＋ flowchart hug→wrap**（`mermaid-label-metrics` / 継承 `mermaid-default-preview-parity` / `mermaid-readable-viewport` / `mermaid-display-density`）: グローバル `mermaid.initialize` / `buildMermaidThemeConfig`（または同等）の `themeVariables` に **`fontSize: '16px'`** を含める（旧 `'12px'`／`'8px'`／`'10px'`／`'13px'` を置換。図テキストおよびノード寸法に効く固定 px。VS Code 既定 Markdown Preview / Mermaid 既定相当）。**ラベルの `font-family`** は Mermaid default テーマと同じ **`"trebuchet ms", verdana, arial, sans-serif`** とする。**ラベルの `line-height` は `1`**（Mermaid createText のインライン `1.5` を Host nonce／表示 CSS の `line-height: 1 !important` で上書きし、測定と描画を一致させる。§1 Preview 本文の `1.6` も非継承）。flowchart は **`wrappingWidth: 200`**・**`padding: 2`**（文字と枠線の間隔。stock 15 より詰める。ピクセル一致は Non-Goal）。htmlLabels 既定 true のまま。`useMaxWidth` は不要なら変更しない。**密度の主手段は `themeVariables.fontSize`（および Mermaid がそれに追随するノード寸法）**であり、`.mermaid-preview` 等への CSS `transform: scale(...)` / `zoom` による見た目縮小を **密度の代替にしてはならない**。CSP 下では `mermaid.render` **前**に Host 同一 nonce CSS でラベル測定コンテキストへ **`font-size: 16px`・同一 `font-family`（`"trebuchet ms", verdana, arial, sans-serif`）・`line-height: 1.2`** を適用し、測定と presentation 再注入後の描画が食い違わないようにする（`style-src` に `'unsafe-inline'` を追加しない）。閲覧用のビューポート変換（下記 7b / 7c）は本項とは別契約であり、ズーム後に 16px 描画の文字・ノードを拡大して読めることを目的とする。`themeVariables` に `var(--vscode-...)` は置かない（上記 7 と同一禁止）。per-diagram YAML frontmatter / `%%{init}%%` による `themeVariables` / `fontSize` 上書きは Mermaid ネイティブ優先のまま許容（上記 6）。redux kind マップ・nonce 再注入・ELK オプトイン・strict / HIP は不変。
+7a. **表示密度（グローバル `fontSize`）＋ ラベルタイポグラフィ＋ flowchart hug→wrap**（`mermaid-label-metrics` / 継承 `mermaid-default-preview-parity` / `mermaid-readable-viewport` / `mermaid-display-density`）: グローバル `mermaid.initialize` / `buildMermaidThemeConfig`（または同等）の `themeVariables` に **`fontSize: '16px'`** を含める（旧 `'12px'`／`'8px'`／`'10px'`／`'13px'` を置換。図テキストおよびノード寸法に効く固定 px。VS Code 既定 Markdown Preview / Mermaid 既定相当）。**ラベルの `font-family`** は Mermaid default テーマと同じ **`"trebuchet ms", verdana, arial, sans-serif`** とする。**ラベルの `line-height` は `1`**（Mermaid createText のインライン `1.5` を Host nonce／表示 CSS の `line-height: 1 !important` で上書きし、測定と描画を一致させる。§1 Preview 本文の `1.6` も非継承）。flowchart は **`wrappingWidth: 200`**・**`padding: 2`**（文字と枠線の間隔。stock 15 より詰める。ピクセル一致は Non-Goal）。htmlLabels 既定 true のまま。`useMaxWidth` は不要なら変更しない。**密度の主手段は `themeVariables.fontSize`（および Mermaid がそれに追随するノード寸法）**であり、`.mermaid-preview` 等への CSS `transform: scale(...)` / `zoom` による見た目縮小を **密度の代替にしてはならない**。CSP 下では `mermaid.render` **前**に Host 同一 nonce CSS でラベル測定コンテキストへ **`font-size: 16px`・同一 `font-family`（`"trebuchet ms", verdana, arial, sans-serif`）・`line-height: 1 !important`** を適用し、測定と presentation 再注入後の描画が食い違わないようにする（`style-src` に `'unsafe-inline'` を追加しない）。閲覧用のビューポート変換（下記 7b / 7c）は本項とは別契約であり、ズーム後に 16px 描画の文字・ノードを拡大して読めることを目的とする。`themeVariables` に `var(--vscode-...)` は置かない（上記 7 と同一禁止）。per-diagram YAML frontmatter / `%%{init}%%` による `themeVariables` / `fontSize` 上書きは Mermaid ネイティブ優先のまま許容（上記 6）。redux kind マップ・nonce 再注入・ELK オプトイン・strict / HIP は不変。
 
 7b. **タイトル全文可視**（`mermaid-readable-viewport` AD-003）: 表示層で viewBox / overflow / 余白（padding）等を調整し、図タイトル（Mermaid が描画するタイトル文字列）が枠外クリップや欠落なく **全文可視**であること。タイトルが図コンテンツ左端より左にはみ出している場合は、表示層でタイトル位置を右へ揃え（title left ≥ diagram content left）、ズーム時の先頭文字欠けを防ぐ。Document / serialize / `docJson` / `markdownText` は変更しない。
 
@@ -642,7 +642,7 @@ Source モード（`<textarea id="raw-editor">`）において、カーソルが
 
 12. **ELK レイアウト（登録・オプトイン・遅延ロード）**（`mermaid-redux-elk-fidelity` AD-005–AD-007）: オープンな `@mermaid-js/layout-elk` を依存追加し、Webview 起動時または初回 ELK 要求時に `mermaid.registerLayoutLoaders(...)` する。パッケージ（および ELK 本体）は **動的 import / コード分割**し、初期 Webview バンドルを不用意に肥大化させない。グローバル `mermaid.initialize` で全図に `layout: 'elk'` を **強制しない**。既定レイアウトは Mermaid オープン既定（dagre 系）のままとし、図が frontmatter / `%%{init}%%` 等で `layout: elk`（および互換の flowchart ELK 指定）を要求したときのみ ELK を用いる。登録・ロード失敗時は当該図単位のエラー表示＋既存 try-catch 隔離（Webview 全体は止めない）。未対応 diagram kind は既存レイアウトのまま（ELK 全 kind 同等品質は非保証）。
 
-13. **表示層限定・受け入れ**（`mermaid-redux-elk-fidelity` AD-009 / AD-011 / `mermaid-readable-viewport` / `mermaid-default-preview-parity` / `mermaid-label-metrics`）: 変更は Mermaid 表示層（Webview / `media` バンドル / NodeView / テーマ・レイアウトヘルパー / Host `getHtml` nonce 経路 / ビューポート UI）に限定し、`docJson` / `markdownText` / serialize / dirty / Host 画像 rewrite / Marp / 三点モード同期に触れない。**受け入れ条件:** (a) kind→`redux`/`redux-dark` マップ、(b) nonce 再注入（または同等）で presentation が CSP 下で効き、flowchart エッジが黒塗りブロブにならず stroke が可視、(c) `layout: elk` 指定図で ELK ローダ登録後に描画成功、(d) グローバル強制 ELK なし、(e) HIP / `securityLevel: 'strict'` / ソース併記 / Preview RO / `'unsafe-inline'` なし回帰、(f) グローバル `themeVariables.fontSize` が **`'16px'`**（測定用 Host nonce CSS も `font-size: 16px`・同一 `font-family`・`line-height: 1.2`・`var(--vscode-...)` なし・CSS scale を密度の主手段にしない）、(f2) ラベル `font-family` が Mermaid default 相当（`"trebuchet ms", verdana, arial, sans-serif`）かつ `line-height: 1.2`（エディタ `1.6` 非継承）、(g) タイトル全文可視、(h) 初期表示・再 render・テーマ切替後は **scale 1（自然サイズ）**・**自動 contain なし**、(i) 図がビューポートより小さい軸は中央寄せ；はみ出すときは縮小せずスクロール、(i2) **Fit ボタン押下時のみ**枠内 contain（従来どおり）、(j) ズーム原点はビューポート中央、(k) ズームイン後に 16px 図が読める、(l) パン／スクロールで枠外細部に到達（パン後ずれは次の Fit で中央に戻る）、(m) 再 render／テーマ切替時は scale 1 に戻す（自動 re-fit しない）、(n) ズーム UI のキーボード到達と `aria-label`、(o) Default Preview 非対象。構文エラーは既存 `.mermaid-error` 契約を維持。Chart 拡張依存・Chart 専用アイコンパック一式・ピクセル完全一致は Out。
+13. **表示層限定・受け入れ**（`mermaid-redux-elk-fidelity` AD-009 / AD-011 / `mermaid-readable-viewport` / `mermaid-default-preview-parity` / `mermaid-label-metrics`）: 変更は Mermaid 表示層（Webview / `media` バンドル / NodeView / テーマ・レイアウトヘルパー / Host `getHtml` nonce 経路 / ビューポート UI）に限定し、`docJson` / `markdownText` / serialize / dirty / Host 画像 rewrite / Marp / 三点モード同期に触れない。**受け入れ条件:** (a) kind→`redux`/`redux-dark` マップ、(b) nonce 再注入（または同等）で presentation が CSP 下で効き、flowchart エッジが黒塗りブロブにならず stroke が可視、(c) `layout: elk` 指定図で ELK ローダ登録後に描画成功、(d) グローバル強制 ELK なし、(e) HIP / `securityLevel: 'strict'` / ソース併記 / Preview RO / `'unsafe-inline'` なし回帰、(f) グローバル `themeVariables.fontSize` が **`'16px'`**（測定用 Host nonce CSS も `font-size: 16px`・同一 `font-family`・`line-height: 1 !important`・`var(--vscode-...)` なし・CSS scale を密度の主手段にしない）、(f2) ラベル `font-family` が Mermaid default 相当（`"trebuchet ms", verdana, arial, sans-serif`）かつ `line-height: 1`（`line-height: 1 !important` で `1.5` 上書き・エディタ `1.6` 非継承）、(g) タイトル全文可視、(h) 初期表示・再 render・テーマ切替後は **scale 1（自然サイズ）**・**自動 contain なし**、(i) 図がビューポートより小さい軸は中央寄せ；はみ出すときは縮小せずスクロール、(i2) **Fit ボタン押下時のみ**枠内 contain（従来どおり）、(j) ズーム原点はビューポート中央、(k) ズームイン後に 16px 図が読める、(l) パン／スクロールで枠外細部に到達（パン後ずれは次の Fit で中央に戻る）、(m) 再 render／テーマ切替時は scale 1 に戻す（自動 re-fit しない）、(n) ズーム UI のキーボード到達と `aria-label`、(o) Default Preview 非対象。構文エラーは既存 `.mermaid-error` 契約を維持。Chart 拡張依存・Chart 専用アイコンパック一式・ピクセル完全一致は Out。
 
 #### 例外系
 
@@ -682,16 +682,13 @@ Source モード（`<textarea id="raw-editor">`）において、カーソルが
 
 ### Related Tests
 
-- [doc/test/testspec-vsc-md-wysiwyg.md](../test/testspec-vsc-md-wysiwyg.md) — TC-031–037。**TC-130–132（Preview Mermaid）はソース併記へ更新予定**（旧「Preview ソース非表示」撤回 — `mermaid-snap-style-with-source` / `preview-rich-embed`）。frontmatter 描画・テーマ切替再描画（TC-013 拡張）・Preview コントラスト: 後続 TC（`preview-mode-quality`）。Mermaid SVG `foreignObject` シェル保持: TC-152（`fix-mermaid-dark-visibility` — 回帰維持）。表示層が Document を変えない回帰: TC-082 等
-- [doc/test/mermaid/testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) — HIP 付き sanitize 回帰維持。**Expected は `mermaid-redux-elk-fidelity` で更新要**（kind→`redux`/`redux-dark`、nonce presentation 再注入、静的 Host CSS 縮小）
-- [doc/test/mermaid/testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) — ソース併記・Preview RO・HIP / strict 回帰維持。**テーマ／CSS 前提 TC は `mermaid-redux-elk-fidelity` で更新要**。**回帰必須:** CSP＋sanitize＋nonce 再注入後も flowchart エッジが黒塗りにならず stroke が可視；`'unsafe-inline'` なし
-- [doc/test/mermaid/testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) — kind→redux マップ、nonce 再注入、`layout: elk`、グローバル強制 ELK なし、HIP / strict / ソース併記 / Preview RO / `'unsafe-inline'` なし回帰。**表示密度 Expected:** グローバル `themeVariables.fontSize: '16px'`（旧 `'12px'` / `'8px'` / `'13px'` 置換 — `mermaid-default-preview-parity`）に更新要。**ラベルタイポ Expected:** `font-family: "trebuchet ms", verdana, arial, sans-serif`・`line-height: 1.2`・測定用 Host nonce CSS 同値（`mermaid-label-metrics`）
-- **後続 testspec（`mermaid-label-metrics` / 継承 `mermaid-default-preview-parity` / `mermaid-readable-viewport`）:** `doc/test/mermaid/testspec-mermaid.md`（`spec-test-design`）。必須契約例: `fontSize: '16px'`、ラベル `font-family` / `line-height: 1.2`、測定用 Host nonce CSS が `font-size` / `font-family` / `line-height` 同値、タイトル全文可視、初期・再 render・テーマ切替後は scale 1（自動 contain なし）、小さい軸は中央寄せ・はみ出しはスクロール、Fit 押下時のみ contain、ズーム原点中央、ズームイン／アウト、パン／スクロール（パン後ずれは次 Fit で中央復帰）、`aria-label`、Default Preview 非対象、密度に CSS scale を使わない、redux / nonce / ELK / strict / HIP / ソース併記回帰
+- [doc/test/testspec-vsc-md-wysiwyg.md](../test/testspec-vsc-md-wysiwyg.md) — TC-031–037、TC-130–132（Preview モードでは `.mermaid-source` 非表示・Markdown では図下ソース併記）、TC-152（Mermaid SVG `foreignObject` シェル保持 — 回帰維持）、TC-082（表示層が Document を変えない回帰）。frontmatter 描画・テーマ切替再描画（TC-013 拡張）・Preview コントラスト: 後続 TC（`preview-mode-quality`）
+- [doc/test/mermaid/testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) — HIP 付き sanitize 回帰、kind→`redux`/`redux-dark` マップ、Host 同一 nonce presentation 再注入、`layout: elk` オプトイン／遅延ロード、グローバル強制 ELK なし、Visual 図下ソース併記・Preview `.mermaid-source` 非表示（厳密 RO）、`themeVariables.fontSize: '16px'`、ラベル `font-family: "trebuchet ms", verdana, arial, sans-serif`・`line-height: 1`（`line-height: 1 !important`、測定用 Host nonce CSS 同値）、タイトル全文可視、自然サイズ（scale 1）／Fit 押下時のみ contain／中央寄せ／ズーム／パン／スクロール／`aria-label`、Default Preview 非対象
 
 ### Spec Gaps
 
 - ⚠️ パン開始条件（中ボタン／修飾キー／専用ハンドル等）の具体ジェスチャは実装時確定（`mermaid-readable-viewport` RK-004 / `mermaid-default-preview-parity` AD-014）。契約上は「枠内パン／ドラッグが可能」まで
-- それ以外（`fontSize: '16px'`・ラベル `font-family` / `line-height: 1.2`・測定 nonce 同値・タイトル可視・自然サイズ／Fit のみ contain／中央寄せ／ズーム原点中央／パン／スクロール・scale 1 リセット・a11y・Default Preview 非対象・密度≠ビューポート変換）は `mermaid-label-metrics` および Requirements Brief `mermaid-default-preview-parity` AD-001–AD-015 で確定
+- それ以外（`fontSize: '16px'`・ラベル `font-family` / `line-height: 1`・`flowchart.padding: 2`・測定 nonce 同値・タイトル可視・自然サイズ／Fit のみ contain／中央寄せ／ズーム原点中央／パン／スクロール・scale 1 リセット・a11y・Default Preview 非対象・密度≠ビューポート変換）は `mermaid-label-metrics` および Requirements Brief `mermaid-default-preview-parity` AD-001–AD-015 で確定
 
 ---
 
@@ -735,6 +732,8 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 
 - Marp 用 Webview / Panel が利用可能であること（Custom Editor 三点 Preview とは別インスタンスでも可）
 - Custom Editor Preview 用 Webview は Host 生成 HTML のみ受け取る（`enableScripts: false` 相当の信頼境界 — Marp パネルと同等）
+- Marp Preview パネル（`MarpPreviewManager`）は `enableScripts: false` を維持し、`localResourceRoots` を拡張 `media/` および対象 `.md` ドキュメント親ディレクトリ配下の `img/` のみ（`getWorkspaceImgRoots` 同等）に限定すること（ワークスペース全体や親階層全体への拡大は禁止 — `RK-005` / `issue-31-test-review` AD-004）。`untitled:` スキームの文書では `img/` ルートを混入させない
+- `wrapPreviewHtml` の CSP は `default-src 'none'; style-src 'unsafe-inline'; img-src ${webview.cspSource} data: https:; font-src data: ${webview.cspSource}` とし、`img-src` への `${webview.cspSource}` 追加によるローカル `img/` 画像描画と最小権限を両立する（`script-src` なし — `issue-31-test-review` AD-004）
 
 ### Behavior
 
@@ -742,11 +741,12 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 
 1. YAML front matter をパースし Marp テーマを適用する
 2. 本文変更（Document 更新）に追随して **パネル** プレビューを更新する（`MarpPreviewManager` 自動更新継続）
-3. **Preview モード**かつ Marp 検出時: 同一 `markdownText` から Host で再描画し `previewMarpHtml` を送信。スライド UX は **縦スクロール一覧**（ページ送り UI なし）
-4. ファイル RO / 三点いずれのモードでも Marp Preview **パネル**は表示できる
-5. 三点 Preview と Marp Preview **パネル**は **共存**する。Preview 切入でパネルを自動オープンしない
-6. Marp 出力 HTML 内の `<img src>` は Host が §9 と同規則で `asWebviewUri` rewrite する
-7. **`isMarpDocument()`** は Preview 切入時と `markdownText` 更新の両方で再評価する
+3. `showMarpPreview` コマンド実行時は、`MarkdownEditorProvider` 管理下の開いている `MarkdownDocument` バッファ（`markdownText`）を優先参照して初回描画し、Custom Editor で未開の場合のみ `vscode.workspace.textDocuments` / `vscode.workspace.fs.readFile` を参照する（未保存編集中の最新内容を即時反映 — `issue-31-test-review` AD-006）
+4. **Preview モード**かつ Marp 検出時: 同一 `markdownText` から Host で再描画し `previewMarpHtml` を送信。スライド UX は **縦スクロール一覧**（ページ送り UI なし）
+5. ファイル RO / 三点いずれのモードでも Marp Preview **パネル**は表示できる
+6. 三点 Preview と Marp Preview **パネル**は **共存**する。Preview 切入でパネルを自動オープンしない
+7. Marp 出力 HTML 内の `<img src>` は Host が §9 と同規則で `asWebviewUri` rewrite する。その際 `vscode.Uri.file(localUri.fsPath)` によるスキーム破棄を行わず、対象ドキュメントの URI スキーム/authority（`file` / `vscode-remote`）を保持したまま `vscode.Uri.joinPath` 等で解決する（`issue-31-test-review` AD-005）。`untitled:` スキームの文書でも `MarkdownDocument` メモリバッファがあればスライド描画を行う（ローカル相対画像は未保存のため解決しない）
+8. **`isMarpDocument()`** は Preview 切入時と `markdownText` 更新の両方で再評価する
 
 #### 例外系
 
@@ -785,8 +785,8 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 |------|-----|------|------|------|------|
 | `clipboardOrDropImage` | `image/*` バイナリ / `FileList` | はい | 1 バイト | 実用上限未定（backlog） | クリップボード paste またはドラッグ＆ドロップ（`png` / `jpg`(`jpeg`) / `gif` / `svg` / `webp` — `image-rich-editing` AD-004）。複数ファイル同時ドロップ時は順次処理 |
 | `sequenceNumber` | 整数 | 自動 | 1 | 9999 | `image-NNNN` ゼロ埋め 4 桁 |
-| `targetMdUri` | `vscode.Uri` | はい | — | — | 同階層 `img/` 基準 |
-| `imageSrc` / `originalSrc` | `string` | 任意 | — | — | Document / シリアライズ用の相対パス（例: `img/image-0001.png` または外部 `https:` URL）。表示投影時に Host が `src` を webview URI へ rewrite し、シリアライズ時は `originalSrc`（または Host 逆変換）により元の相対パスへ復元する（`image-rich-editing` AD-001, AD-002） |
+| `targetMdUri` | `vscode.Uri` | はい | — | — | `file` または `vscode-remote` スキームの保存済み `.md`（同階層 `img/` 基準）。`vscode.Uri.joinPath` と `vscode.workspace.fs` でスキーム/authority を保全。`untitled:` は拒否（`issue-31-test-review` AD-005） |
+| `imageSrc` / `originalSrc` | `string` | 任意 | — | — | Document / シリアライズ用の相対パス（例: `img/image-0001.png` または外部 `https:` URL）。表示投影時および `imageInserted` メッセージでは Host が `webview.asWebviewUri` で解決した表示用 URI（`displaySrc` 等）と相対パス（`relativePath` / `originalSrc`）を分離保持し、シリアライズ時は `originalSrc`（または Host 逆変換）により元の相対パスへ復元する（`image-rich-editing` AD-001, AD-002 / `issue-31-test-review` AD-004） |
 | `imageAlt` (`alt`) | `string \| null` | 任意 | 空文字可 | — | ミニポップオーバーのインライン入力欄から編集可能。`<img />` 出力時は空文字でも `alt=""` として保持、特殊文字は HTML エスケープ（`image-rich-editing` AD-002, AD-003） |
 | `imageWidth` (`width`) | `string \| null` | 任意 | `32` (`32px`) / `'25%'` | 親コンテナ幅 / `'100%'` | ドラッグリサイズ時（px 整数値文字列、例: `'320'` または `'320px'`）またはプリセット選択時（`'25%'` \| `'50%'` \| `'75%'`）。`100% (Reset)` 選択時および初期値は `null`。CSP 厳守のため DOM ではインライン `style` を使わず HTML `width` 属性（および `data-width`）で描画する（`image-rich-editing` AD-001, AD-003, RK-025） |
 | `imageAlign` (`align`) | `'left' \| 'center' \| 'right' \| null` | 任意 | — | — | 既定値 `null`。同一配置の再クリックで `null` にトグル解除。CSP 厳守のため DOM ではインライン `style` を使わず `data-align` / `align` 属性と `media/editor.css` のセレクタで描画する（`image-rich-editing` AD-001, AD-003） |
@@ -796,7 +796,7 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 
 | 条件 | 戻り値 / ステータス | 備考 |
 |------|-------------------|------|
-| 成功（paste / D&D ドロップ） | `img/image-NNNN.ext` 保存 + Markdown 画像参照挿入 | 上書きなし（UD-007）。Document 正本は相対パス。複数画像ドロップ時はファイルリスト順に順次採番・挿入（`image-rich-editing` AD-004） |
+| 成功（paste / D&D ドロップ） | `img/image-NNNN.ext` 保存 + `imageInserted`（表示用 URI + 相対パス分離）送信 + TipTap 挿入＋`epoch: updateEpoch` 付き `update` 送信 | 上書きなし（UD-007）。Document 正本は相対パス、画面は即時表示。HTML→GFM 変換後の同一セッションでも更新破棄されない（`issue-31-test-review` AD-004）。複数画像ドロップ時はファイルリスト順に順次採番・挿入（`image-rich-editing` AD-004） |
 | 成功（表示投影） | TipTap `image.src`（Markdown 由来・HTML `<img>` 由来とも）および Marp HTML `<img src>` が webview URI | Host rewrite。Document / serialize は常に相対パス（`img/image-NNNN.ext`）のまま維持（Webview URI 漏洩厳禁 — RK-026） |
 | 成功（サイズ・配置・Alt 変更） | 1 トランザクションで TipTap `image` 属性更新、DOM（`width` / `data-align` / `align`）および Markdown/HTML シリアライズに反映 | Undo / Redo 1 段で復元可。`width` と `align` がともに `null` なら `![alt](src)`、いずれかが非 `null` なら `<img src="..." alt="..." width="..." align="..." />` で出力（`image-rich-editing` AD-002, AD-003） |
 | 成功（Lightbox 表示・閉鎖） | `#image-lightbox` モーダルに解決済み `src` と `alt` キャプションを拡大表示。`Escape` / 背景クリック / `×` ボタンで閉鎖 | 閲覧専用操作。Document 更新や `dirty` 変更は一切行わない（`image-rich-editing` AD-005） |
@@ -809,7 +809,7 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 ### Preconditions
 
 - 挿入・編集操作（paste、D&D、リサイズ、配置変更、Alt 編集）は編集モード（Visual / Source かつ非 RO）であること
-- 対象 `.md` がディスク上の保存済みパスを持つこと（未保存新規 Untitled doc への paste / D&D は拒否）
+- 対象 `.md` がディスク上の保存済みパス（`file` または `vscode-remote` スキーム）を持つこと（未保存新規 `untitled:` doc への paste / D&D は「Save document first」で拒否し、`getWorkspaceImgRoots` に無効 URI を混入させない — `issue-31-test-review` AD-005）
 - `img/` が無ければ作成する
 
 ### Behavior
@@ -820,12 +820,12 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
    - paste イベントまたは drop イベント（`dataTransfer.files`）で `image/*`（`png`, `jpg`/`jpeg`, `gif`, `svg`, `webp`）を検出する。
    - OS やファイルツリーからのファイルドロップ時は、`dragover` / `drop` イベントで `preventDefault()` を呼び出し、Webview 自体が画像ファイルへ画面遷移する事故を防止する（RK-027）。エディタ内の既存ノード移動やテキスト選択ドロップ等、ファイルを含まない通常の D&D は阻害しない。
    - 既存 `img/image-*.ext` の最大連番 + 1 でファイル名を採番する（欠番があっても重複しない。複数ファイル同時ドロップ時は順番に連番採番）。
-   - 拡張子は MIME / ファイル名から決定（`jpg`/`png`/`gif`/`svg`/`webp`）し、`vscode.Uri` で正規化してパストラバーサルを防ぐ。
-   - Visual モードまたは Source モードに `img/image-NNNN.ext` 形式の相対パス画像を挿入する。
-2. **Host 側 URI Rewrite と相対パス保護（AD-001, AD-002）:**
-   - **表示投影時（Host）:** `.md` のディレクトリ基準で実ファイル URI を組み立て、`isSafeImagePath`（`..` 禁止・**`img/` プレフィックス必須**）を通過した場合のみ `webview.asWebviewUri` して TipTap `docJson` 内 `image.src`（標準 Markdown 画像および HTML `<img />` 由来の両方）および Marp 出力 HTML 内 `<img src>` を書き換える。
+   - 拡張子は MIME / ファイル名から決定（`jpg`/`png`/`gif`/`svg`/`webp`）し、`vscode.Uri.joinPath` と `vscode.workspace.fs` でスキーム/authority（`file` / `vscode-remote`）を保全してパストラバーサルを防ぐ（`vscode.Uri.file(uri.fsPath)` 固定や `fsPath` 前提の結合禁止 — `issue-31-test-review` AD-005）。
+   - Host の `handleImagePaste` は `img/image-NNNN.ext` 書込後に `imageInserted` メッセージへ `webview.asWebviewUri` 解決済み表示 URI（`displaySrc` 等）と相対パス（`relativePath`）を分離して送信する。Webview（`media/editor.ts`）は画像ノードへ表示用 URI（`src`）と相対パス（`originalSrc`）を適用して即時描画し、直後の `vscode.postMessage({ type: 'update', docJson, epoch })` に **現在の `epoch: updateEpoch` を必須付与**する（HTML→GFM 表変換後のセッションでも更新が Host に破棄されない — `issue-31-test-review` AD-004）。
+2. **Host 側 URI Rewrite と相対パス保護（AD-001, AD-002 / `issue-31-test-review` AD-005）:**
+   - **表示投影時（Host）:** `.md` の親ディレクトリ URI 基準（`vscode.Uri.joinPath` 等。`file://` 文字列ハードコード禁止）で実ファイル URI を組み立て、`isSafeImagePath`（`img/` プレフィックス必須、`..`・URL エンコード済み `%2e%2e`・バックスラッシュ `\`・絶対スキーム・許可外拡張子を拒否）を通過した場合のみ `webview.asWebviewUri` して TipTap `docJson` 内 `image.src`（標準 Markdown 画像および HTML `<img />` 由来の両方）および Marp 出力 HTML 内 `<img src>` を書き換える（`file:` / `vscode-remote:` 共通）。
    - **`docUpdated` / Preview 投影 / Marp 再描画**の各タイミングで画像 URI を再解決する。
-   - **Markdown モード（Rich Editor）** も Host rewrite 済み `docJson` を投影する。paste / D&D 直後は Host が webview URI を返すか、相対パス挿入後に次投影で rewrite する。
+   - **Markdown モード（Rich Editor）** も Host rewrite 済み `docJson` を投影する。paste / D&D 直後は上記 `imageInserted` により表示用 URI を即時投影しつつ `originalSrc` には相対パス `img/image-NNNN.ext` を維持する。
    - **`https:` / `data:`** 画像は Webview が直接解決（CSP 既存どおり — 挙動変更なし）。
    - **シリアライズ時の相対パス復元:** TipTap `image` ノードは `originalSrc`（または Host 側逆変換マップ）により元の相対パス `img/image-NNNN.ext` を保持し、Markdown 出力・HTML `<img />` 出力のいずれにおいても `vscode-webview-resource:` 等の Webview URI をディスク `.md` や Source モードへ漏洩させない（RK-026）。
 3. **画像ノードモデルと CSP 安全描画（AD-001）:**
@@ -909,8 +909,8 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 6. 同一内容に対し、連続保存で byte-identical 出力を目指す（アーキテクチャ AD-013）
 7. **モード切替だけでは本節の保存処理を起動しない**（§1）。**Default Preview** はモード切替ではないが、Document が dirty のときは次項のゲートで本節の save 経路を経由する
 8. **Default Preview dirty ゲート（§1 / §10）:** Document が dirty のときのみ Host が `showWarningMessage`（文言: `Document has unsaved changes. Save before opening the Markdown Preview?`。**Save** / **Cancel** 二択。「Don't Save で開く」は提供しない。文言に `to the side` を含めない）。Cancel またはダイアログ閉じはプレビュー非オープン。Save 選択時は既存 Custom Editor save（`MarkdownDocument` / provider）を待ち、**成功時のみ** `markdown.showPreview`（同一グループ補償 — §10）を実行する。save 失敗（本節の stringify 失敗・Raw パース失敗ブロック含む）時は ErrorMessage + Output（`MD WYSIWYG Editor`）、プレビュー非オープン。clean 時はダイアログなしで即開く。**`showPreviewToSide` へのフォールバックはしない**
-9. **画像参照とリッチ画像属性の決定的往復（§7 / `image-rich-editing` AD-002）:**
-   - serialize / ディスク出力の `src` は **常に相対パス**（例: `img/image-0001.png` または外部 `https:` URL）。Host の `asWebviewUri` rewrite は表示投影のみで Document 正本を変更せず、`vscode-webview-resource:` 等の Webview URI は絶対に出力しない（§7 / §9 / RK-026）。
+9. **画像参照とリッチ画像属性の決定的往復（§7 / `image-rich-editing` AD-002 / `issue-31-test-review` AD-004）:**
+   - serialize / ディスク出力の `src` は **常に相対パス**（例: `img/image-0001.png` または外部 `https:` URL）。`imageInserted` による即時挿入でも `originalSrc`（相対パス）と表示用 URI を分離し、`epoch: updateEpoch` 付き `update` で `MarkdownDocument` へ反映する。Host の `asWebviewUri` rewrite は表示投影のみで Document 正本を変更せず、`vscode-webview-resource:` 等の Webview URI は絶対に出力しない（§7 / §9 / RK-026）。
    - `width` と `align` がともに `null`（未指定 / 100% リセット）の場合は、標準 Markdown `![alt](src)`（`title` 存在時は `![alt](src "title")`）として出力する。
    - `width` または `align` のいずれかが非 `null` の場合は、属性順序を `src` → `alt` → `title`（存在時）→ `width`（存在時）→ `align`（存在時）に固定した `<img src="..." alt="..." width="..." align="..." />`（`alt` は空文字でも `alt=""` を維持、属性値は HTML エスケープ）として決定的に出力する。
    - パース時は標準 Markdown `![alt](src)` と HTML `<img>` タグ（ブロック / インライン）の双方から `src`, `alt`, `title`, `width`, `align`（および `style="width: ..."` の `width` 正規化）を TipTap `image` ノードへ復元する。
@@ -924,8 +924,9 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 11. **複合 mark:** strike+bold / strike+italic 等は意味を保持。ネスト順の入れ替わりは許容（見た目同等なら byte 一致は要求しない）
 12. **非対象 GFM 拡張:** footnotes / GitHub Alerts / autolink-literal / tagfilter の新規有効化はしない（§2 Out）
 13. **表の列アライメント往復（§3 / `table-rich-editing` AD-002）:**
-   - **GFM パイプ表 (`tableFormat: 'gfm'`)**: mdast `table.align` 配列（`'left' | 'center' | 'right' | null`）と TipTap 各列の `textAlign` 属性を双方向マッピングし、デリミタ行を `:---`（left）、`:---:`（center）、`---:`（right）、`---`（null）として出力・整形する（`src/utils/table-formatter.ts` の Aligned / Compact 両モードでコロン記号を保持）。
-   - **HTML 表 (`tableFormat: 'html'`)**: パース時は `<th/td align="...">` または既存の `style="text-align: ..."` から `textAlign` を抽出し、シリアライズ時は `<th align="center">` / `<td align="right">` 形式で永続化する。
+    - **GFM パイプ表 (`tableFormat: 'gfm'`)**: mdast `table.align` 配列（`'left' | 'center' | 'right' | null`）と TipTap 各列の `textAlign` 属性を双方向マッピングし、デリミタ行を `:---`（left）、`:---:`（center）、`---:`（right）、`---`（null）として出力・整形する（`src/utils/table-formatter.ts` の Aligned / Compact 両モードでコロン記号を保持）。
+    - **HTML 表 (`tableFormat: 'html'`)**: パース時は `<th/td align="...">` または既存の `style="text-align: ..."` から `textAlign` を抽出し、シリアライズ時は `<th align="center">` / `<td align="right">` 形式で永続化する。
+14. **エクスポート Dirty ゲート連携（§13 / `issue-31-test-review` AD-006 / C-1）:** `exportDocument` / `exportHtml` / `exportPdf` / `exportDocx` / `exportPptx` の全 5 エクスポートコマンド実行時、対象が `MarkdownEditorProvider` 管理下の dirty な `MarkdownDocument`（または dirty な `TextDocument`）である場合は、§13 の保存確認ゲート（Save / Cancel、Cancel または保存失敗時は中断）を経由し、本節の save 経路でディスクと整合を取る。
 
 #### 例外系
 
@@ -973,7 +974,7 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 
 ### Preconditions
 
-- `localResourceRoots` は拡張 `media/` とワークスペース `img/` に限定（AD-010）。`getWorkspaceImgRoots` と整合。**緩和しない**
+- `localResourceRoots` は Custom Editor および Marp Preview パネルとも拡張 `media/` と対象 `.md` 親ディレクトリ配下の `img/` のみ（`getWorkspaceImgRoots` 同等）に限定（AD-010 / `RK-005` / `issue-31-test-review` AD-004）。ワークスペース全体や親階層への拡大は禁止。`untitled:` スキームの文書には `img/` ルートを混入させない（AD-005）
 - Extension Host 上で HTML を実行しない
 - Webview 内で相対 file パスを直接解決しない（Host rewrite 必須 — §7）
 
@@ -985,11 +986,12 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 2. 表示前に HTML をサニタイズする（表・画像・基本書式・Mermaid SVG を許可）。**許可タグに `del` / `s` を含める**（§2 取り消し線の HTML 混在入力を落とさない）。**表セル（`th` / `td`）の許可属性に `align` および `data-align` を含める**（§3 列アライメントの保持・描画 — `table-rich-editing` AD-001, AD-002）。**画像（`img`）の許可属性に `src`, `alt`, `title`, `width`, `height`, `align`, `data-align` を含める**（§7 リッチ画像の保持・描画 — `image-rich-editing` AD-002。`onerror` / `onload` 等のイベントハンドラや `javascript:` URI は除去）。クリップボードから HTML `<table>` をスマートペーストする際も、`<script>` や `on*` 等の危険属性を除去し、安全なテキスト・`<br />`・アライメント属性のみを抽出する（§3 / `table-rich-editing` AD-005）。下線・highlight（`mark`）は許可追加しない。`input` checkbox は既存許可のまま
 3. **Mermaid SVG sanitize**（Webview NodeView）: Mermaid が出力した SVG を DOMPurify でサニタイズする際、**`HTML_INTEGRATION_POINTS: { foreignobject: true }`（または同等）により `foreignObject` シェルだけでなくラベル用 HTML 子を保持する**（§5 正常系 10 / `mermaid-contrast-readable` P0）。presentation `<style>` 再注入経路ではユーザー／ソース由来の任意 CSS を素通しせず、危険構文を落としたうえで Host 同一 nonce を付与する（§5 正常系 11）。`<script>` / イベントハンドラ属性等は除去し続ける。`securityLevel: 'strict'` は不変。allowlist / style 再注入の変更は XSS 面を広げない最小とし、実装後 security レビュー対象（AD-002 / `mermaid-redux-elk-fidelity` AD-008）
 4. 画像保存先はワークスペース内 `img/` に限定する（クリップボード貼付・ドラッグ＆ドロップ共通。MIME タイプ `image/png`, `image/jpeg`, `image/gif`, `image/svg+xml`, `image/webp` を検証 — `image-rich-editing` AD-004）
-5. **画像 URI rewrite（Host）:** `.md` のディレクトリ基準で実ファイル URI を組み立て、`isSafeImagePath(path)` — **`..` 禁止**、**`img/` プレフィックス必須** — を通過した場合のみ `webview.asWebviewUri` する。対象: TipTap `docJson` 内 `image.src`（Markdown `![alt](src)` 由来および HTML `<img src="img/..." />` 由来の両方）、Marp 出力 HTML 内 `<img src>`
+5. **画像 URI rewrite（Host）:** `.md` の親ディレクトリ URI 基準（`vscode.Uri.joinPath` 等のスキーム/authority 保全演算。`file://` ハードコード禁止 — `issue-31-test-review` AD-005）で実ファイル URI を組み立て、`isSafeImagePath(path)` — **`img/` プレフィックス必須**、`..`・URL エンコード済み `%2e%2e`・バックスラッシュ `\`・絶対スキーム・許可外拡張子を拒否 — を通過した場合のみ `webview.asWebviewUri` する（`file:` / `vscode-remote:` 共通）。対象: TipTap `docJson` 内 `image.src`（Markdown `![alt](src)` 由来および HTML `<img src="img/..." />` 由来の両方）、Marp 出力 HTML 内 `<img src>`
 6. **`https:` / `data:`** は CSP 上 Webview が直接解決（既存どおり — rewrite 不要）
-7. Marp Preview **パネル**の CSP（`enableScripts: false`）は本タスクでは Preview 整合のため AD-001 rewrite で足りる限り **img-src 拡張しない**
+7. Marp Preview **パネル**の CSP（`enableScripts: false` 維持）は、`style-src 'unsafe-inline'`（Marp スタイル用）・`img-src ${webview.cspSource} data: https:`・`font-src data: ${webview.cspSource}` とし、対象ドキュメント配下 `img/` の `asWebviewUri` 画像のみ描画を許可する（`script-src` なし、ワークスペース全体への露出禁止 — `issue-31-test-review` AD-004 / `RK-005`）
 8. **`img/` 内 SVG** は CSP + サニタイズ経路を通す（Mermaid SVG とは別経路 — RK-015）
 9. **OS ファイルドロップ時の遷移抑止:** Webview ルートでのファイル `dragover` / `drop` イベントに対して `preventDefault()` を適用し、ドロップされたローカルファイルへの Webview ナビゲーションを防止する（`image-rich-editing` AD-004, RK-027）
+10. **外部プロセス起動のコマンドインジェクション防止（`issue-31-test-review` AD-007）:** PlantUML（§12）・Pandoc / Marp CLI（§13）の外部プロセス起動はすべて `shell: false`（引数配列渡し）を厳守し、ドキュメント本文やパス経由のシェルインジェクションを防止する。OutputChannel ログにも秘密情報やファイル全文を出力しない
 
 #### 例外系
 
@@ -1024,11 +1026,12 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 1. Output チャンネル `MD WYSIWYG Editor` にシリアライズエラー・描画失敗を記録する（ファイル全文は含めない）
 2. README に `workbench.editorAssociations` 設定例を記載し、本拡張を `.md` デフォルトにする手順を示す
 3. `Reopen Editor With…` でビルトイン Markdown エディタへ切替可能とする（AD-014）
-4. **Pattern A（IDE タイトルバー切替の検知）:** Custom Editor（`md-wysiwyg-editor.wysiwyg`）が dispose された直後、同一 `.md` URI がアクティブタブに残り、かつ WYSIWYG Custom Editor ではない場合（`TabInputText` または `TabInputCustom` で viewType が `md-wysiwyg-editor.wysiwyg` 以外）を「ビルトインへ切替」と判定する
+4. **Pattern A（IDE タイトルバー切替の検知）:** Custom Editor（`md-wysiwyg-editor.wysiwyg`）が dispose された直後、同一 `.md` URI がアクティブタブに残り、かつ WYSIWYG Custom Editor ではない場合（`TabInputText`、または `TabInputCustom` で viewType が `md-wysiwyg-editor.wysiwyg` 以外かつ組み込み `markdown.preview` 系や派生 IDE 固有プレビュー/AI 差分 `viewType` を除いたもの）を「ビルトインへ切替」と判定する
+   - **`TabInputCustom` 誤判定防止（`issue-31-test-review` AD-006）:** `TabInputCustom` 判定より前（または同条件内）で `markdown.preview` 系（`vscode.markdown.preview.editor` 等）および派生 IDE 固有のプレビュー/AI 差分 `viewType` を明示除外し、到達不能コードによる誤検知を防止する
    - 設定 `md-wysiwyg-editor.autoRestoreOnBuiltinSwitch`（boolean、**既定 `false`**）が `true` のとき: `vscode.openWith` で WYSIWYG を自動再オープン
    - 既定 `false` のとき: 日本語 `InformationMessage` を表示し、エディタ内 **Visual / Source / Preview / Default Preview** ツールバーの利用を案内。ボタン **「WYSIWYG Editor で開く」** で `md-wysiwyg-editor.openWithWysiwyg` を実行
    - タブが閉じられた、または別ファイルがアクティブの場合は何もしない
-   - **Default Preview 非干渉:** `markdown.showPreview`（および Host の同一グループ補償）による標準 Markdown Preview タブのオープンは Custom Editor を dispose せず、Pattern A の「ビルトイン Text への切替」と **誤判定してはならない**。必要なら Pattern A 判定から Markdown Preview タブ種別（`TabInputWebview` 等）を明示除外する。本コマンドは `openWith` / Reopen Editor With の代替ではない
+   - **Default Preview 非干渉:** `markdown.showPreview`（および Host の同一グループ補償）による標準 Markdown Preview タブのオープンは Custom Editor を dispose せず、Pattern A の「ビルトイン Text への切替」と **誤判定してはならない**。`TabInputWebview` および `markdown.preview` 系 `viewType` を明示除外する。本コマンドは `openWith` / Reopen Editor With の代替ではない
 5. コマンド `md-wysiwyg-editor.openWithWysiwyg`: 引数 URI またはアクティブ `.md` に対し `vscode.openWith`（viewType `md-wysiwyg-editor.wysiwyg`）を実行。ビルトイン Markdown エディタの editor/title に表示（`resourceExtname == .md` かつ Custom Editor 非アクティブ時）
 6. **拡張更新後の手動リロード:** コマンド `md-wysiwyg-editor.reloadExtension`。確認ダイアログ後に `workbench.action.reloadWindow` を実行する
    - **editor/title** に `$(refresh)` アイコン（`resourceExtname == .md` — WYSIWYG / ビルトインいずれの `.md` 表示中も表示）。Cursor Preview / Markdown 切替で Webview バーが消えてもリロード可能
@@ -1044,7 +1047,8 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
    - dirty / Save / Cancel / save 成功ゲートは §8 Behavior 正常系 8 に従う
    - **Marp 非干渉:** Default Preview オープンで §6 Marp Preview パネルを閉じない・自動オープンしない。三点 Preview（Editor Preview）内 Marp 分岐は変更しない。Marp 文書を標準 Preview で開いてもスライド UI にはならない
    - 標準 Preview は **保存済みディスク内容**（または VS Code が URI 経由で読む内容）を表示する。未保存バッファのライブ同期は Non-Goal（§1）
-   - `markdown.showPreview` 欠如・失敗時は ErrorMessage + Output で明示する（Beside サイレントフォールバック禁止）
+   - `markdown.showPreview` / `moveActiveEditor` が派生 IDE（Cursor / Windsurf / Antigravity / VSCodium）等で欠如・失敗した場合でもクラッシュさせず、ErrorMessage + Output で明示する（`markdown.showPreviewToSide` へのサイレントフォールバック禁止 — `issue-31-test-review` AD-007）
+8. **派生 IDE ワークベンチショートカット非干渉（`issue-31-test-review` AD-007）:** Webview 内キーボードハンドラ（§11 `FindWidget` の `Cmd+F` / `Cmd+H`、§15 Source モードの `Cmd+K` / `Ctrl+K` 等）はエディタまたはウィジェット内フォーカス時に限定して消費し、派生 IDE（Cursor `Cmd+K`/`Cmd+L`、Windsurf 等）のグローバルワークベンチショートカットを不必要に横取りしない
 
 #### 設定
 
@@ -1140,6 +1144,19 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 - `readonly === true` または `editorMode === 'preview'` の場合、置換バーおよび置換実行ボタンは非表示とする。
 - 無効な正規表現が入力された場合、JavaScript エラーでクラッシュさせず、入力枠の警告表示（赤ボーダー等）を行い検索結果を 0 件として安全に処理する。
 - モード切替時は、現在の検索クエリを維持しつつ、切り替え先のモードで自動的に再検索およびハイライト再生成を行う。
+- **キーボードイベント消費範囲（`issue-31-test-review` AD-007）:** `FindWidget` のショートカット（`Cmd+F` / `Ctrl+F` / `Cmd+H` / `Ctrl+H` / `Escape` / `Enter`）は Webview 内エディタまたは `#find-widget` にフォーカスがある場合に限定して消費し、ワークベンチおよび派生 IDE（Cursor / Windsurf 等）のグローバルショートカットと不要に競合させない。
+
+### Outputs & Failure Returns
+
+| 条件 | 戻り値 / 表示 | 備考 |
+|------|--------------|------|
+| 一致あり | ハイライト＋`X of Y` 件数表示＋スクロール移動 | 置換実行時は各モードの編集経路（TipTap トランザクション / `textarea` `input`）で Document 同期 |
+| 一致なし | `No results` 表示、置換は no-op | — |
+| 不正な正規表現 | 入力枠エラー表示、一致 0 件として安全処理 | 例外でクラッシュしない |
+
+### Related Tests
+
+- [doc/test/testspec-vsc-md-wysiwyg.md](../test/testspec-vsc-md-wysiwyg.md) — TC-170–180（検索・置換ウィジェット、JSDOM 実 DOM・フォーカス限定ショートカット検証対象）
 
 ---
 
@@ -1189,7 +1206,34 @@ Markdown 内の ````plantuml ... ```` コードブロックを、ローカルの
 
 ### 概要
 
-編集中のドキュメントを、共有や提出、印刷に適した各種フォーマット（スタンドアロン HTML、PDF、DOCX、PPTX）に変換・出力する機能を提供する。
+編集中のドキュメントを、共有や提出、印刷に適した各種フォーマット（スタンドアロン HTML、PDF、DOCX、PPTX）に変換・出力する機能を提供する。`MarkdownDocument` を正本とし、全 5 エクスポートコマンド（`exportDocument`, `exportHtml`, `exportPdf`, `exportDocx`, `exportPptx`）で Custom Editor の未保存バッファおよび Dirty Save Check・URI スキーム保全・外部 CLI 安全性（`shell: false`、ローカル優先探索、タイムアウト）を一貫して保証する（`issue-31-test-review` AD-005, AD-006, AD-007, C-1）。
+
+### Inputs & Types
+
+| 入力 | 型 | 必須 | 最小 | 最大 | 備考 |
+|------|-----|------|------|------|------|
+| `targetUri` | `vscode.Uri` | はい | — | — | 引数 URI、またはアクティブ Custom Editor / Text Editor の URI。`file` / `vscode-remote` / `untitled` スキームを考慮し `vscode.Uri` 演算（`joinPath` / `with`）と `vscode.workspace.fs` で処理 |
+| `exportFormat` | `'html' \| 'pdf' \| 'docx' \| 'pptx'` | はい | — | — | `exportDocument` は QuickPick で選択、個別コマンドは形式固定 |
+| `saveUri` | `vscode.Uri` | 保存先指定時 | — | — | `showSaveDialog` で選択（通常 PDF 印刷フォールバック除く） |
+| `documentSource` | `string` | 自動取得 | 0 B | — | `MarkdownEditorProvider` 管理下の開いている `MarkdownDocument.markdownText` を最優先参照し、未開時のみ `vscode.workspace.textDocuments` → `vscode.workspace.fs.readFile` を参照（AD-006） |
+
+### Outputs & Failure Returns
+
+| 条件 | 戻り値 / ステータス | 備考 |
+|------|-------------------|------|
+| 成功（HTML / Marp PDF / DOCX / PPTX） | 指定 `saveUri` へファイル出力 + `InformationMessage` | HTML は `Open in Browser` アクション付き |
+| 成功（通常 PDF フォールバック） | 一時 HTML をブラウザで開き印刷手順を `InformationMessage` 通知 | `os.tmpdir()` に出力 |
+| 対象ファイルなし | Warning（`Open a Markdown file first to export.`） | 処理中断 |
+| Dirty Gate キャンセル / 保存失敗 | エクスポート中断（出力ファイル生成なし） | 保存失敗時は ErrorMessage + Output |
+| ダイアログキャンセル（QuickPick / SaveDialog） | 無害に中断（出力なし） | — |
+| 外部 CLI 未導入 / オフライン / タイムアウト | Warning または ErrorMessage + Output（Marp CLI / Pandoc） | クライアント・Host をクラッシュさせない（AD-007, RK-002） |
+| 非 Marp 文書で `exportPptx` | InformationMessage 通知で中断 | `marp: true` フロントマター必須 |
+
+### Preconditions
+
+- アクティブな `.md`（Custom Editor または Text Editor）が解決できること
+- 外部 CLI（Pandoc / `@marp-team/marp-cli`）へファイルを渡す場合、対象がディスク上に保存済みのローカルアクセス可能ファイルであること（`untitled:` や未保存状態では Dirty Save Check または案内通知で安全に中断）
+- 外部プロセス起動はすべて `shell: false`（引数配列渡し）とすること（AD-007 / §9）
 
 ### サポートフォーマットと変換パイプライン
 
@@ -1197,13 +1241,33 @@ Markdown 内の ````plantuml ... ```` コードブロックを、ローカルの
 |---|---|---|---|
 | **HTML** | 全 Markdown 文書 | スタンドアロン HTML 生成。エディタスタイル、ローカル画像（Base64 埋め込み）、Mermaid / PlantUML SVG を 1 ファイルに自己完結化 | なし（内蔵） |
 | **PDF** | 全 Markdown / Marp | ① 通常文書: Webview 印刷ダイアログ（Print to PDF）連携。<br>② Marp 文書: `@marp-team/marp-cli` による高精度スライド PDF 出力 | Chrome / Chromium（Marp 時） |
-| **DOCX** | 全 Markdown 文書 | Pandoc コマンド連携（`pandoc -f markdown -t docx`）または内蔵 HTML-to-DOCX コンバータ | Pandoc（利用可能な場合） |
+| **DOCX** | 全 Markdown 文書 | Pandoc コマンド連携（`pandoc -f markdown -t docx`） | Pandoc |
 | **PPTX** | Marp スライド文書 | `@marp-team/marp-cli` による PowerPoint プレゼンテーション（`--pptx`）出力 | Marp CLI + Chrome |
 
-### コマンドと操作導線
+### Behavior
 
-- コマンドパレットおよびエディタタイトルメニュー・コンテキストメニューから `Export Document...` を起動し、出力形式を選択可能とする。
-- 未保存バッファが存在する場合は、エクスポート前に保存確認ゲート（Dirty Save Check）を設ける。
+#### 正常系
+
+1. **コマンドと操作導線:** コマンドパレットおよびエディタタイトルメニューから `md-wysiwyg-editor.exportDocument`（QuickPick 選択）または各個別コマンド（`exportHtml`, `exportPdf`, `exportDocx`, `exportPptx`）を起動できる。
+2. **Custom Editor バッファ優先参照（AD-006 / D-3）:** `getDocumentText` および全 5 コマンドは、まず `MarkdownEditorProvider` 管理下の開いている `MarkdownDocument`（`markdownText`, `isDirty`）を参照し、Custom Editor で編集中の最新本文をエクスポート対象とする。
+3. **全 5 コマンドの Dirty Gate（C-1 / D-3 / `TC-EXP-008`）:** 対象ドキュメントが未保存（`MarkdownDocument.isDirty` または `TextDocument.isDirty`）である場合、HTML・通常 PDF・Marp PDF・DOCX・PPTX のいずれにおいてもエクスポート前に保存確認ゲート（Save / Cancel）を提示し、Save 成功後のみエクスポートを実行する。
+4. **URI スキーム保全（AD-005 / D-1）:** デフォルト保存先 URI（`.html` / `.pdf` / `.docx` / `.pptx`）の生成やファイル入出力は `vscode.Uri.file(uri.fsPath)` 固定を廃し、スキーム/authority（`file` / `vscode-remote`）を保持する `vscode.Uri` 演算および `vscode.workspace.fs` を使用する。
+5. **Marp CLI 探索・タイムアウト・`shell: false`（AD-007 / RK-002）:** Marp PDF / PPTX 実行時は、即座に `npx -y` によるネットワーク取得へフォールバックする前にローカル実行ファイル（ワークスペース `node_modules/.bin/marp` および PATH 上の `marp`）を優先探索し、タイムアウト制御および「オフラインまたは CLI 未導入」の明瞭なエラー通知を備える。Pandoc / Marp CLI の起動はすべて `shell: false` を維持する。
+
+#### 例外系
+
+1. Dirty Gate で Cancel または保存失敗（Raw パース失敗・シリアライズ失敗含む）時はエクスポートを実行せず中断する。
+2. `untitled:` スキームで未保存のまま外部 CLI（Pandoc / Marp CLI）を実行しようとした場合はクラッシュせず保存案内・エラー通知で中断する（内蔵 HTML 出力・通常印刷用 HTML はメモリバッファから生成可）。
+3. Pandoc / Marp CLI の未導入・オフライン・タイムアウト・非ゼロ終了時は ErrorMessage/Warning + Output ログを出力する。
+
+### Non-Goals
+
+- Custom Editor バッファから外部 CLI 用の一時 `.md` ファイルを暗黙生成して未保存のまま CLI エクスポートを強行すること（Dirty Gate で保存整合を優先）
+- 外部ネットワーク経由のドキュメント変換 API 送信
+
+### Related Tests
+
+- [doc/test/export/testspec-document-export.md](../test/export/testspec-document-export.md) — HTML/PDF/DOCX/PPTX 変換、Dirty Save Gate（`TC-EXP-008`）、Custom Editor バッファ参照、Marp CLI ローカル優先探索・タイムアウト、`shell: false`、URI スキーム保全
 
 ---
 
@@ -1255,12 +1319,12 @@ Source モード（Raw エディタ）およびエディタ全般における Ma
 
 ### 2. 書式ショートカットキー（Formatting Shortcuts）
 
-Source モード（`<textarea id="raw-editor">`）において、選択テキストに対するマークアップのトグル操作を提供する。
+Source モード（`<textarea id="raw-editor">`）において、`<textarea id="raw-editor">` にフォーカスがある場合に限定して選択テキストに対するマークアップのトグル操作を提供する（派生 IDE のワークベンチグローバルショートカット — 例: Cursor `Cmd+K`/`Cmd+L` — をフォーカス外で横取りしない — `issue-31-test-review` AD-007）。
 - `Ctrl+B` / `Cmd+B`: 太字（`**text**`）トグル
 - `Ctrl+I` / `Cmd+I`: 斜体（`*text*`）トグル
 - `Alt+S`: 取り消し線（`~~text~~`）トグル
 - `Ctrl+M` / `Cmd+M`: インライン数式（`$text$`）トグル
-- `Ctrl+K`: リンク構文（`[text](url)`）挿入。クリップボードに URL 文字列が存在する場合は自動でリンク先として補完する
+- `Ctrl+K` / `Cmd+K`（`raw-editor` フォーカス時のみ）: リンク構文（`[text](url)`）挿入。クリップボードに URL 文字列が存在する場合は自動でリンク先として補完する
 
 ### 3. スマート URL ペースト（Smart Link Paste）および表スマートペースト連携
 
@@ -1316,10 +1380,42 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
   - Backlogテーブル（`|h` 行、`LEFT:` / `CENTER:` / `RIGHT:` 接頭辞）をGFM Markdownテーブル（デリミタ行 `|:---|` / `|:---:|` / `|---:|` を含む）へ展開し、Visual モードでも §3 の列アライメント（`textAlign`）として描画・保持する。
   - Backlog記法（見出し、リスト、コード、装飾、引用、リンク）をMarkdown記法へ自動復元。
 
-### 3. エディタ UI / コンテキストメニュー統合
+### 3. エディタ UI / コンテキストメニュー統合・Custom Editor フォーカス時契約（`UD-001` Option A）
+
+### Inputs & Types
+
+| 入力 | 型 | 必須 | 備考 |
+|------|-----|------|------|
+| `commandId` | 5 コマンド列挙 | はい | `convertCsvToMarkdownTable`, `convertMarkdownTableToCsv`, `copyTableAsCsv`, `copyAsBacklog`, `pasteBacklogAsMarkdown` |
+| `activeTextEditor` | `vscode.TextEditor \| undefined` | Text Editor 時必須 | Text Editor フォーカス専用として動作 |
+| `clipboardText` | `string` | `pasteBacklogAsMarkdown` 時 | 空文字/空白のみは Warning 通知して中断 |
+
+### Outputs & Failure Returns
+
+| 条件 | 戻り値 / ステータス | 備考 |
+|------|-------------------|------|
+| Text Editor アクティブ（正常） | エディタ置換またはクリップボード書き込み＋`InformationMessage` | `copyTableAsCsv` / `copyAsBacklog` は通知表示 |
+| Custom Editor アクティブ（`activeTextEditor === undefined`） | 無言終了（silent no-op）せず **案内通知（`InformationMessage` / `WarningMessage`）を表示**（任意: `copyAsBacklog` のみ開いている `MarkdownDocument` 全体出力フォールバックを許容） | Text Editor フォーカス専用契約をユーザーへ明示（`UD-001` Option A） |
+| 選択なし / 表なし / クリップボード空 | `WarningMessage` 通知して安全に中断 | — |
+
+### Preconditions
+
+- テキストエディタ（`vscode.window.activeTextEditor`）にフォーカスがあること（`menus.editor/context` の `when` 句は Text Editor コンテキストに整合）。
+- Visual モードでの表貼り付けは §3 / §15 のスマートペースト（TSV / HTML `<table>`）を使用する。
+
+### Behavior
 
 - テキストエディタのコンテキストメニュー（右クリック）に変換・コピー・ペースト項目を配置。
 - `pasteBacklogAsMarkdown` にショートカットキー（例: `Cmd+Alt+V` / `Ctrl+Alt+V`）を提供。
+- Custom Editor（`md-wysiwyg-editor.wysiwyg`）がアクティブな状態でコマンドパレット等から上記 5 コマンドが実行された場合は、無言で何もしない状態（silent no-op）を廃止し、Text Editor（または Reopen Editor With…）での利用を案内する通知を表示する（ただし `copyAsBacklog` は開いている `MarkdownDocument` 全体の Backlog 変換コピーへのフォールバックを許容する — `UD-001` Option A）。
+
+### Non-Goals
+
+- Custom Editor（Visual / Source Webview）と Extension Host 間に双方向カーソル/選択範囲取得 `postMessage` ブリッジを新設し、5 コマンドすべてを Custom Editor 上で直接実行すること（`UD-001` Option A により不採用）
+
+### Related Tests
+
+- [doc/test/testspec-table-csv-and-backlog-conversion.md](../test/testspec-table-csv-and-backlog-conversion.md) — CSV/TSV・Backlog 変換ロジックおよび `registerTableCsvBacklogCommands` 実行テスト（Text Editor 正常系 + Custom Editor フォーカス時の案内通知）
 
 ---
 
@@ -1353,6 +1449,10 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
 | RK-026 | HTML `<img>` シリアライズ時の Webview URI 混入リスク | TipTap モデル上の表示用 `src`（`vscode-webview-resource:` 等）が誤って `<img src="...">` として出力されないよう、`originalSrc` 属性または Host 側の逆変換・正規化経路を必ず通し、`img/image-NNNN.ext` への復元を保証する（§7, §8 / `image-rich-editing` AD-002, RK-002） |
 | RK-027 | OS ファイルドロップ時の Webview 画面遷移事故 | エディタルート全体でファイルの `dragover` / `drop` イベントに対して `preventDefault()` を適用し、VS Code Webview 自体がドロップされた画像ファイルへ画面遷移することを防止する（§7, §9 / `image-rich-editing` AD-004, RK-003） |
 | RK-028 | Visual モードでのクリック選択と Lightbox 起動の操作競合 | Preview モード（および Visual モードの Readonly 時）はシングルクリック、Visual モード（非 RO）はダブルクリックまたはミニポップオーバーの Zoom ボタンで Lightbox を開く役割分担とする（§7 / `image-rich-editing` AD-005, RK-004） |
+| RK-029 | VS Code Remote (`vscode-remote`) 上の外部 CLI 実行境界不整合 | `vscode.workspace.fs` でファイル読込できても Remote 環境側に `plantuml` / `java` / `pandoc` / `marp` / Chromium が未導入の場合がある。検出失敗時は無害なフォールバック（PlantUML 非表示、Export は明示エラー通知）を必須とする（§12, §13 / `issue-31-test-review` RK-001） |
+| RK-030 | Export PDF/PPTX (`npx -y @marp-team/marp-cli`) のオフライン/プロキシ失敗・遅延 | ローカル導入済み `marp` バイナリ優先探索・タイムアウト制御・「オフラインまたは CLI 未導入」エラー通知で緩和する（§13 / `issue-31-test-review` AD-007, RK-002） |
+| RK-031 | 派生 IDE（Cursor / Windsurf / Antigravity / VSCodium）の自動 E2E テスト不可 | `@vscode/test-electron` は公式 VS Code バイナリのみを起動対象とするため、派生 IDE 固有挙動は IDE プロファイルモックの単体テストとリリース前手動スモークチェックリスト（`doc/operations/operations.md`）で担保する（`issue-31-test-review` RK-004） |
+| RK-032 | `MarpPreviewManager` への `localResourceRoots` 追加に伴うファイル露出境界 | 対象 `.md` 親ディレクトリ配下の `img/` のみ（`getWorkspaceImgRoots` 同等）に厳格限定し、ワークスペース全体や親階層への拡大を禁止、かつ `isSafeImagePath` と併用する（§6, §9 / `issue-31-test-review` AD-004, RK-005） |
 
 ---
 
@@ -1360,14 +1460,18 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
 
 | ドキュメント | 状態 |
 |-------------|------|
-| [doc/test/testspec-vsc-md-wysiwyg.md](../test/testspec-vsc-md-wysiwyg.md) | **作成済** — TC-001–142。**preview-rich-embed**（§1 / §5 / §6 / §7 / §9）: TC-124–142 Green（**TC-130–132 は Preview ソース併記へ更新予定** — `mermaid-snap-style-with-source`）。**GFM 書式ツールバー**（§2 / §8 / §9 `del`/`s`）は **要追記**（`gfm-format-toolbar`）。TC-152（foreignObject）回帰維持 |
-| [doc/test/testspec-native-preview-side-and-default-raw.md](../test/testspec-native-preview-side-and-default-raw.md) | **作成済** — 初期 Raw・Default Preview・dirty ゲート・Pattern A 非干渉・三点往復・表示ラベル。`default-preview-same-tab-group`: `showPreview` + `moveActiveEditor` 同一グループ（＋隣接 best-effort）・コマンド ID / ラベル / TC-004/005/017/018/021 |
-| [doc/test/mermaid/testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) | **作成済** — HIP 付き sanitize 回帰維持。テーマ／CSS Expected は **`mermaid-redux-elk-fidelity` で更新要**（`redux`/`redux-dark`＋nonce presentation 再注入） |
-| [doc/test/mermaid/testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) | **作成済** — ソース併記・Preview RO・HIP / strict。テーマ／CSS 前提は **`mermaid-redux-elk-fidelity` で更新要**。flowchart エッジ CSP＋nonce 再注入回帰必須；`'unsafe-inline'` なし |
-| [doc/test/mermaid/testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) | **未作成** — 後続 `spec-test-design`。kind→redux マップ、nonce 再注入、ELK オプトイン／遅延ロード、グローバル強制 ELK なし、strict / HIP / ソース併記 / Preview RO 回帰 |
-| [doc/test/testspec-table-csv-and-backlog-conversion.md](../test/testspec-table-csv-and-backlog-conversion.md) | **作成済** — CSV ⇄ Markdown 表相互変換および Backlog 形式コピー＆ペースト（§16） |
-| [doc/test/testspec-table-rich-editing.md](../test/testspec-table-rich-editing.md) | **作成済** — TC-TRE-001〜017 Green（`table-rich-editing`）。列アライメント（`left` \| `center` \| `right` \| `null`）の GFM/HTML 往復と CSP 安全描画、行/列移動と行複製（`moveRowUp` / `moveRowDown` / `duplicateRow` / `moveColumnLeft` / `moveColumnRight`）、Table メニュー・コンテキストメニュー・ショートカット、TSV / HTML `<table>` スマートペーストと誤変換防止ガード（§3, §8, §9, §15, §16） |
-| [doc/test/testspec-image-rich-editing.md](../test/testspec-image-rich-editing.md) | **未作成** — 後続 `spec-test-design`（`image-rich-editing`）。画像サイズ変更（ドラッグリサイズ・プリセット `25%`/`50%`/`75%`/`100%`）・配置切替（`left`/`center`/`right`/`null`）・Alt 編集の CSP 安全描画と `![alt](src)` ⇄ `<img src="img/..." alt="..." width="..." align="..." />` 決定的往復シリアライズ（Webview URI 非漏洩）、画像ファイル D&D 挿入（`webp` 含む・遷移抑止・未保存/RO ガード）、Lightbox モーダル拡大表示（§7, §8, §9） |
+| [doc/test/testspec-vsc-md-wysiwyg.md](../test/testspec-vsc-md-wysiwyg.md) | **作成済** — TC-001–184（Custom Editor 基盤・三点モード・表・Readonly・Marp・画像・保存・セキュリティ・共存・検索置換）。Preview モードでは `.mermaid-source` 非表示（`display: none`）、Visual では図下ソース併記。`TC-159` ID 衝突解消（`TC-184` 分離）・初期モード `Visual` 同期・`Mocha` / `mshiono.vsc-md-editor` 是正済（`issue-31-test-review` C-2, C-3, C-6） |
+| [doc/test/testspec-default-editor-mode-config.md](../test/testspec-default-editor-mode-config.md) | **作成済** — TC-MODE-001–011（`md-wysiwyg-editor.defaultMode` 初期モード設定・既定 `visual` → `markdown`） |
+| [doc/test/testspec-native-preview-side-and-default-raw.md](../test/testspec-native-preview-side-and-default-raw.md) | **作成済** — Default Preview・dirty ゲート・Pattern A 非干渉・三点往復・表示ラベル・同一グループ補償（`moveActiveEditor`）。初期モード表記を現行仕様（`DEFAULT_EDITOR_MODE = 'markdown'` / `defaultMode` 既定 `visual`）へ同期済（`issue-31-test-review` C-3, C-6） |
+| [doc/test/mermaid/testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) | **作成済** — HIP 付き sanitize、kind→`redux`/`redux-dark` マップ、Host 同一 nonce presentation 再注入、`layout: elk` オプトイン／遅延ロード、グローバル強制 ELK なし、Visual 図下ソース併記・Preview `.mermaid-source` 非表示、`fontSize: '16px'`、ラベル `font-family` / `line-height: 1`、自然サイズ（scale 1）／Fit／ズーム／パン／タイトル全文可視 |
+| [doc/test/testspec-table-format-and-editor-assist.md](../test/testspec-table-format-and-editor-assist.md) | **作成済** — TC-TAB-001–012, TC-AST-001–009（Aligned/Compact 表フォーマット・Source モード Tab/リスト/ショートカット/スマート URL ペースト/TOC）。存在しないテストファイル参照を実在パス（`src/test/suite/unit/markdown-serializer.test.ts`）へ同期済（`issue-31-test-review` C-5） |
+| [doc/test/testspec-table-csv-and-backlog-conversion.md](../test/testspec-table-csv-and-backlog-conversion.md) | **作成済** — CSV ⇄ Markdown 表相互変換・Backlog 形式コピー＆ペースト・Text Editor 専用 + Custom Editor 通知契約（§16 / `UD-001` Option A） |
+| [doc/test/testspec-table-rich-editing.md](../test/testspec-table-rich-editing.md) | **作成済** — TC-TRE-001–017 Green（`table-rich-editing`: 列アライメント・行/列移動と複製・Table メニュー/コンテキストメニュー/ショートカット・TSV/HTML `<table>` スマートペースト、§3, §8, §9, §15, §16） |
+| [doc/test/testspec-image-rich-editing.md](../test/testspec-image-rich-editing.md) | **作成済** — TC-IRE-001〜（`image-rich-editing`: リサイズ・プリセット・配置・Alt 編集・`![alt](src)` ⇄ `<img />` 往復・Webview URI 非漏洩・画像 D&D・Lightbox、§7, §8, §9） |
+| [doc/test/export/testspec-document-export.md](../test/export/testspec-document-export.md) | **作成済** — HTML/PDF/DOCX/PPTX エクスポート、Dirty Save Gate（`TC-EXP-008`）、Custom Editor バッファ参照・CLI 安全性（§13） |
+| [doc/test/math/testspec-katex-math.md](../test/math/testspec-katex-math.md) | **作成済** — KaTeX 数式レンダリング（§14） |
+| [doc/test/plantuml/testspec-plantuml.md](../test/plantuml/testspec-plantuml.md) | **作成済** — PlantUML ローカル実行・フォールバック・タイムアウト（§12、`TC-PUML-006` タイムアウト実待機テスト是正済 / `TC-I31-025`） |
+| [doc/test/testspec-issue-31-test-review.md](../test/testspec-issue-31-test-review.md) | **作成済** — `TC-I31-001`–`042` 実装・Green 実測済（`issue-31-test-review`: 4層テスト刷新・Provider ライフサイクル・`vscode-remote:`/`untitled:`・`imageInserted` `epoch`・Marp CSP/バッファ・Export Dirty Gate・Readonly バッジ・Switch Guard・`activationEvents`・`^1.85.0`/派生 IDE・`UD-001` Option A） |
 | MVP 外項目 | [doc/requirements/backlog.md](backlog.md) |
 
 ---
@@ -1380,29 +1484,29 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
 |------|---------|---------|
 | 表の行/列数上限 | ソフト上限 **100 行 × 20 列**。超過時 UI 警告、保存は許可 | TC-021–023 |
 | 未保存新規 `.md` への画像 paste | paste 拒否 + **「Save document first」** 通知 | TC-050 |
-| GFM パイプ表オープン時変換 | per-table `tableFormat` で永続化。初回編集時の自動 HTML 変換は廃止。形式切替は Table メニュー明示操作のみ | TC-019（更新予定）、`table-gfm-html-mode` |
+| GFM パイプ表オープン時変換 | per-table `tableFormat` で永続化。初回編集時の自動 HTML 変換は廃止。形式切替は Table メニュー明示操作のみ | TC-019、`table-gfm-html-mode` |
 | 表の永続化形式 | per-table `tableFormat`（`gfm` \| `html`）。新規挿入デフォルト GFM。セッション `insertTableFormat` は再起動で `gfm` にリセット | `table-gfm-html-mode` |
 | 非 Marp 文書の Marp プレビュー | **「No Marp slides detected」** ガイダンス表示 | TC-042 |
 | RO 未保存ワークスペース | 保存済み WS は `workspaceState` 永続化；未保存 WS はセッション内のみ | TC-027, TC-030 |
-| 三点モード・正本・dirty | 同一 Custom Editor、初期 **Raw**、正本 `MarkdownDocument`、モード切替でディスク非書込。三点往復可 | TC-070–074（初期モード期待は `native-preview-side-and-default-raw` で更新） |
-| Default Preview（非モード） | mode-toolbar 先頭 `Default Preview`（`data-action="native-preview"`）。表示順: Default Preview \| Editor Preview \| Edit Rich Editor \| Edit Raw Text。面不変。dirty→Save/Cancel。一次 API `markdown.showPreview` + Host 同一グループ補償（`moveActiveEditor`）。コマンド `md-wysiwyg-editor.showNativeMarkdownPreview`（製品内別名 `…ToSide` は同一ハンドラ）。Pattern A / Marp 非干渉。Beside フォールバック Out。4th mode Out | TC-004/005/017/018/021（`native-preview-side-and-default-raw` / `default-preview-same-tab-group`） |
+| 三点モード・正本・dirty | 同一 Custom Editor、初期モードは設定 `md-wysiwyg-editor.defaultMode`（未設定時 **Visual** / `markdown`）、正本 `MarkdownDocument`、モード切替でディスク非書込。三点往復可 | TC-070–074、`TC-MODE-001–011` |
+| Default Preview（非モード） | mode-toolbar 先頭 `Default Preview`（`data-action="native-preview"`）。表示順: Visual \| Source \| Preview \| Default Preview（セグメント + 単独 + アクション）。面不変。dirty→Save/Cancel。一次 API `markdown.showPreview` + Host 同一グループ補償（`moveActiveEditor`）。コマンド `md-wysiwyg-editor.showNativeMarkdownPreview`（製品内別名 `…ToSide` は同一ハンドラ）。Pattern A / Marp 非干渉。Beside フォールバック Out。4th mode Out | TC-004/005/017/018/021（`native-preview-side-and-default-raw` / `default-preview-same-tab-group`） |
 | Raw パース失敗 | Document 非破壊 + 通知 + 失敗中 save ブロック | TC-078–079 |
 | Preview vs Marp Preview | §1 三点 Preview（Marp 検出時は同一 Webview 内 RO 描画可）と §6 Marp Preview **パネル**（別 UI インスタンス）を明示 | TC-077（意味更新 — RK-017） |
 | Preview 厳密 RO・三者同期 | Preview 入力不可、Raw↔Markdown↔Preview が Document 経由で一致。表示層（Marp HTML / 画像 rewrite / Mermaid CSS）は正本非変更 | TC-080–082 |
 | GFM 書式ツールバー | §2 In（strike / H3–H6 / inline code / quote / task / HR）往復、Out（画像ボタン・下線・highlight・脚注・Alerts）、RO/モード既存ガード、sanitize `del`/`s` | 後続 TC（`gfm-format-toolbar`） |
-| 画像 URI Host 解決 | `img/` 配下のみ `isSafeImagePath` + `asWebviewUri`。serialize は相対パス維持 | 後続 TC（`preview-rich-embed`） |
-| Preview Mermaid ソース併記 | Preview / Markdown とも図（`.mermaid-preview`）の下に `.mermaid-source` 表示。旧「Preview ソース非表示」撤回。Preview は厳密 RO | TC-130–132 更新予定（`mermaid-snap-style-with-source`） |
-| Preview 内 Marp 描画 | `isMarpDocument` 共用、`#preview-marp-root`、`previewMarpHtml`、§6 パネル共存 | 後続 TC（`preview-rich-embed`） |
-| Preview 可読性 CSS | `body[data-mode='preview']` スコープ、`line-height`、opacity/コントラスト、`--vscode-*` トークン | 後続 TC（`preview-mode-quality`） |
+| 画像 URI Host 解決 | `img/` 配下のみ `isSafeImagePath` + `asWebviewUri`（`file` / `vscode-remote` 共に対応、`untitled:` 拒否）。`imageInserted` は表示用 URI と相対パスを分離し `epoch` 付き `update` で反映。serialize は相対パス維持 | TC-124–129、`testspec-image-rich-editing.md` |
+| Preview Mermaid ソース非表示 | Markdown（Visual）モードでは図（`.mermaid-preview`）の下に `.mermaid-source` を併記し、Preview モードでは `body[data-mode='preview'] .mermaid-source { display: none; }` によりソース領域を非表示（厳密 RO） | TC-130–132、[testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) |
+| Preview 内 Marp 描画 | `isMarpDocument` 共用、`#preview-marp-root`、`previewMarpHtml`、§6 パネル共存 | TC-133–142 |
+| Preview 可読性 CSS | `body[data-mode='preview']` スコープ、`line-height`、opacity/コントラスト、`--vscode-*` トークン | TC-146–148 |
 | Mermaid frontmatter / VS Code テーマ | フェンス全文 render、kind マップ `light`→`redux` / `dark`\|`highContrast`→`redux-dark`、try-catch 隔離、`themeVariables` への `var(--vscode-...)` 禁止、グローバル `fontSize: '16px'`（`mermaid-default-preview-parity`）、`themeUpdated` 再描画。classic `default`/`dark` および全 kind 強制 `default` は撤回（`mermaid-redux-elk-fidelity`） | `mermaid-theme-crash-fix` / `fix-mermaid-edge-styles` / `mermaid-redux-elk-fidelity` / `mermaid-readable-viewport` / `mermaid-default-preview-parity` |
-| Mermaid コントラスト可読 | redux 系テーママップ＋ Host 同一 nonce による presentation `<style>` 再注入、HIP 付き sanitize（ラベル HTML 保持）、`dark`/`highContrast` でノード・ラベル・エッジ識別。島ライト撤回。静的 Host CSS は安全網に縮小。広い面背景不変。strict + DOMPurify 維持 | [testspec-mermaid-contrast-readable.md](../test/mermaid/testspec-mermaid.md)（更新要） |
-| Mermaid ソース併記 | Preview / Markdown とも図下に `.mermaid-source`。Preview 厳密 RO。HIP / strict 維持。島ライト＋全 kind `default` は撤回。テーマは redux マップ（`mermaid-redux-elk-fidelity`） | [testspec-mermaid-snap-style-with-source.md](../test/mermaid/testspec-mermaid.md)（更新要） |
-| Mermaid presentation CSP（nonce 再注入） | render 結果 `<style>` に Host 同一 nonce を付与して再注入。任意ユーザー CSS 素通しなし。`style-src` に `'unsafe-inline'` なし。静的 Host CSS エッジフォールバックは縮小／撤廃。flowchart エッジ黒ブロブ／欠線解消 | 後続 TC（`mermaid-redux-elk-fidelity`）／既存 edge-styles 回帰更新 |
-| Mermaid ELK オプトイン | `@mermaid-js/layout-elk` 登録＋遅延ロード。frontmatter / `%%{init}%%` の `layout: elk` 時のみ ELK。グローバル強制なし。登録失敗は図単位エラー。Chart 依存 Out | 後続 TC（`mermaid-redux-elk-fidelity`） |
-| Mermaid 表示密度 | グローバル `themeVariables.fontSize: '16px'`（旧 `'12px'` / `'8px'` / `'13px'` 置換）。ラベル `font-family: "trebuchet ms", verdana, arial, sans-serif`・`line-height: 1.2`（エディタ 1.6 非継承）。測定用 Host nonce CSS も `font-size` / `font-family` / `line-height` 同値。`var(--vscode-...)` 禁止。CSS scale は密度の主手段にしない。per-diagram frontmatter 上書き可。redux / nonce / ELK / strict / HIP 不変 | 後続 TC（`mermaid-label-metrics`）／[testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) 追記 |
-| Mermaid 可読ビューポート | タイトル全文可視。Editor Preview / Rich Editor のみ: 初期・再 render・テーマ切替後は scale 1（自然サイズ・自動 contain なし）・小さい軸は中央寄せ・はみ出しはスクロール・Fit 押下時のみ contain・ズーム原点中央・ズームイン／アウト・パン／スクロール・a11y `aria-label`。密度（fontSize）とビューポート変換は別契約。Default Preview 埋め込みなし。セッション永続なし | 後続 TC（`doc/test/mermaid/testspec-mermaid.md` / `mermaid-label-metrics`） |
+| Mermaid コントラスト可読 | redux 系テーママップ＋ Host 同一 nonce による presentation `<style>` 再注入、HIP 付き sanitize（ラベル HTML 保持）、`dark`/`highContrast` でノード・ラベル・エッジ識別。島ライト撤回。静的 Host CSS は安全網に縮小。広い面背景不変。strict + DOMPurify 維持 | [testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) |
+| Mermaid presentation CSP（nonce 再注入） | render 結果 `<style>` に Host 同一 nonce を付与して再注入。任意ユーザー CSS 素通しなし。`style-src` に `'unsafe-inline'` なし。静的 Host CSS エッジフォールバックは縮小／撤廃。flowchart エッジ黒ブロブ／欠線解消 | [testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) |
+| Mermaid ELK オプトイン | `@mermaid-js/layout-elk` 登録＋遅延ロード。frontmatter / `%%{init}%%` の `layout: elk` 時のみ ELK。グローバル強制なし。登録失敗は図単位エラー。Chart 依存 Out | [testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) |
+| Mermaid 表示密度 | グローバル `themeVariables.fontSize: '16px'`（旧 `'12px'` / `'8px'` / `'13px'` 置換）。ラベル `font-family: "trebuchet ms", verdana, arial, sans-serif`・`line-height: 1`（`line-height: 1 !important` で `1.5` 上書き・エディタ `1.6` 非継承）、`flowchart.padding: 2`。測定用 Host nonce CSS も `font-size` / `font-family` / `line-height` 同値。`var(--vscode-...)` 禁止。CSS scale は密度の主手段にしない。per-diagram frontmatter 上書き可。redux / nonce / ELK / strict / HIP 不変 | [testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) |
+| Mermaid 可読ビューポート | タイトル全文可視。Editor Preview / Rich Editor のみ: 初期・再 render・テーマ切替後は scale 1（自然サイズ・自動 contain なし）・小さい軸は中央寄せ・はみ出しはスクロール・Fit 押下時のみ contain・ズーム原点中央・ズームイン／アウト・パン／スクロール・a11y `aria-label`。密度（fontSize）とビューポート変換は別契約。Default Preview 埋め込みなし。セッション永続なし | [testspec-mermaid.md](../test/mermaid/testspec-mermaid.md) |
 | 表リッチ編集（列アライメント・行列移動と行複製・スマートペースト） | 列アライメント（`left` \| `center` \| `right` \| `null`）の CSP 安全描画（`data-align` / `align` 属性＋外部 CSS）および GFM（`:---`, `:---:`, `---:`）/ HTML（`<th/td align="...">`）往復シリアライズ・Table Formatter 統合。行・列移動（`moveRowUp` / `moveRowDown` / `moveColumnLeft` / `moveColumnRight`）および行複製（`duplicateRow`）の 1 トランザクション実行・ヘッダ境界正規化・端 no-op・Table メニュー / コンテキストメニュー / ショートカット（`Alt+矢印`, `Shift+Alt+ArrowDown`）統合。TSV（2行×2列以上・コードブロック等ガード）および HTML `<table>` の Visual / Source スマートペースト | [doc/test/testspec-table-rich-editing.md](../test/testspec-table-rich-editing.md)（`table-rich-editing`） |
 | リッチ画像編集（サイズ・配置・Alt・D&D・Lightbox） | 画像選択時のドラッグリサイズ（最小 `32px`・アスペクト比維持）およびサイズプリセット（`25%`/`50%`/`75%`/`100%`）・配置（`left`/`center`/`right`/`null`）・Alt 編集ミニポップオーバー UI。CSP 安全描画（HTML `width` / `align` / `data-align` 属性＋外部 CSS、インライン `style` 不使用）。`width`/`align` 未指定時は `![alt](src)`、指定時は `<img src="img/..." alt="..." width="..." align="..." />` で決定的に双方向往復し Webview URI 非漏洩を保証。OS / ファイルツリーからの画像 D&D 挿入（`webp` 追加・遷移抑止・未保存/RO ガード）。Preview シングルクリック / Visual ダブルクリックまたは Zoom ボタンによる Lightbox 拡大モーダル表示 | [doc/test/testspec-image-rich-editing.md](../test/testspec-image-rich-editing.md)（`image-rich-editing`） |
+| CSV/TSV・Backlog 変換 5 コマンドの提供範囲 | **Text Editor フォーカス専用**とし、Custom Editor アクティブ時にコマンドパレット等から実行された場合は無言終了せず案内通知を表示（`copyAsBacklog` のみ `MarkdownDocument` 全体出力フォールバック許容、`UD-001` Option A）。Visual 表貼り付けはスマートペースト（§3 / §15）で対応 | [doc/test/testspec-table-csv-and-backlog-conversion.md](../test/testspec-table-csv-and-backlog-conversion.md) |
 
 ---
 
@@ -1445,7 +1549,7 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
 | 2026-09-29 | §5 7a/7c, 改訂履歴 | ノード内余白を `padding: 6` に縮小。初期・再 render・テーマ切替・Fit は枠内 contain（scale は 1 超を許容し、小さい図は枠の短辺まで拡大）。四辺同時の一致は縦横比が違うため非目標。ズーム／パンは維持 |
 | 2026-09-29 | §5 7a, 改訂履歴 | ラベル下空き: Mermaid createText の inline `line-height: 1.5` を測定／表示とも `line-height: 1 !important` で上書き。`flowchart.padding` を `2` に。測定と描画の一致を維持 |
 | 2026-09-29 | 概要, §10, RK-020–021, 改訂履歴 | 利用者向け Breaking / 再設定案内を削除（初期製品のため migration messaging 不要）。概要の現行 ID 表は維持。RK-021 緩和を README/deployment 再設定手順参照から「正本 ID 同期・マイグレーション非実装」に更新 |
-| 2026-09-29 | 概要, §1, §10, RK-020–021, Spec Gaps, 改訂履歴 | 製品リネーム（`rename-md-wysiwyg`）: 貢献 ID プレフィックスを `md-wysiwyg-editor` に同期。viewType `md-wysiwyg-editor.wysiwyg`、コマンド／設定 `md-wysiwyg-editor.*`、Extension ID `mshiono.md-wysiwyg-editor`、repo `https://github.com/m-shiono/md-wysiwyg-editor.git`。製品内 `showNativeMarkdownPreviewToSide` は同一ハンドラ継続（AD-004）。CSP／サニタイズ境界は不変（AD-008）。Requirements Brief AD-001–AD-010 |
+| 2026-09-29 | 概要, §1, §10, RK-020–021, Spec Gaps, 改訂履歴 | 製品リネーム（`rename-md-wysiwyg`）: 貢献 ID プレフィックスを `md-wysiwyg-editor` に同期。viewType `md-wysiwyg-editor.wysiwyg`、コマンド／設定 `md-wysiwyg-editor.*`、Extension ID `mshiono.vsc-md-editor`（`package.json` `publisher.name` 正本。旧誤記 `mshiono.md-wysiwyg-editor` を訂正）、repo `https://github.com/m-shiono/md-wysiwyg-editor.git`。製品内 `showNativeMarkdownPreviewToSide` は同一ハンドラ継続（AD-004）。CSP／サニタイズ境界は不変（AD-008）。Requirements Brief AD-001–AD-010 |
 | 2026-10-03 | Non-Goals, Related Tests, 改訂履歴 | doc 整理: `backlog.md` への参照リンク更新 |
 | 2026-10-03 | 概要, §10 Non-Goals, 改訂履歴 | doc 整理: Marketplace 記述全廃。識別子統一方針（package.json name のみ vsc-md-editor、他は md-wysiwyg-editor 統一）を記録 |
 | 2026-10-17 | §1 Preconditions, 改訂履歴 | SCM 差分フォールバック（`scm-diff-fallback`）: `package.json` の `contributes.customEditors[0].selector` を `scheme: "file"`, `scheme: "untitled"`, `scheme: "vscode-remote"` に限定し、`git:` 等の仮想スキーム（Source Control diff）では VS Code 標準テキスト Diff Editor にフォールバックする契約を明記 |
@@ -1461,4 +1565,6 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
 | 2026-10-28 | §1, 改訂履歴 | デフォルトエディタモード設定（`default-editor-mode-config`）: 設定 `md-wysiwyg-editor.defaultMode`（`source` / `visual` / `preview`、デフォルト `visual`）により、Markdown オープン時の初期エディタモードのカスタマイズを契約化。未設定時デフォルトを Visual（`markdown`）に更新 |
 | 2026-10-31 | §3, §8, §9, §15, §16, RK-022–024, Spec Gaps, Related Tests, 改訂履歴 | 表リッチ編集（`table-rich-editing`）: 列アライメント（`left` \| `center` \| `right` \| `null`）の CSP 安全描画（`data-align` / `align` 属性＋外部 CSS）と GFM/HTML 双方向往復・Table Formatter 統合、行/列移動と行複製（`moveRowUp` / `moveRowDown` / `duplicateRow` / `moveColumnLeft` / `moveColumnRight`）および Table メニュー・右クリックコンテキストメニュー・表内ショートカット（`Alt+矢印` / `Shift+Alt+ArrowDown`）統合、TSV / HTML `<table>` スマートペースト（Visual / Source 両対応、誤変換防止ガード付き）を契約化。Requirements Brief `table-rich-editing` AD-001〜AD-005 |
 | 2026-11-01 | §7, §8, §9, RK-025–028, Spec Gaps, Related Tests, 改訂履歴 | リッチ画像編集（`image-rich-editing`）: 画像選択時のドラッグリサイズ・サイズプリセット（`25%`/`50%`/`75%`/`100%`）・配置切替（`left`/`center`/`right`/`null`）・Alt 編集ミニポップオーバー UI、CSP 安全描画（HTML `width` / `align` / `data-align` 属性＋外部 CSS、インライン `style` 禁止）、`![alt](src)` ⇄ `<img src="img/..." alt="..." width="..." align="..." />` の決定的往復シリアライズと相対パス保護（Webview URI 非漏洩）、OS / ファイルツリーからの画像ファイル D&D 挿入（`webp` 追加・遷移抑止・未保存/RO ガード）、および Lightbox モーダル拡大表示を契約化。Requirements Brief `image-rich-editing` AD-001〜AD-005 |
+| 2026-11-15 | 概要, §1, §4, §5, §6, §7, §8, §9, §10, §11, §13, §15, §16, RK-029–032, Related Tests, Spec Gaps, 改訂履歴 | 品質・互換性・三者整合修復（`issue-31-test-review`）: `AD-004`（`imageInserted` 表示URI/相対パス分離 + `update` `epoch` 必須付与、`MarpPreviewManager` `img/` 限定 `localResourceRoots` + `${cspSource}` `img-src`）、`AD-005`（`vscode-remote` / `untitled:` URI スキーム保全と `isSafeImagePath` 徹底、`file://` ハードコード廃止）、`AD-006`（Export 5種 / Marp Preview の `MarkdownDocument` 優先参照・全5種 Dirty Gate、`updateReadonlyBadge` `(Readonly)` 除去冪等化、`editor-switch-guard` `markdown.preview` 除外、`activationEvents` `toggleReadonly`/`showMarpPreview` 補完）、`AD-007`（`@types/vscode: ^1.85.0` API 下限、派生 IDE 非干渉・`FindWidget`/`raw-editor` フォーカス限定ショートカット、Marp CLI ローカル優先探索・タイムアウト、`shell: false` 厳守）、`UD-001` Option A（CSV/Backlog 5 コマンドの Text Editor 専用化＋Custom Editor 実行時案内通知）、および `C-2`〜`C-6`（`openCustomDocument` 安全読込、初期モード `Visual` 統一、Extension ID `mshiono.vsc-md-editor` 訂正、Related Tests 重複/未作成誤記修復、Mermaid `padding: 2` / `line-height: 1` / Preview ソース非表示表記統一）を反映 |
+| 2026-11-15 | Related Tests, 改訂履歴 | `issue-31-test-review` の testspec 作成・既存 testspec 是正・テスト実装完了（`TC-I31-001`–`042` / `TC-184` / `TC-PUML-006` / C-2, C-3, C-5, C-6 反映）に伴い、Related Tests 表を `**作成済**`・同期済へ更新 |
 

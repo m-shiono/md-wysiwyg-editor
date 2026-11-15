@@ -35,8 +35,13 @@ import type { MarpRenderOptions } from '../utils/marp-render';
 import { handleCustomEditorDisposed } from '../utils/editor-switch-guard';
 import { shouldAcceptWebviewUpdate } from '../utils/webview-update-epoch';
 import { buildThemeUpdatedMessage, mapColorThemeKind } from '../utils/theme-sync';
-import type { WebviewInboundMessage, WebviewOutboundMessage } from '../webviews/messages';
+import type {
+  WebviewDiagnosticSnapshot,
+  WebviewInboundMessage,
+  WebviewOutboundMessage,
+} from '../webviews/messages';
 import { showNativeMarkdownPreview } from '../commands/native-markdown-preview';
+import { setMarkdownEditorProvider } from '../utils/editor-provider-hook';
 
 export class MarkdownEditorProvider implements vscode.CustomEditorProvider<MarkdownDocument> {
   static readonly viewType = 'md-wysiwyg-editor.wysiwyg';
@@ -51,11 +56,19 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
   private readonly _modeStates = new Map<string, EditorModeState>();
   /** Convert bumps this; older webview `update` messages must not restore HTML. */
   private readonly _minUpdateEpoch = new Map<string, number>();
+  private readonly _readyUris = new Set<string>();
+  private readonly _webviewHtml = new Map<string, string>();
+  private readonly _pendingDiagnostics = new Map<
+    string,
+    (snapshot: WebviewDiagnosticSnapshot) => void
+  >();
+  private _diagnosticSeq = 0;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly marpManager: MarpPreviewManager,
   ) {
+    setMarkdownEditorProvider(this);
     this.context.subscriptions.push(
       vscode.window.onDidChangeActiveColorTheme((theme) => {
         const message = buildThemeUpdatedMessage(mapColorThemeKind(theme.kind));
@@ -112,7 +125,11 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
   ): Promise<MarkdownDocument> {
     const doc = await MarkdownDocument.create(uri, openContext.backupId);
     if (!doc) {
-      throw new Error(`Unable to open document: ${uri.fsPath}`);
+      logError(
+        `openCustomDocument fallback empty document for ${uri.toString()}`,
+        new Error(`Unable to open document: ${uri.fsPath || uri.toString()}`),
+      );
+      return MarkdownDocument.createFallback(uri);
     }
     return doc;
   }
@@ -136,16 +153,25 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     };
 
     const readonly = isReadonly(this.context, document.uri);
-    webviewPanel.webview.html = this.getHtml(
+    const html = this.getHtml(
       webviewPanel.webview,
       readonly,
       modeState.mode,
       document.uri,
     );
+    this._webviewHtml.set(key, html);
+    webviewPanel.webview.html = html;
 
     // Init only after webview posts `ready` — messages sent before the script
     // loads are dropped by VS Code.
     webviewPanel.webview.onDidReceiveMessage((raw: unknown) => {
+      if (
+        raw === null ||
+        typeof raw !== 'object' ||
+        typeof (raw as { type?: unknown }).type !== 'string'
+      ) {
+        return;
+      }
       const message = raw as WebviewInboundMessage;
       void this.handleMessage(document, webviewPanel, message);
     });
@@ -191,6 +217,8 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
       this._openDocuments.delete(key);
       this._modeStates.delete(key);
       this._minUpdateEpoch.delete(key);
+      this._readyUris.delete(key);
+      this._webviewHtml.delete(key);
       handleCustomEditorDisposed(this.context, document.uri);
     });
 
@@ -265,6 +293,44 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     return this.getOpenDocument(uri);
   }
 
+  /** Integration tests: return rendered Webview HTML for an open custom editor tab. */
+  getWebviewHtmlForTest(uri: vscode.Uri): string | undefined {
+    const key = uri.toString();
+    return this._webviewHtml.get(key) ?? this._openPanels.get(key)?.webview.html;
+  }
+
+  /** Integration tests: request live DOM & Mermaid render diagnostics from Webview. */
+  async getWebviewDiagnosticForTest(
+    uri: vscode.Uri,
+    timeoutMs = 8000,
+  ): Promise<WebviewDiagnosticSnapshot> {
+    const key = uri.toString();
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const panel = this._openPanels.get(key);
+      if (panel && this._readyUris.has(key)) {
+        const requestId = `diag-${++this._diagnosticSeq}`;
+        const remaining = Math.max(500, deadline - Date.now());
+        return await new Promise<WebviewDiagnosticSnapshot>((resolve, reject) => {
+          const timer = setTimeout(() => {
+            this._pendingDiagnostics.delete(requestId);
+            reject(new Error(`Timed out waiting for testDiagnosticResponse for ${key}`));
+          }, remaining);
+          this._pendingDiagnostics.set(requestId, (snapshot) => {
+            clearTimeout(timer);
+            resolve(snapshot);
+          });
+          this.postMessage(panel.webview, {
+            type: 'testDiagnosticRequest',
+            requestId,
+          });
+        });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error(`Timed out waiting for Webview ready state for ${key}`);
+  }
+
   /** Integration tests: simulate an inbound webview postMessage. */
   async deliverWebviewMessageForTest(
     uri: vscode.Uri,
@@ -291,12 +357,16 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     panel: vscode.WebviewPanel,
     readonly: boolean,
   ): Promise<void> {
-    panel.title = readonly ? `${path.basename(panel.title ?? 'document.md')} (Readonly)` : path.basename(panel.title ?? 'document.md');
+    const rawTitle = panel.title || 'document.md';
+    const baseTitle = path.posix.basename(rawTitle).replace(/(?: \(Readonly\))+$/, '');
+    panel.title = readonly ? `${baseTitle} (Readonly)` : baseTitle;
   }
 
   private getWorkspaceImgRoots(documentUri: vscode.Uri): vscode.Uri[] {
-    const dir = vscode.Uri.file(path.dirname(documentUri.fsPath));
-    return [vscode.Uri.joinPath(dir, 'img')];
+    if (documentUri.scheme === 'untitled') {
+      return [];
+    }
+    return [vscode.Uri.joinPath(documentUri, '..', 'img')];
   }
 
   private postMessage(webview: vscode.Webview, message: WebviewOutboundMessage): void {
@@ -333,7 +403,10 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
 
   private webviewUriResolver(webview: vscode.Webview): WebviewUriResolver {
     return {
-      asWebviewUri: (uri) => webview.asWebviewUri(vscode.Uri.file(uri.fsPath)),
+      asWebviewUri: (uri) =>
+        webview.asWebviewUri(
+          uri instanceof vscode.Uri ? uri : vscode.Uri.parse(uri.toString()),
+        ),
     };
   }
 
@@ -377,6 +450,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
 
     switch (message.type) {
       case 'ready':
+        this._readyUris.add(document.uri.toString());
         this.postDisplayMessage(document, panel.webview, {
           type: 'init',
           docJson: document.docJson,
@@ -390,6 +464,21 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
           this.postPreviewProjection(document, panel.webview);
         }
         break;
+      case 'testDiagnosticResponse': {
+        const resolver = this._pendingDiagnostics.get(message.requestId);
+        if (resolver) {
+          this._pendingDiagnostics.delete(message.requestId);
+          resolver({
+            readyReceived: true,
+            hasProseMirror: Boolean(message.hasProseMirror),
+            editorText: String(message.editorText ?? ''),
+            mermaidSvgCount: Number(message.mermaidSvgCount ?? 0),
+            mermaidErrors: Array.isArray(message.mermaidErrors) ? message.mermaidErrors : [],
+            csp: String(message.csp ?? ''),
+          });
+        }
+        break;
+      }
       case 'setMode':
         // Mode switch alone: display only — no disk I/O, no dirty (AD-016).
         if (!isEditorMode(message.editorMode)) {
@@ -493,8 +582,18 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
           return;
         }
         {
-          const doc = JSON.parse(message.docJson) as TipTapDoc;
-          const tableIndex = message.tableIndex ?? 0;
+          let doc: TipTapDoc;
+          try {
+            const parsed: unknown = JSON.parse(message.docJson);
+            if (!parsed || typeof parsed !== 'object') {
+              return;
+            }
+            doc = parsed as TipTapDoc;
+          } catch (err) {
+            logError('Invalid docJson in tableOperation', err);
+            return;
+          }
+          const tableIndex = typeof message.tableIndex === 'number' ? message.tableIndex : 0;
           if (message.operation === 'convertToHtml') {
             document.updateDoc(convertTableToHtml(doc, tableIndex), 'Convert table to HTML');
           } else if (message.operation === 'convertToGfm') {
@@ -591,7 +690,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
       return;
     }
 
-    if (document.uri.scheme !== 'file') {
+    if (document.uri.scheme !== 'file' && document.uri.scheme !== 'vscode-remote') {
       void vscode.window.showWarningMessage('Save document first');
       return;
     }
@@ -601,11 +700,8 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
       return;
     }
 
-    const mdDir = path.dirname(document.uri.fsPath);
-    const imgDir = path.join(mdDir, 'img');
-
     try {
-      const imgDirUri = vscode.Uri.file(imgDir);
+      const imgDirUri = vscode.Uri.joinPath(document.uri, '..', 'img');
       try {
         await vscode.workspace.fs.createDirectory(imgDirUri);
       } catch {
@@ -623,11 +719,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
         return;
       }
 
-      const imageUri = vscode.Uri.file(path.join(imgDir, filename));
-      if (!imageUri.fsPath.startsWith(imgDir + path.sep) && imageUri.fsPath !== imgDir) {
-        void vscode.window.showErrorMessage('Invalid image path');
-        return;
-      }
+      const imageUri = vscode.Uri.joinPath(imgDirUri, filename);
       const data = Buffer.from(message.dataBase64, 'base64');
       await vscode.workspace.fs.writeFile(imageUri, data);
 

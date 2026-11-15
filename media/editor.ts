@@ -26,6 +26,7 @@ import type mermaid from "mermaid";
 type MermaidApi = typeof mermaid;
 import DOMPurify from "dompurify";
 import katex from "katex";
+import { sanitizeMermaidSvg } from "../src/utils/mermaid-sanitize";
 import { buildMermaidRenderSource } from "../src/utils/mermaid-render";
 import {
   buildMermaidThemeConfig,
@@ -1149,20 +1150,6 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
-/**
- * Sanitize Mermaid-rendered SVG for NodeView preview.
- * Default DOMPurify strips flowchart foreignObject HTML labels; keep those while still removing script/on*.
- */
-function sanitizeMermaidSvg(svg: string): string {
-  return DOMPurify.sanitize(svg, {
-    USE_PROFILES: { svg: true, svgFilters: true, html: true },
-    ADD_TAGS: ["foreignObject"],
-    ADD_ATTR: ["xmlns"],
-    // foreignObject 内の XHTML ラベルを空シェルにしない（mermaid-contrast-readable P0）
-    HTML_INTEGRATION_POINTS: { foreignobject: true },
-  });
-}
-
 function sanitizePlantUmlSvg(svg: string): string {
   return DOMPurify.sanitize(svg, {
     USE_PROFILES: { svg: true, svgFilters: true, html: true },
@@ -2180,6 +2167,14 @@ function getSelectedText(): string {
   return "";
 }
 
+const FIND_SHORTCUT_SCOPE_SELECTOR =
+  "#editor, #raw-editor, #find-widget, #preview-marp-root";
+
+function isShortcutInEditorScope(event: KeyboardEvent): boolean {
+  const targetEl = event.target instanceof Element ? event.target : null;
+  return !!targetEl?.closest(FIND_SHORTCUT_SCOPE_SELECTOR);
+}
+
 function attachFindWidgetShortcuts(): void {
   if (document.body.dataset.findShortcutsBound === "1") {
     return;
@@ -2189,11 +2184,17 @@ function attachFindWidgetShortcuts(): void {
   document.addEventListener("keydown", (event: KeyboardEvent) => {
     const isMod = event.ctrlKey || event.metaKey;
     if (isMod && event.key.toLowerCase() === "f") {
+      if (!isShortcutInEditorScope(event)) {
+        return;
+      }
       event.preventDefault();
       updateFindWidgetAdapter(editorMode);
       const initialQuery = getSelectedText();
       getFindWidget().open({ initialQuery });
     } else if (isMod && event.key.toLowerCase() === "h") {
+      if (!isShortcutInEditorScope(event)) {
+        return;
+      }
       event.preventDefault();
       updateFindWidgetAdapter(editorMode);
       const initialQuery = getSelectedText();
@@ -2249,7 +2250,7 @@ function flushPendingVisualUpdate(): void {
   const json = editor.getJSON();
   vscode.postMessage({
     type: "update",
-    docJson: JSON.stringify(json),
+    docJson: serializeDocForHost(json),
     epoch: updateEpoch,
   });
   checkTableLimitsFromEditor(editor, json);
@@ -2633,7 +2634,7 @@ function initEditor(initialDoc: TipTapDoc): void {
           const json = ed.getJSON();
           vscode.postMessage({
             type: "update",
-            docJson: JSON.stringify(json),
+            docJson: serializeDocForHost(json),
             epoch: updateEpoch,
           });
           checkTableLimitsFromEditor(ed, json);
@@ -3071,6 +3072,23 @@ function attachRawEditorHandlers(): void {
       );
       return;
     }
+    if (isMod && (e.key === "k" || e.key === "K")) {
+      if (e.target !== raw && document.activeElement !== raw) {
+        return;
+      }
+      e.preventDefault();
+      const start = raw.selectionStart;
+      const end = raw.selectionEnd;
+      const selected = raw.value.slice(start, end);
+      const wrapped = `[${selected}]()`;
+      const cursorPos = start + wrapped.length - 1;
+      applyRawTextChange(
+        raw.value.slice(0, start) + wrapped + raw.value.slice(end),
+        cursorPos,
+        cursorPos,
+      );
+      return;
+    }
   });
 
   raw.addEventListener("paste", (e: ClipboardEvent) => {
@@ -3504,6 +3522,37 @@ function updateTableMenuState(): void {
   });
 }
 
+function restoreOriginalImageSrcs(node: JSONContent): JSONContent {
+  let nextAttrs = node.attrs;
+  if (
+    node.type === "image" &&
+    node.attrs &&
+    typeof node.attrs.originalSrc === "string" &&
+    node.attrs.originalSrc.length > 0 &&
+    node.attrs.src !== node.attrs.originalSrc
+  ) {
+    nextAttrs = {
+      ...node.attrs,
+      src: node.attrs.originalSrc,
+    };
+  }
+  const nextContent = Array.isArray(node.content)
+    ? node.content.map(restoreOriginalImageSrcs)
+    : undefined;
+  if (nextAttrs === node.attrs && nextContent === undefined) {
+    return node;
+  }
+  return {
+    ...node,
+    ...(nextAttrs !== undefined ? { attrs: nextAttrs } : {}),
+    ...(nextContent !== undefined ? { content: nextContent } : {}),
+  };
+}
+
+function serializeDocForHost(json: JSONContent): string {
+  return JSON.stringify(restoreOriginalImageSrcs(json));
+}
+
 function postDocUpdate(): void {
   if (!editor || readonly || editorMode !== "markdown" || gfmConvertPending) {
     return;
@@ -3515,7 +3564,7 @@ function postDocUpdate(): void {
   const json = editor.getJSON();
   vscode.postMessage({
     type: "update",
-    docJson: JSON.stringify(json),
+    docJson: serializeDocForHost(json),
     epoch: updateEpoch,
   });
   checkTableLimitsFromEditor(editor, json);
@@ -3989,6 +4038,9 @@ window.addEventListener("message", (event) => {
       break;
     case "docUpdated":
       latestMarkdownText = message.markdownText ?? latestMarkdownText;
+      if (typeof message.updateEpoch === "number") {
+        updateEpoch = Math.max(updateEpoch, message.updateEpoch);
+      }
       if (typeof message.docJson !== "string") {
         // Markdown-originated sync (TC-067): markdownText only.
         scheduleRawTextUpdate(latestMarkdownText);
@@ -4048,14 +4100,25 @@ window.addEventListener("message", (event) => {
     case "imageInserted":
       ensureTipTapInitialized();
       if (editor && !readonly && editorMode === "markdown") {
+        const displaySrc =
+          typeof message.displaySrc === "string" && message.displaySrc.length > 0
+            ? message.displaySrc
+            : message.relativePath;
         editor
           .chain()
           .focus()
-          .setImage({ src: message.relativePath, alt: message.relativePath })
+          .setImage({
+            src: displaySrc,
+            alt: message.relativePath,
+            originalSrc: message.relativePath,
+          } as Parameters<typeof editor.commands.setImage>[0] & {
+            originalSrc?: string;
+          })
           .run();
         vscode.postMessage({
           type: "update",
-          docJson: JSON.stringify(editor.getJSON()),
+          docJson: serializeDocForHost(editor.getJSON()),
+          epoch: updateEpoch,
         });
       }
       break;
@@ -4075,6 +4138,40 @@ window.addEventListener("message", (event) => {
           cb(message.svg ?? "", !!message.available);
         }
       }
+      break;
+    }
+    case "testDiagnosticRequest": {
+      const requestId = typeof message.requestId === "string" ? message.requestId : "";
+      const deadline = Date.now() + 6000;
+      const sendSnapshot = (): void => {
+        const blocks = Array.from(document.querySelectorAll("#editor .mermaid-block"));
+        const allBlocksSettled = blocks.every(
+          (block) =>
+            !!block.querySelector(".mermaid-preview svg") ||
+            !!block.querySelector(".mermaid-error"),
+        );
+        const readyToReply =
+          (isEditorInitialized || editorMode === "raw") &&
+          (blocks.length === 0 || allBlocksSettled);
+        if (!readyToReply && Date.now() < deadline) {
+          setTimeout(sendSnapshot, 50);
+          return;
+        }
+        const cspMeta = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+        vscode.postMessage({
+          type: "testDiagnosticResponse",
+          requestId,
+          readyReceived: true,
+          hasProseMirror: !!document.querySelector("#editor .ProseMirror"),
+          editorText: document.getElementById("editor")?.textContent ?? "",
+          mermaidSvgCount: document.querySelectorAll(".mermaid-preview svg").length,
+          mermaidErrors: Array.from(document.querySelectorAll(".mermaid-error")).map(
+            (el) => el.textContent ?? "",
+          ),
+          csp: cspMeta?.getAttribute("content") ?? "",
+        } as unknown as Parameters<typeof vscode.postMessage>[0]);
+      };
+      sendSnapshot();
       break;
     }
   }

@@ -22,7 +22,7 @@
 |------------|-----|------|------|------|
 | `documentUri` | `vscode.Uri` | — | — | ワークスペース内 `.md` |
 | `fileContent` | `string` (UTF-8) | 0 B | 推奨 500 KB 未満 | 超過時警告のみ（RK-004） |
-| `editorMode` | `"preview" \| "markdown" \| "raw"` | — | — | 初期値 `"raw"`（`DEFAULT_EDITOR_MODE` / AD-016）。Side Preview は mode ではない — [testspec-native-preview-side-and-default-raw.md](testspec-native-preview-side-and-default-raw.md) |
+| `editorMode` | `"preview" \| "markdown" \| "raw"` | — | — | 初期値 `"markdown"`（Visual、`DEFAULT_EDITOR_MODE = 'markdown'` / `md-wysiwyg-editor.defaultMode` 既定 `"visual"` / AD-016）。Default Preview は mode ではない — [testspec-native-preview-side-and-default-raw.md](testspec-native-preview-side-and-default-raw.md) |
 | `modeSwitchCommand` | コマンド / UI 切替 | — | — | モード変更のみ。ディスク I/O なし |
 | `rawSourceEdit` | `string` | — | — | Raw 面からのソース。パース成功時のみ Document 反映 |
 | `isRawParseFailed` | `boolean` | — | — | true の間は save 拒否（§1, §8） |
@@ -50,7 +50,7 @@
 
 | 条件 | 戻り値 / ステータス | 仕様根拠 |
 |------|-------------------|---------|
-| Custom Editor オープン成功 | タブ表示、Webview ロード完了、初期モード **Raw**（Edit Raw Text）、viewType `md-wysiwyg-editor.wysiwyg` | §1, AD-002, AD-016 |
+| Custom Editor オープン成功 | タブ表示、Webview ロード完了、初期モード **Visual**（`markdown`、表示ラベル Visual；`defaultMode` 設定により変更可）、viewType `md-wysiwyg-editor.wysiwyg` | §1, AD-002, AD-016 |
 | モード切替成功 | 対象面表示、Document 維持、ディスク未書込、内容不変なら dirty 不変 | §1 |
 | 保存成功 | ディスク `.md` 更新、`dirty` 解除 | §1, §8 |
 | シリアライズ失敗 | 保存拒否、`dirty` 維持、通知 + Output | §1, §8 |
@@ -105,9 +105,8 @@
 
 - （なし — Advisor defaults および AD-016 三点モード契約は systemspec に反映済み。詳細は [systemspec.md Spec Gaps（resolved）](../requirements/systemspec.md#spec-gapsresolved)）
 - 番号付きタスク `1. [ ]` の unordered 正規化・複合 mark のネスト順入れ替わりは仕様上の許容（§2 / §8）。本 testspec では意味保持を検証し byte 一致は要求しない
-- **実装ギャップ（Red テスト済み）:** TC-016–019, TC-054, TC-086–087, TC-091–092 ユニット（`table-gfm-html-mode`）。TC-085, TC-089–090, TC-093–096 は未実装
-- **実装ギャップ（Red テスト済み）:** TC-107–123 ユニット（`gfm-format-toolbar`）。build-agent 向け TDD Red
-- **`preview-rich-embed`:** TC-124–142 ユニット Green（`preview-rich-embed.test.ts`、91 passing）
+- **実装済み（ユニット Green）:** `table-gfm-html-mode`（`markdown-serializer.test.ts`）、`gfm-format-toolbar`（`gfm-format-toolbar.test.ts`）、`preview-rich-embed`（`preview-rich-embed.test.ts`）
+- **後続刷新:** JSDOM 実 DOM 実行・統合ライフサイクル検証は [testspec-issue-31-test-review.md](testspec-issue-31-test-review.md)（`TC-I31-001`–`042`）を参照
 
 ---
 
@@ -184,7 +183,7 @@
 | TC-067 | Corner | regression-edit-display-break | P0 | Webview 起点の `updateFromJson(..., { syncWebview: false })` | `onDidContentChange` は発火しない（echo 抑止）。`onDidChange` は発火（dirty 維持） | Regression: 編集後に setContent echo で表示破壊 | §1 Behavior 2 |
 | TC-068 | Corner | regression-edit-display-break | P0 | 既定の `updateDoc` / undo による Document 変更 | `onDidContentChange` が発火し、docUpdated 用リスナーが通知される | Regression: 外部同期（undo/revert）が途切れないこと | §1 Behavior 4 |
 | TC-069 | Corner | regression-edit-display-break | P0 | Mermaid フェンス付き doc で段落テキストのみ変更後 serialize | ` ```mermaid ` フェンスとソースが残る | Regression: 通常編集で Mermaid が消えないこと | §5 正常系 2 |
-| TC-070 | Happy | editor-mode-init | P0 | Custom Editor（viewType `md-wysiwyg-editor.wysiwyg`）で `.md` を開く | 初期 `editorMode === "raw"`（`DEFAULT_EDITOR_MODE`）、タブ viewType が `md-wysiwyg-editor.wysiwyg`。詳細・Side Preview は [testspec-native-preview-side-and-default-raw.md](testspec-native-preview-side-and-default-raw.md) TC-001 | AD-016 初期 Raw + AD-002 viewType | §1 Inputs, 正常系 1 |
+| TC-070 | Happy | editor-mode-init | P0 | Custom Editor（viewType `md-wysiwyg-editor.wysiwyg`）で `.md` を開く | 初期 `editorMode === "markdown"`（Visual、`DEFAULT_EDITOR_MODE`；未設定時 `defaultMode = "visual"`）、タブ viewType が `md-wysiwyg-editor.wysiwyg`。設定切替は [testspec-default-editor-mode-config.md](testspec-default-editor-mode-config.md) TC-MODE-001–011、Default Preview は [testspec-native-preview-side-and-default-raw.md](testspec-native-preview-side-and-default-raw.md) TC-001 参照 | AD-016 初期 Visual + AD-002 viewType | §1 Inputs, 正常系 1 |
 | TC-071 | Happy | preview-one-way | P0 | Preview モード表示中に描画面からの編集イベントを送ろうとする / Document のみ更新 | Preview は RO 描画のみ。編集イベントは Document へ送られない。Document 更新時は描画が追随 | Document→一方表示契約 | §1 三点モード定義, 正常系 3 |
 | TC-072 | Happy | markdown-raw-sync | P0 | Markdown 面で段落編集 → Raw 投影；続けて Raw 相当のソースを Document に反映 | 正本は `MarkdownDocument`。一方の変更が他方面へ Document 経由で反映され、`markdownText` / `doc` が一致 | Markdown↔Raw 相互リアルタイム同期 | §1 正常系 2, §8 |
 | TC-073 | Corner | mode-switch-no-io | P0 | dirty=false の Document で Preview↔Markdown↔Raw を切替のみ（内容変更なし） | ディスクへの `writeFile` なし、`onDidChange`（dirty）非発火、Document 内容不変 | モード切替 alone は表示のみ | §1 正常系 4, AD-016 |
@@ -234,7 +233,7 @@
 | TC-121 | Boundary | single-tilde-not-strike | P1 | `~notstrike~` および単独 `~` を含む段落を parse | 取り消し線にしない。literal `~` として保持 | 単一チルダ誤認防止 | §2 In strike |
 | TC-122 | Corner | no-new-format-keybindings | P1 | `package.json` の `contributes.keybindings` と Webview キーマップ | 新項目の keybindings 追加なし。Strike 既定 `Mod-Shift-s` と Blockquote 既定 `Mod-Shift-b` は無効化。HR / Task に新ショートカットなし。既存 Heading `Mod-Alt-1..6` は不変 | ワークベンチコマンド衝突回避 | §2 Behavior 10, Non-Goals |
 | TC-123 | Structural | format-toolbar-composition | P1 | Markdown モードの `#toolbar` HTML を検査 | 個別ボタン（折りたたみ・見出しドロップダウンなし）。視覚セパレータで 4 群。Strike=`S` / `title=Strikethrough` / `data-cmd=strike`。H3–H6。Inline Code=`` ` `` / `inlineCode`。Task / Quote / HR=`―`。既存 Code は `codeBlock` / `title=Code Block` 維持。画像挿入・下線・highlight ボタンなし | UI 契約と Scope Out | §2 ツールバー構成, Non-Goals |
-| TC-124 | Happy | image-uri-rewrite | P0 | `docJson` 内 `image.src` が `img/image-0001.png` の Document を Host が Webview 投影 | `asWebviewUri` 済み webview URI に rewrite された `docJson` が送信される。元 Document の相対パスは不変 | Host 画像 URI 解決（TipTap） | §7 正常系 6, §9 正常系 4 |
+| TC-124 | Happy | image-uri-rewrite | P0 | `docJson` 内 `image.src` が `img/image-0001.png` の Document、および `imageInserted` メッセージ（`relativePath: 'img/image-0001.png'`）を Host が Webview 投影 | `init`/`docUpdated` の `docJson` は `asWebviewUri` 済み webview URI に rewrite され、`imageInserted` は `relativePath`（`img/...`）を保持したまま `displaySrc`（`vscode-webview://...`）を付与して送信される（`AD-004`）。元 Document の相対パスは不変 | Host 画像 URI 解決（TipTap） | §7 正常系 6, §9 正常系 4, `AD-004` |
 | TC-125 | Happy | image-serialize-relative | P0 | TC-124 状態で save / serialize | ディスク出力は `img/image-0001.png` 相対パスのまま。webview URI は含まれない | serialize 相対パス維持 | §7, §8 正常系 8 |
 | TC-126 | Corner | image-safe-path-scope | P1 | `isSafeImagePath` に `img/image-0001.png`、`../evil.png`、`assets/logo.png`、`img/../other.png` を渡す | `img/...` のみ true。`..` 含む・`img/` プレフィックスなしは false | `img/` スコープ + トラバーサル拒否 | §7, §9 |
 | TC-127 | Corner | image-uri-skip-unsafe | P1 | `docJson` 内 `image.src` が `assets/logo.png`（`img/` 外）の Document を投影 | Host は rewrite しない（broken image 許容）。Document / serialize は相対パス維持 | 非 `img/` パスは解決しない | §7 Outputs, §9 例外系 |
@@ -269,7 +268,8 @@
 | TC-156 | Corner | no-legacy-contribution-ids | P0 | `package.json` contributes を走査 | viewType / command / configuration / activationEvents / menus.when 内に旧プレフィックス `vsc-md-editor.` を含む項目が **0 件** | 旧プレフィックス互換なし（内部コードは md-wysiwyg-editor.* に統一） | AD-002, RK-004 |
 | TC-157 | Happy | custom-editor-selector-schemes | P0 | `package.json` `contributes.customEditors[0].selector` を検査 | `selector` の各エントリが `filenamePattern: "*.md"` を持ち、対応スキーム（`file`, `untitled`, `vscode-remote`）を明示していること。`git` 等の SCM/仮想スキームが含まれず、SCM 差分時に VS Code 標準テキスト Diff Editor へフォールバックすること | SCM 差分フォールバックとスキーム明示の担保 | §1 Preconditions, AD-001 |
 | TC-158 | Happy | configuration-defaults-diff-fallback | P0 | `package.json` `contributes.configurationDefaults` を検査 | `workbench.diffEditorAssociations` に `{"*.md": "default"}`、`workbench.editorAssociations` に `{"{git}:/**/*.md": "default"}` が設定されていること | 全 VS Code バージョンでの標準テキスト Diff Editor への安全・自動フォールバックの担保 | §1 Preconditions, AD-002 |
-| TC-159 | Corner | open-custom-document-safe-loading | P0 | `MarkdownEditorProvider.openCustomDocument` を検査 | プロバイダ側で例外を throw して VS Code に予期せぬエラーを表示させないこと | openCustomDocument の安全なドキュメント作成の担保 | §1 Preconditions, AD-001 |
+| TC-159 | Happy | diff-editor-priority-option | P0 | `package.json` `contributes.customEditors[0].diffEditorPriority` を検査 | `diffEditorPriority === "option"` が設定され、VS Code 1.120+ での SCM 差分フォールバック二次防御が有効であること | SCM 差分フォールバック二次防御の担保（`contribution-id-rename.test.ts` と一致） | §1 Preconditions, AD-002 |
+| TC-184 | Corner | open-custom-document-safe-loading | P0 | `MarkdownEditorProvider.openCustomDocument` を検査（旧 TC-159 から分離） | プロバイダ側で予期せぬ例外を throw せず、安全なフォールバック状態でハンドリングして VS Code に予期せぬエラーを表示させないこと（実実行検証は [testspec-issue-31-test-review.md](testspec-issue-31-test-review.md) `TC-I31-001`） | `openCustomDocument` 安全読込と `TC-159` ID 衝突解消（C-2） | §1 Outputs, AD-008 |
 | TC-160 | Happy | table-context-menu-open | P0 | Visual（`markdown`）モードで表セル（`td`/`th`）上で右クリック（`contextmenu` イベント） | `#table-context-menu` が表示され、ポインター位置に配置される。デフォルトメニューは抑止（`preventDefault`）される | 右クリックメニューの表示と位置 | §3 表編集 UI |
 | TC-161 | Happy | table-context-menu-row-col-ops | P0 | コンテキストメニュー内の行/列追加・削除（`addRowBefore`, `addRowAfter`, `deleteRow`, `addColumnBefore`, `addColumnAfter`, `deleteColumn`）をクリック | 対象セルに対して指定操作が実行され、メニューが閉じ、ドキュメントが更新（`postDocUpdate`）される | コンテキストメニューからの行列操作 | §3 表編集 UI, 正常系 8 |
 | TC-162 | Happy | table-context-menu-delete-table | P0 | コンテキストメニュー内の `deleteTable` をクリック | 表全体が削除され、メニューが閉じ、ドキュメントが更新される | コンテキストメニューからの表削除 | §3 表編集 UI, 正常系 8 |
@@ -339,7 +339,7 @@ flowchart TD
 
 | 優先度 | CI | 備考 |
 |-------|-----|------|
-| P0, P1 | 通常 PR で実行 | 統合: @vscode/test-electron、ユニット: Vitest |
+| P0, P1 | 通常 PR で実行 | 統合: @vscode/test-electron、ユニット: Mocha |
 | P2 | `@slow` / nightly | TC-065, TC-066 |
 
 | TC 範囲 | 推奨テスト種別 |
@@ -399,7 +399,7 @@ P0 + P1 の机上トレース（実装前）。
 | TC-067 | Webview update → `syncWebview: false` → content-change 未発火、dirty 用 onDidChange のみ | ✅ 回帰（edit-display-break） |
 | TC-068 | 既定 update / undo → onDidContentChange 発火 | ✅ 回帰（edit-display-break） |
 | TC-069 | Mermaid + 段落編集 → serialize でフェンス保持 | ✅ 回帰（edit-display-break） |
-| TC-070 | package.json viewType = `md-wysiwyg-editor.wysiwyg`；初期モード **Raw**（`DEFAULT_EDITOR_MODE`） | ✅ Pass（2026-09-29）— `editor-modes.test.ts` |
+| TC-070 | package.json viewType = `md-wysiwyg-editor.wysiwyg`；初期モード **Visual**（`markdown`、`DEFAULT_EDITOR_MODE`） | ✅ Pass（2026-10-28 以降現行仕様に同期）— `editor-modes.test.ts` / `editor-mode-config.test.ts` |
 | TC-153 | `name`/`publisher`/`repository.url` → `mshiono.vsc-md-editor`（name 固有採用・他統一保護） | ✅ Pass（2026-10-03）— `contribution-id-rename.test.ts` |
 | TC-154 | viewType / commands / activation / menus が `md-wysiwyg-editor.*` | ✅ Pass（2026-09-29）— `contribution-id-rename.test.ts` |
 | TC-155 | 設定キー `md-wysiwyg-editor.autoRestoreOnBuiltinSwitch`（旧キー無し） | ✅ Pass（2026-09-29）— `contribution-id-rename.test.ts` |
@@ -416,14 +416,14 @@ P0 + P1 の机上トレース（実装前）。
 | TC-130 | Preview: `.mermaid-preview` visible、`.mermaid-source` hidden（`display: none`） | ✅ Pass |
 | TC-134 | Marp doc + Preview → `#editor` hidden、`#preview-marp-root` にスライド | ✅ Pass — `preview-projection.ts` |
 | TC-136 | `previewMarpHtml` → `#preview-marp-root` innerHTML 注入 | ✅ Pass — `messages.ts` / `editor.ts` |
-| TC-143 | Valid frontmatter fixture → `mermaid.render` に全文（strip なし）→ SVG | ✅ 期待どおり（未実装 — Red 予定） |
-| TC-144 | init/ready + theme change → `themeUpdated` `{ kind }` のみ | ✅ 期待どおり（未実装 — Red 予定） |
-| TC-145 | `themeUpdated` → `mermaid.initialize` 更新 → NodeView 再 render、Document 不変 | ✅ 期待どおり（未実装 — Red 予定） |
-| TC-146–148 | `body[data-mode='preview']` の line-height / opacity / スコープ限定 | ✅ 期待どおり（未実装 — Red 予定） |
-| TC-149 | `theme: 'redux-dark'` (for dark/HC kind) / `'redux'` (light) + `themeVariables.fontSize === '16px'` + `themeVariables` contains NO `var(...)` | ✅ 期待どおり（未実装 — Red 予定） |
-| TC-150 | `mermaid.initialize` exception → try-catch isolated | ✅ 期待どおり（未実装 — Red 予定） |
-| TC-151 | テーマ/CSS/再描画後も serialize 不変 | ✅ 期待どおり（未実装 — Red 予定） |
-| TC-152 | Mermaid SVG sanitize 後も `foreignObject` + ノードラベル残存 | ❌ Red — `DOMPurify.sanitize(svg)` 既定が `foreignObject` 除去（`fix-mermaid-dark-visibility`） |
+| TC-143 | Valid frontmatter fixture → `mermaid.render` に全文（strip なし）→ SVG | ✅ Pass（`preview-mode-quality.test.ts` で実装・通過済み） |
+| TC-144 | init/ready + theme change → `themeUpdated` `{ kind }` のみ | ✅ Pass（`preview-mode-quality.test.ts`） |
+| TC-145 | `themeUpdated` → `mermaid.initialize` 更新 → NodeView 再 render、Document 不変 | ✅ Pass（`preview-mode-quality.test.ts`） |
+| TC-146–148 | `body[data-mode='preview']` の line-height / opacity / スコープ限定 | ✅ Pass（`preview-mode-quality.test.ts`） |
+| TC-149 | `theme: 'redux-dark'` (for dark/HC kind) / `'redux'` (light) + `themeVariables.fontSize === '16px'` + `themeVariables` contains NO `var(...)` | ✅ Pass（`mermaid-redux-elk-fidelity.test.ts` / `mermaid-readable-viewport.test.ts`） |
+| TC-150 | `mermaid.initialize` exception → try-catch isolated | ✅ Pass（`preview-mode-quality.test.ts`） |
+| TC-151 | テーマ/CSS/再描画後も serialize 不変 | ✅ Pass（`preview-mode-quality.test.ts`） |
+| TC-152 | Mermaid SVG sanitize 後も `foreignObject` + ノードラベル残存 | ✅ Pass（build-agent 修正後 Green；JSDOM 直接実行テストへ刷新予定 `TC-I31-022`） |
 
 ### TC-152 (P0): Regression — Mermaid flowchart labels survive DOMPurify sanitize
 
@@ -432,11 +432,11 @@ P0 + P1 の机上トレース（実装前）。
 | Input | flowchart 相当 SVG: `<foreignObject>…Cause A…</foreignObject>`（Mermaid HTML label） |
 | Expected | NodeView `.mermaid-preview` への sanitize 後も `foreignObject` とラベル文字列が残る。XSS 経路（`script` / `on*`）は除去のまま |
 | Actual (pre-fix) | Fail: `media/editor.ts` が `DOMPurify.sanitize(svg)` 既定呼び出し → `foreignObject` が `DOMPurify.removed` に入りラベル不可視 |
-| Actual (post-fix) | （build-agent 修正後）Pass |
+| Actual (post-fix) | Pass（`HTML_INTEGRATION_POINTS: { foreignobject: true }` 適用済み） |
 
-**Result:** ❌ Red（`npm run test:unit -- --grep 'TC-152'` 2026-09-05）— 修正前コードで意図的 Fail
+**Result:** ✅ Pass（修正済み — 実関数 JSDOM テスト置換は [testspec-issue-31-test-review.md](testspec-issue-31-test-review.md) `TC-I31-022`）
 
-### gfm-format-toolbar ユニット（2026-08-31、TDD Red）
+### gfm-format-toolbar ユニット（`gfm-format-toolbar.test.ts` — 履歴: 2026-08-31 TDD Red → 実装完了後 Green）
 
 #### TC-107 (P0): Strike `~~` round-trip
 
@@ -447,7 +447,7 @@ P0 + P1 の机上トレース（実装前）。
 | 2 | serialize | `~~hello~~`（`<del>` / `<s>` なし） |
 | Output | 再 parse | strike 意味保持 |
 
-**Result:** ❌ Red — GFM strikethrough 未配線（`npm run test:unit -- --grep 'TC-107'`）
+**Result:** ✅ Pass（実装済み — `gfm-format-toolbar.test.ts`）
 
 #### TC-108 (P0): H3–H6 toggle
 
@@ -458,7 +458,7 @@ P0 + P1 の机上トレース（実装前）。
 | 2 | H3 再クリック | paragraph |
 | 3 | H6 | heading level 6 → `###### Hello` |
 
-**Result:** ❌ Red — `applyToggleHeading` / ツールバー H3–H6 未実装
+**Result:** ✅ Pass（実装済み — `gfm-format-toolbar.test.ts`）
 
 #### TC-109 (P0): inlineCode vs codeBlock
 
@@ -468,7 +468,7 @@ P0 + P1 の机上トレース（実装前）。
 | Input (b) | `codeBlock` on `bar` | フェンスコードブロック |
 | Input (c) | `` `~~notstrike~~` `` parse | `~~` は code 文字、strike なし |
 
-**Result:** ❌ Red — `applyToggleInlineCode` / `inlineCode` ボタン未実装
+**Result:** ✅ Pass（実装済み — `gfm-format-toolbar.test.ts`）
 
 #### TC-110 (P0): blockquote non-paragraph children
 
@@ -477,7 +477,7 @@ P0 + P1 の机上トレース（実装前）。
 | Input | `>` + heading / list / taskList / codeBlock / nested quote | 複合引用 |
 | Output | serialize | 各子が `>` 付きで残る。paragraph 以外が落ちない |
 
-**Result:** ❌ Red — paragraph-only フィルタが残存
+**Result:** ✅ Pass（実装済み — `gfm-format-toolbar.test.ts`）
 
 #### TC-111 (P0): task list round-trip
 
@@ -486,7 +486,7 @@ P0 + P1 の机上トレース（実装前）。
 | Input | `- [ ] open` / `- [x] done` / `- [X] upper` | GFM task |
 | Output | serialize | `- [ ] open` / `- [x] done` / `- [x] upper` |
 
-**Result:** ❌ Red — GFM task-list 拡張・serialize 未配線
+**Result:** ✅ Pass（実装済み — `gfm-format-toolbar.test.ts`）
 
 #### TC-112 (P0): task exclusive with bullet/ordered
 
@@ -496,7 +496,7 @@ P0 + P1 の机上トレース（実装前）。
 | Input | task list + Ordered | ordered list。checked 捨てる |
 | Constraint | 同一リスト | `listItem` と `taskItem` 混在なし |
 
-**Result:** ❌ Red — `convertExclusiveList` 未実装
+**Result:** ✅ Pass（実装済み — `gfm-format-toolbar.test.ts`）
 
 #### TC-113 (P0): HR `---`
 
@@ -505,7 +505,7 @@ P0 + P1 の机上トレース（実装前）。
 | Input (a) | parse `---` | thematicBreak → serialize `---` |
 | Input (b) | insert × 2 | 2 本。1 本目は消えない（非トグル） |
 
-**Result:** ❌ Red — `insertHorizontalRule` / ツールバー HR 未実装（parse `---` 自体は既存）
+**Result:** ✅ Pass（実装済み — `gfm-format-toolbar.test.ts`）
 
 #### TC-114–115 (P1): RO / Preview / Raw guards
 
@@ -515,7 +515,7 @@ P0 + P1 の机上トレース（実装前）。
 | Preview | ツールバー | 非表示、編集イベントなし |
 | Raw | ツールバー | 表示維持、コマンド no-op |
 
-**Result:** TC-114 ❌ Red（新 `data-cmd` 未配線）。TC-115 ✅ Pass（Preview CSS / Raw 表示・mode ガード既存）
+**Result:** ✅ Pass（実装済み — JSDOM クリック検証は `TC-I31-020` で拡充）
 
 #### TC-116 (P1): `1. [ ]` → unordered
 
@@ -524,7 +524,7 @@ P0 + P1 の机上トレース（実装前）。
 | Input | `1. [ ] a` / `2. [x] b` | 番号付きタスク |
 | Output | serialize | `- [ ] a` / `- [x] b`（番号非保持） |
 
-**Result:** ❌ Red — task-list 正規化未実装
+**Result:** ✅ Pass（実装済み — `gfm-format-toolbar.test.ts`）
 
 #### TC-117 (P1): `<del>` / `<s>` → `~~`
 
@@ -533,7 +533,7 @@ P0 + P1 の机上トレース（実装前）。
 | Input | `<del>x</del>` / `<s>y</s>` | HTML 混在 |
 | Output | serialize | `~~x~~` / `~~y~~` |
 
-**Result:** ❌ Red — HTML→strike 正規化未実装
+**Result:** ✅ Pass（実装済み — `gfm-format-toolbar.test.ts`）
 
 #### TC-118 (P1): compound marks
 
@@ -542,7 +542,7 @@ P0 + P1 の机上トレース（実装前）。
 | Input | `~~**bold**~~` / `**~~bold~~**` | ネスト差 |
 | Output | 両 mark 保持 | ネスト順の入れ替わりは許容 |
 
-**Result:** ❌ Red — strike 複合 mark 未実装
+**Result:** ✅ Pass（実装済み — `gfm-format-toolbar.test.ts`）
 
 #### TC-119 (P1): sanitize `del`/`s`、`mark` 非許可
 
@@ -551,7 +551,7 @@ P0 + P1 の机上トレース（実装前）。
 | Input | `<del>` `<s>` `<mark>` `<script>` | 混在 HTML |
 | Output | allowlist | `del`/`s` 残る。`mark` 残らない。`script` 除去 |
 
-**Result:** ❌ Red — `del`/`s` が ALLOWED_TAGS 未登録
+**Result:** ✅ Pass（実装済み — `gfm-format-toolbar.test.ts`）
 
 #### TC-120 (P1): toolbar `aria-pressed`
 
@@ -560,17 +560,17 @@ P0 + P1 の机上トレース（実装前）。
 | Input | 選択が strike / H3 等 | トグルボタン |
 | Output | `aria-pressed` | true/false 連動。HR は pressed なし。`role=toolbar` |
 
-**Result:** ❌ Red — `#toolbar` role / aria-pressed 未実装
+**Result:** ✅ Pass（実装済み — JSDOM DOM 検証は `TC-I31-020` で拡充）
 
 #### TC-121–123 (P1): single tilde / keybindings / ツールバー構成
 
 | ID | Expected | Result |
 |----|----------|--------|
-| TC-121 | 単独 `~` は strike にしない | ✅ Pass（現状 literal。strike 実装後も維持必須） |
-| TC-122 | 新 keybindings なし。`Mod-Shift-s` / `Mod-Shift-b` 無効 | ❌ Red — Strike/Blockquote ショートカット無効化未実装 |
-| TC-123 | 4 群・ラベル/`data-cmd`・画像/下線ボタンなし | ❌ Red — ツールバー構成未実装 |
+| TC-121 | 単独 `~` は strike にしない | ✅ Pass |
+| TC-122 | 新 keybindings なし。`Mod-Shift-s` / `Mod-Shift-b` 無効 | ✅ Pass |
+| TC-123 | 4 群・ラベル/`data-cmd`・画像/下線ボタンなし | ✅ Pass |
 
-**Command:** `npm run test:unit -- --grep 'TC-10[7-9]|TC-11[0-9]|TC-12[0-3]'` — 15 failing / 2 passing（意図的 Red）
+**Command:** `npm run test:unit -- --grep 'TC-10[7-9]|TC-11[0-9]|TC-12[0-3]'` — Pass（JSDOM DOM 実行への刷新は `TC-I31-020`）
 
 ### preview-rich-embed ユニット（2026-08-31、Green）
 
@@ -607,24 +607,23 @@ P0 + P1 の机上トレース（実装前）。
 ### Summary（gfm-format-toolbar）
 
 | ID | Priority | Result | Notes |
-|----|----------|--------|-------|
-| TC-107–114, TC-116–120, TC-122–123 | P0/P1 | ❌ Red | `gfm-format-toolbar.test.ts` |
-| TC-115, TC-121 | P1 | ✅ Pass | 既存ガード / literal `~`。実装後も維持 |
+|---|---|---|---|
+| TC-107–123 | P0/P1 | ✅ Pass | `gfm-format-toolbar.test.ts`（DOM クリック検証は `TC-I31-020` で拡充） |
 
-### table-gfm-html-mode ユニット（2026-08-30）
+### table-gfm-html-mode ユニット（履歴: 2026-08-30 TDD Red → 実装完了後 Green）
 
 | TC | Trace | Result |
 |----|-------|--------|
-| TC-016 | `createInsertTableDoc({ insertTableFormat:'gfm' })` → serialize → GFM パイプ表 | ❌ Red — export 未実装 |
-| TC-018 | `createInsertTableDoc({ insertTableFormat:'html' })` → serialize → `<table>` | ❌ Red — export 未実装 |
-| TC-019 | GFM parse → セル編集 → `tableFormat:'gfm'` 維持、GFM 出力 | ❌ Red — `tableFormat` 未推論 |
-| TC-054 | HTML parse → `tableFormat:'html'`、round-trip HTML 保持 | ❌ Red — `tableFormat` 未推論 |
-| TC-086 | `convertTableToHtml` → `tableFormat:'html'`、HTML serialize | ❌ Red — export 未実装 |
-| TC-087 | リッチ HTML → `convertTableToGfm` → flatten GFM パイプ表 | ❌ Red — export 未実装 |
-| TC-091 | GFM open→save byte-identical、`tableFormat:'gfm'` | ❌ Red — GFM serialize 未分岐 |
-| TC-092 | HTML open→save `<table>` 保持、`tableFormat:'html'` | ❌ Red — `tableFormat` 未推論 |
+| TC-016 | `createInsertTableDoc({ insertTableFormat:'gfm' })` → serialize → GFM パイプ表 | ✅ Pass |
+| TC-018 | `createInsertTableDoc({ insertTableFormat:'html' })` → serialize → `<table>` | ✅ Pass |
+| TC-019 | GFM parse → セル編集 → `tableFormat:'gfm'` 維持、GFM 出力 | ✅ Pass |
+| TC-054 | HTML parse → `tableFormat:'html'`、round-trip HTML 保持 | ✅ Pass |
+| TC-086 | `convertTableToHtml` → `tableFormat:'html'`、HTML serialize | ✅ Pass |
+| TC-087 | リッチ HTML → `convertTableToGfm` → flatten GFM パイプ表 | ✅ Pass |
+| TC-091 | GFM open→save byte-identical、`tableFormat:'gfm'` | ✅ Pass |
+| TC-092 | HTML open→save `<table>` 保持、`tableFormat:'html'` | ✅ Pass |
 
-**Command:** `npm run test:unit -- --grep 'TC-0(16|18|19|54|86|87|91|92)'` — 8 failing / 0 passing（意図的 Red）
+**Command:** `npm run test:unit -- --grep 'TC-0(16|18|19|54|86|87|91|92)'` — Pass
 
 ### TC-067 (P0): Regression — webview edit must not echo setContent
 
@@ -664,18 +663,18 @@ P0 + P1 の机上トレース（実装前）。
 | Step | Value |
 |------|-------|
 | Input | package.json viewType; EditorModeState; Document updateDoc/save/applyRawSource; readonly-state; Marp vs custom editor IDs |
-| Expected | viewType `md-wysiwyg-editor.wysiwyg`、**初期 `editorMode === "raw"`**（AD-016）、Preview 一方向、Document 正本同期、mode switch 非 I/O、dirty→save、RO キー、Raw 失敗/回復、Marp≠三点 Preview |
-| Actual | TC-070 viewType / 初期 raw と TC-071–079: Pass（Quality Gate green 後）|
+| Expected | viewType `md-wysiwyg-editor.wysiwyg`、**初期 `editorMode === "markdown"`（Visual）**（`DEFAULT_EDITOR_MODE` / AD-016）、Preview 一方向、Document 正本同期、mode switch 非 I/O、dirty→save、RO キー、Raw 失敗/回復、Marp≠三点 Preview |
+| Actual | TC-070 viewType / 初期 Visual と TC-071–079: Pass |
 
-**Result:** ✅ Pass（2026-09-29）— TC-070–079（`rename-md-wysiwyg`）
+**Result:** ✅ Pass（2026-10-28 以降現行仕様同期）— TC-070–079
 
 ### TC-153–156 (P0): Contribution / Extension ID rename (unit)
 
 | Step | Value |
 |------|-------|
 | Input | `package.json` name/publisher/repository / contributes / configuration |
-| Expected | `mshiono.md-wysiwyg-editor`・`md-wysiwyg-editor.*`・旧 `vsc-md-editor.*` 不在 |
-| Actual | ✅ Pass（2026-09-29）— `contribution-id-rename.test.ts`（Quality Gate green）|
+| Expected | `mshiono.vsc-md-editor`・`md-wysiwyg-editor.*`・旧 `vsc-md-editor.*` 不在 |
+| Actual | ✅ Pass — `contribution-id-rename.test.ts` |
 
 **Result:** ✅ Pass（2026-09-29）
 
@@ -761,11 +760,12 @@ P0 + P1 の机上トレース（実装前）。
 ### Uncovered / Spec Gaps
 - （なし — TC-071/073/076/078/079 はユニット実装済み）
 - 画像サイズ上限は MVP 未定 — backlog（BL-008）で管理、本 testspec では MIME 検証のみ
-- TC-107–123 はユニット Red 実装済み（`gfm-format-toolbar.test.ts`）。Green は build-agent
-- TC-124–142 はユニット Green（`preview-rich-embed.test.ts`、91 passing）
-- **TC-130–132:** Expected・`preview-rich-embed.test.ts` ともソース表示契約へ更新済（意図的 Red — hide CSS 撤廃は build-agent）
-- TC-143–151 は testspec 設計済み — testspec-implementation / build-agent 向け Red 予定（`preview-mode-quality`）
-- TC-152 は回帰 Red（`fix-mermaid-dark-visibility`）— build-agent が Mermaid SVG sanitize で `foreignObject` 保持するまで Fail
+- TC-107–123 はユニット Green（`gfm-format-toolbar.test.ts`。JSDOM 実クリック検証は `TC-I31-020` で刷新予定）
+- TC-124–142 はユニット Green（`preview-rich-embed.test.ts`）
+- **TC-130–132:** Preview では `.mermaid-source` 非表示（`display: none`）契約に更新済み・Green
+- TC-143–151 はユニット Green（`preview-mode-quality.test.ts`）
+- TC-152 は Green（`foreignObject` 保持実装済み。JSDOM 直接実行テストは `TC-I31-022`）
+- **TC-159 / TC-184:** `TC-159` は `diffEditorPriority: 'option'`（`contribution-id-rename.test.ts`）、`TC-184` は `openCustomDocument` 安全読込（`TC-I31-001`）へ分離済み（`C-2`）
 - **TC-153–156 / TC-070・084（貢献 ID）:** `rename-md-wysiwyg` — Quality Gate green 後 Trace Pass（`contribution-id-rename.test.ts` / `editor-modes` / `editor-switch-guard`）
 - 空選択 strike の stored mark は仕様「でよい」のため専用 TC なし（TipTap 既定）
 - `isMarpDocument()` 偽陽性（RK-013）は既存検出ロール維持。専用 TC は TC-142 で再評価のみ
@@ -816,4 +816,6 @@ P0 + P1 の机上トレース（実装前）。
 | 2026-10-22 | TC-PASTE-001–005, TC-LIST-001–008 追加 | テキストペースト保護（Web/Officeリッチテキストコピー時の画像誤爆防止・通常ペースト委譲）および箇条書き・タスクリストのスマートインデント（先頭行含む複数選択でのぶら下げネスト、Shift-Tabアウトデント、フォーカス離脱防止、テーブル保護） |
 | 2026-10-24 | TC-177–180 追加 | 画像セキュリティ（高度なパストラバーサル・非画像拡張子拒否）、Rawパース失敗時のsaveブロック、検索ウィジェットの正規表現安全耐性・オプション精度テスト |
 | 2026-10-28 | TC-181–183 追加 | 閲覧時・セルクリック時の不要な未保存（dirty）フラグ抑止: TipTapテーブル属性補完時のGFMソース保持、シリアライズ確定化オプション、実質的差分なし時のdirty/undo抑止 |
+| 2026-11-15 | `TC-124` Expected を `AD-004` に整合（`imageInserted` は `relativePath: img/...` を保持し `displaySrc` に `asWebviewUri` 済み URI を分離設定） | `issue-31-test-review`（`preview-rich-embed.test.ts`） |
+| 2026-11-15 | `issue-31-test-review`（C-2, C-3, C-6）: (1) `TC-159` を `diffEditorPriority === "option"`（`contribution-id-rename.test.ts` と一致）に整理し、`openCustomDocument` 安全読込を `TC-184`（`testspec-issue-31-test-review.md` `TC-I31-001` と連携）へ分離（C-2）、(2) Spec Digest・Outputs・`TC-070`・Trace の初期モード表記を現行仕様 `Visual`（`markdown` / `DEFAULT_EDITOR_MODE`）へ統一（C-3）、(3) 実行方針の `Vitest` 誤記を `Mocha` に訂正し、完了済みの古い Red 記録および `mshiono.md-wysiwyg-editor` 誤記（正: `mshiono.vsc-md-editor`）を是正（C-6） |
 

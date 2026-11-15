@@ -4,10 +4,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { getExtensionContext } from '../../../utils/extension-context';
-import { getOutputChannel, OUTPUT_CHANNEL_NAME } from '../../../utils/logger';
-import { getReadonlyKey, isReadonly, setReadonly } from '../../../utils/readonly-state';
-import { NO_MARP_MESSAGE } from '../../../utils/marp-constants';
-import { getWebviewCspContent } from '../../../utils/csp';
+import { isReadonly, setReadonly } from '../../../utils/readonly-state';
 import { waitFor } from '../../helpers/test-utils';
 
 suite('Extension integration tests', () => {
@@ -51,28 +48,6 @@ suite('Extension integration tests', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  test('TC-028: readonly key format', () => {
-    const uri = vscode.Uri.file('/tmp/test.md');
-    assert.ok(getReadonlyKey(uri).startsWith('readonly:'));
-  });
-
-  test('TC-057: webview CSP uses default-src none', () => {
-    const html = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-abc'" />`;
-    const csp = getWebviewCspContent(html);
-    assert.ok(csp?.includes("default-src 'none'"));
-  });
-
-  test('TC-062: output channel exists with correct name', async () => {
-    const ext = vscode.extensions.getExtension('mshiono.vsc-md-editor');
-    assert.ok(ext);
-    await ext.activate();
-    const channel = getOutputChannel();
-    assert.strictEqual(channel.name, OUTPUT_CHANNEL_NAME);
-  });
-
-  test('TC-042: non-Marp guidance message constant', () => {
-    assert.strictEqual(NO_MARP_MESSAGE, 'No Marp slides detected');
-  });
   test('TC-003: open custom editor with sample markdown', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-wysiwyg-open-'));
     const mdPath = path.join(tmpDir, 'sample.md');

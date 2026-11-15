@@ -1,246 +1,203 @@
-/**
- * TC-170–176: Find & Replace Widget (search-replace-widget).
- * Strict TDD Red — Webview HTML, CSS, find-widget.ts, and editor.ts implementation will satisfy these tests.
- */
 import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
+import { bootEditorWebviewInJsdom, mountJsdomGlobals } from '../../helpers/webview-jsdom-harness';
 
-function readRepoFile(...parts: string[]): string {
-  const filePath = path.resolve(process.cwd(), ...parts);
-  if (!fs.existsSync(filePath)) {
-    return '';
-  }
-  return fs.readFileSync(filePath, 'utf8');
+interface SearchQueryLike {
+  term: string;
+  matchCase: boolean;
+  matchWholeWord: boolean;
+  useRegex: boolean;
 }
 
-suite('search-replace-widget (TC-170–176)', () => {
-  const providerSrc = readRepoFile('src/providers/markdown-editor-provider.ts');
-  const editorTsSrc = readRepoFile('media/editor.ts');
-  const editorCssSrc = readRepoFile('media/editor.css');
-  const findWidgetTsSrc = readRepoFile('media/find-widget.ts');
+interface SearchResultLike {
+  total: number;
+  current: number;
+}
 
-  suite('TC-170: HTML structure and initial state', () => {
-    test('HTML includes #find-widget container with hidden class and aria-label', () => {
-      assert.ok(
-        providerSrc.includes('id="find-widget"') || findWidgetTsSrc.includes('id="find-widget"') || editorTsSrc.includes('find-widget'),
-        '#find-widget element must exist in Webview HTML or initialized in media scripts',
-      );
-    });
+interface SearchAdapterLike {
+  find(query: SearchQueryLike, jumpToMatch?: boolean): SearchResultLike;
+  next(): SearchResultLike;
+  previous(): SearchResultLike;
+  replace(replaceText: string): boolean;
+  replaceAll(replaceText: string): number;
+  clear(): void;
+}
 
-    test('find widget contains find input, match counter, previous, next, close, and toggle buttons', () => {
-      const combined = providerSrc + findWidgetTsSrc + editorTsSrc;
-      assert.ok(
-        combined.includes('id="find-input"') || combined.includes('find-input'),
-        'Find input field must exist',
-      );
-      assert.ok(
-        combined.includes('id="find-count"') || combined.includes('find-count') || combined.includes('find-match-count'),
-        'Match counter element must exist',
-      );
-      assert.ok(
-        combined.includes('data-action="find-prev"') || combined.includes('find-prev'),
-        'Previous button must exist',
-      );
-      assert.ok(
-        combined.includes('data-action="find-next"') || combined.includes('find-next'),
-        'Next button must exist',
-      );
-      assert.ok(
-        combined.includes('data-action="find-close"') || combined.includes('find-close'),
-        'Close button must exist',
-      );
-    });
+interface FindWidgetLike {
+  setAdapter(adapter: SearchAdapterLike | null): void;
+  setContext(mode: 'preview' | 'markdown' | 'raw', readonly: boolean): void;
+  open(options?: { showReplace?: boolean; initialQuery?: string }): void;
+  close(): void;
+  isOpen(): boolean;
+  next(): void;
+  previous(): void;
+  replace(): void;
+  replaceAll(): void;
+  toggleReplace(open: boolean): void;
+}
 
-    test('registers Cmd+F / Ctrl+F and Escape keybindings in editor', () => {
-      const combined = editorTsSrc + findWidgetTsSrc;
-      assert.ok(
-        combined.includes('key === "f"') || combined.includes("key === 'f'") || combined.includes('key.toLowerCase() === "f"') || combined.includes("key.toLowerCase() === 'f'"),
-        'Cmd+F/Ctrl+F shortcut must be registered',
-      );
-      assert.ok(
-        combined.includes('key === "Escape"') || combined.includes("key === 'Escape'"),
-        'Escape shortcut must close find widget',
-      );
-    });
+interface FindWidgetModule {
+  compileRegex: (query: SearchQueryLike) => RegExp | null;
+  RawSearchAdapter: new (textarea: unknown) => SearchAdapterLike;
+  MarpSearchAdapter: new (container: unknown) => SearchAdapterLike;
+  FindWidget: new () => FindWidgetLike;
+}
+
+function loadFindWidgetModule(): FindWidgetModule {
+  return require('../../../../media/find-widget') as FindWidgetModule;
+}
+
+suite('Find & Replace Widget Tests (JSDOM runtime)', () => {
+  test('TC-I31-018a: compileRegex handles literal, case, whole-word, valid regex, and invalid regex', () => {
+    const { compileRegex } = loadFindWidgetModule();
+
+    assert.strictEqual(compileRegex({ term: '', matchCase: false, matchWholeWord: false, useRegex: false }), null);
+
+    const escaped = compileRegex({ term: 'a+b(c)', matchCase: false, matchWholeWord: false, useRegex: false });
+    assert.ok(escaped);
+    assert.strictEqual('x a+b(c) y'.match(escaped)?.length, 1);
+    assert.strictEqual('x aaabc y'.match(escaped), null);
+
+    const caseSensitive = compileRegex({ term: 'Alpha', matchCase: true, matchWholeWord: false, useRegex: false });
+    assert.ok(caseSensitive);
+    assert.strictEqual('Alpha alpha ALPHA'.match(caseSensitive)?.length, 1);
+
+    const wholeWord = compileRegex({ term: 'cat', matchCase: false, matchWholeWord: true, useRegex: false });
+    assert.ok(wholeWord);
+    assert.strictEqual('cat scatter caterpillar cat'.match(wholeWord)?.length, 2);
+
+    const validRegex = compileRegex({ term: 'foo\\d+', matchCase: true, matchWholeWord: false, useRegex: true });
+    assert.ok(validRegex);
+    assert.strictEqual('foo1 bar foo23'.match(validRegex)?.length, 2);
+
+    const invalidRegex = compileRegex({ term: '[unclosed', matchCase: false, matchWholeWord: false, useRegex: true });
+    assert.strictEqual(invalidRegex, null);
   });
 
-  suite('TC-171 & TC-172: Search navigation across Raw and Visual modes', () => {
-    test('find-widget.ts exports SearchAdapter or contains search logic for both modes', () => {
-      assert.ok(
-        findWidgetTsSrc.length > 0,
-        'media/find-widget.ts must exist and implement search/replace logic',
-      );
-      assert.ok(
-        findWidgetTsSrc.includes('find') && (findWidgetTsSrc.includes('next') || findWidgetTsSrc.includes('previous')),
-        'find-widget.ts must implement find, next, and previous navigation',
-      );
-    });
-
-    test('ProseMirror Decoration or highlight classes exist in CSS', () => {
-      assert.ok(
-        editorCssSrc.includes('.find-highlight') || editorCssSrc.includes('.search-highlight'),
-        'CSS must define .find-highlight or .search-highlight class',
-      );
-      assert.ok(
-        editorCssSrc.includes('.find-highlight-current') || editorCssSrc.includes('.search-highlight-current'),
-        'CSS must define .find-highlight-current or .search-highlight-current class',
-      );
-    });
-  });
-
-  suite('TC-173 & TC-174: Replace single and replace all', () => {
-    test('implements replace and replaceAll methods', () => {
-      assert.ok(
-        findWidgetTsSrc.includes('replace') && findWidgetTsSrc.includes('replaceAll'),
-        'find-widget.ts must implement replace and replaceAll',
-      );
-    });
-
-    test('binds Cmd+H / Ctrl+H shortcut to open replace bar', () => {
-      const combined = editorTsSrc + findWidgetTsSrc;
-      assert.ok(
-        combined.includes('key === "h"') || combined.includes("key === 'h'") || combined.includes('key.toLowerCase() === "h"') || combined.includes("key.toLowerCase() === 'h'"),
-        'Cmd+H/Ctrl+H shortcut must be registered',
-      );
-    });
-  });
-
-  suite('TC-175: Search options and regex safety', () => {
-    test('provides Match Case, Match Whole Word, and Use Regex option controls', () => {
-      const combined = providerSrc + findWidgetTsSrc;
-      assert.ok(
-        combined.includes('match-case') || combined.includes('matchCase'),
-        'Match Case option must be supported',
-      );
-      assert.ok(
-        combined.includes('match-whole-word') || combined.includes('matchWholeWord') || combined.includes('whole-word'),
-        'Match Whole Word option must be supported',
-      );
-      assert.ok(
-        combined.includes('use-regex') || combined.includes('useRegex') || combined.includes('regex'),
-        'Use Regex option must be supported',
-      );
-    });
-
-    test('catches regex syntax errors safely', () => {
-      assert.ok(
-        findWidgetTsSrc.includes('catch') && (findWidgetTsSrc.includes('RegExp') || findWidgetTsSrc.includes('regex')),
-        'Regex constructor must be protected with try-catch',
-      );
-    });
-  });
-
-  suite('TC-176: Readonly and Preview guard', () => {
-    test('hides or disables replace UI in preview or readonly mode', () => {
-      const combined = editorTsSrc + findWidgetTsSrc;
-      assert.ok(
-        combined.includes('readonly') || combined.includes('preview'),
-        'Must check readonly and preview mode to guard replace functionality',
-      );
-    });
-  });
-
-  suite('TC-179: Regex syntax errors safety (compileRegex)', () => {
-    // Dynamic execution of compileRegex logic
-    let compileRegexFn: ((query: { term: string; matchCase: boolean; matchWholeWord: boolean; useRegex: boolean }) => RegExp | null) | null = null;
+  test('TC-I31-018b: RawSearchAdapter + FindWidget executes find, next/prev wrap, replace, replaceAll, and close', () => {
+    const dom = mountJsdomGlobals();
     try {
-      // compileRegex is exported from media/find-widget
-      const mod = require('../../../../media/find-widget');
-      compileRegexFn = mod.compileRegex;
-    } catch {
-      compileRegexFn = null;
+      const { RawSearchAdapter, FindWidget } = loadFindWidgetModule();
+      const textarea = dom.document.getElementById('raw-editor') as unknown as {
+        value: string;
+        selectionStart: number;
+        selectionEnd: number;
+        clientWidth: number;
+        clientHeight: number;
+        scrollTop: number;
+        scrollLeft: number;
+        setSelectionRange: (s: number, e: number) => void;
+        addEventListener: (t: string, cb: () => void) => void;
+        removeEventListener: (t: string, cb: () => void) => void;
+        dispatchEvent: (e: unknown) => boolean;
+      };
+      textarea.value = 'Alpha beta alpha ALPHA';
+      textarea.setSelectionRange(0, 0);
+
+      const adapter = new RawSearchAdapter(textarea);
+      const widget = new FindWidget();
+      widget.setContext('raw', false);
+      widget.setAdapter(adapter);
+      widget.open({ showReplace: true, initialQuery: 'alpha' });
+
+      assert.strictEqual(widget.isOpen(), true);
+      const countLabel = dom.document.getElementById('find-count');
+      assert.strictEqual(countLabel?.textContent, '1 of 3');
+
+      widget.next();
+      assert.strictEqual(countLabel?.textContent, '2 of 3');
+      widget.next();
+      assert.strictEqual(countLabel?.textContent, '3 of 3');
+      widget.next();
+      assert.strictEqual(countLabel?.textContent, '1 of 3');
+
+      widget.previous();
+      assert.strictEqual(countLabel?.textContent, '3 of 3');
+
+      const replaceInput = dom.document.getElementById('replace-input') as unknown as { value: string };
+      replaceInput.value = 'Omega';
+      widget.replace();
+      assert.strictEqual(textarea.value, 'Alpha beta alpha Omega');
+
+      replaceInput.value = 'Gamma';
+      widget.replaceAll();
+      assert.strictEqual(textarea.value, 'Gamma beta Gamma Omega');
+
+      widget.close();
+      assert.strictEqual(widget.isOpen(), false);
+      assert.strictEqual(countLabel?.textContent, 'No results');
+      assert.strictEqual(dom.document.getElementById('raw-search-backdrop')?.innerHTML, '');
+    } finally {
+      dom.dispose();
     }
-
-    test('returns null without throwing on invalid regex patterns', () => {
-      if (!compileRegexFn) {
-        // Fallback for environment without media bundle transpilation
-        assert.ok(findWidgetTsSrc.includes('catch') && findWidgetTsSrc.includes('RegExp'));
-        return;
-      }
-      const invalidPatterns = ['(?', '[abc', '*invalid', '\\', '(?<=', '(unclosed'];
-      for (const pattern of invalidPatterns) {
-        assert.doesNotThrow(() => {
-          const result = compileRegexFn!({
-            term: pattern,
-            matchCase: false,
-            matchWholeWord: false,
-            useRegex: true,
-          });
-          assert.strictEqual(result, null, `Invalid pattern "${pattern}" must return null`);
-        });
-      }
-    });
-
-    test('returns null for empty search term', () => {
-      if (!compileRegexFn) return;
-      assert.strictEqual(
-        compileRegexFn({ term: '', matchCase: false, matchWholeWord: false, useRegex: false }),
-        null,
-      );
-    });
   });
 
-  suite('TC-180: Search option logic accuracy (compileRegex)', () => {
-    let compileRegexFn: ((query: { term: string; matchCase: boolean; matchWholeWord: boolean; useRegex: boolean }) => RegExp | null) | null = null;
+  test('TC-I31-018c: MarpSearchAdapter highlights preview text and guards replace in preview/readonly', () => {
+    const dom = mountJsdomGlobals();
     try {
-      const mod = require('../../../../media/find-widget');
-      compileRegexFn = mod.compileRegex;
-    } catch {
-      compileRegexFn = null;
+      const { MarpSearchAdapter, FindWidget } = loadFindWidgetModule();
+      const previewRoot = dom.document.getElementById('preview-marp-root')!;
+      previewRoot.innerHTML = '<section><h1>Slide One</h1><p>Slide content</p></section>';
+
+      const adapter = new MarpSearchAdapter(previewRoot);
+      const widget = new FindWidget();
+      widget.setContext('preview', false);
+      widget.setAdapter(adapter);
+      widget.open({ showReplace: true, initialQuery: 'Slide' });
+
+      const marks = previewRoot.querySelectorAll('mark.find-highlight');
+      assert.strictEqual(marks.length, 2);
+      assert.strictEqual(dom.document.getElementById('find-count')?.textContent, '1 of 2');
+      assert.strictEqual(dom.document.getElementById('replace-row')?.classList.contains('hidden'), true);
+      assert.strictEqual(adapter.replace('Nope'), false);
+      assert.strictEqual(adapter.replaceAll('Nope'), 0);
+
+      widget.close();
+      assert.strictEqual(previewRoot.querySelectorAll('mark.find-highlight').length, 0);
+    } finally {
+      dom.dispose();
     }
+  });
 
-    test('escapes regex special characters when useRegex is false', () => {
-      if (!compileRegexFn) return;
-      const regex = compileRegexFn({
-        term: 'item.name [0] + 1 * 2?',
-        matchCase: false,
-        matchWholeWord: false,
-        useRegex: false,
-      });
-      assert.ok(regex !== null);
-      assert.strictEqual(regex.test('item.name [0] + 1 * 2?'), true);
-      assert.strictEqual(regex.test('itemXname [0] + 1 * 2?'), false);
+  test('TC-I31-018d: FindWidget hides replace toggle in readonly and searches TipTap visual DOM via media/editor.js', () => {
+    const docJson = JSON.stringify({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'needle in visual editor needle' }] },
+      ],
     });
-
-    test('respects matchCase option', () => {
-      if (!compileRegexFn) return;
-      const caseSensitive = compileRegexFn({
-        term: 'Hello',
-        matchCase: true,
-        matchWholeWord: false,
-        useRegex: false,
-      });
-      assert.ok(caseSensitive !== null);
-      assert.strictEqual(caseSensitive.test('Hello'), true);
-      caseSensitive.lastIndex = 0;
-      assert.strictEqual(caseSensitive.test('hello'), false);
-
-      const caseInsensitive = compileRegexFn({
-        term: 'Hello',
-        matchCase: false,
-        matchWholeWord: false,
-        useRegex: false,
-      });
-      assert.ok(caseInsensitive !== null);
-      assert.strictEqual(caseInsensitive.test('hello'), true);
+    const harness = bootEditorWebviewInJsdom({
+      initMessage: {
+        docJson,
+        markdownText: 'needle in visual editor needle',
+        readonly: false,
+        editorMode: 'markdown',
+      },
     });
+    try {
+      const editorEl = harness.document.getElementById('editor')!;
+      harness.dispatchKeydown(editorEl, { key: 'f', ctrlKey: true });
 
-    test('respects matchWholeWord option', () => {
-      if (!compileRegexFn) return;
-      const wholeWord = compileRegexFn({
-        term: 'test',
-        matchCase: false,
-        matchWholeWord: true,
-        useRegex: false,
-      });
-      assert.ok(wholeWord !== null);
-      assert.strictEqual(wholeWord.test('a test case'), true);
-      wholeWord.lastIndex = 0;
-      assert.strictEqual(wholeWord.test('testing case'), false);
-      wholeWord.lastIndex = 0;
-      assert.strictEqual(wholeWord.test('attest case'), false);
-    });
+      const widget = harness.document.getElementById('find-widget')!;
+      assert.strictEqual(widget.classList.contains('hidden'), false);
+
+      const findInput = harness.document.getElementById('find-input')!;
+      findInput.value = 'needle';
+      findInput.dispatchEvent(new harness.window.Event('input', { bubbles: true }));
+      assert.strictEqual(harness.document.getElementById('find-count')?.textContent, '1 of 2');
+
+      harness.sendHostMessage({ type: 'readonlyChanged', readonly: true });
+      const toggleReplaceBtn = harness.document.getElementById('find-toggle-replace')!;
+      assert.strictEqual(toggleReplaceBtn.style.display, 'none');
+    } finally {
+      harness.dispose();
+    }
+  });
+
+  test('TC-I31-018e: editor.css defines find highlight classes', () => {
+    const css = fs.readFileSync(path.resolve(process.cwd(), 'media/editor.css'), 'utf8');
+    assert.ok(css.includes('.find-highlight'), 'media/editor.css must style .find-highlight');
+    assert.ok(css.includes('.find-highlight-current'), 'media/editor.css must style .find-highlight-current');
   });
 });
-

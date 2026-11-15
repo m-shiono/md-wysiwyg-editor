@@ -48,7 +48,7 @@ export function applyDisplayUriRewrite(
     case 'imageInserted':
       return {
         ...message,
-        relativePath: rewriteImageSrcForDisplay(message.relativePath, mdUri, webview),
+        displaySrc: rewriteImageSrcForDisplay(message.relativePath, mdUri, webview),
       };
     default:
       return message;

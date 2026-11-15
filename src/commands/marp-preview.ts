@@ -5,8 +5,16 @@ import { NO_MARP_MESSAGE } from '../utils/marp-constants';
 import { isMarpDocument } from '../utils/is-marp-document';
 import { renderMarpPreviewFragment } from '../utils/marp-render';
 import { rewriteImageUrisInHtml } from '../utils/image-uri-rewrite';
+import { getMarkdownEditorProvider } from '../utils/editor-provider-hook';
 
 export { NO_MARP_MESSAGE, isMarpDocument };
+
+function getMarpImgRoots(uri: vscode.Uri): vscode.Uri[] {
+  if (uri.scheme === 'untitled') {
+    return [];
+  }
+  return [vscode.Uri.joinPath(uri, '..', 'img')];
+}
 
 export class MarpPreviewManager {
   private panel: vscode.WebviewPanel | undefined;
@@ -16,6 +24,10 @@ export class MarpPreviewManager {
   constructor(private readonly context: vscode.ExtensionContext) {}
 
   async show(uri: vscode.Uri, content: string): Promise<void> {
+    const localResourceRoots = [
+      vscode.Uri.joinPath(this.context.extensionUri, 'media'),
+      ...getMarpImgRoots(uri),
+    ];
     if (!this.panel) {
       this.panel = vscode.window.createWebviewPanel(
         'md-wysiwyg-editor.marpPreview',
@@ -23,9 +35,7 @@ export class MarpPreviewManager {
         vscode.ViewColumn.Beside,
         {
           enableScripts: false,
-          localResourceRoots: [
-            vscode.Uri.joinPath(this.context.extensionUri, 'media'),
-          ],
+          localResourceRoots,
         },
       );
       this.panel.onDidDispose(() => {
@@ -33,6 +43,11 @@ export class MarpPreviewManager {
         this.currentUri = undefined;
         this.lastRenderedContent = undefined;
       });
+    } else {
+      this.panel.webview.options = {
+        enableScripts: false,
+        localResourceRoots,
+      };
     }
     this.currentUri = uri;
     this.lastRenderedContent = content;
@@ -68,7 +83,10 @@ export class MarpPreviewManager {
         );
       }
       const rewritten = rewriteImageUrisInHtml(fragment, uri, {
-        asWebviewUri: (localUri) => this.panel!.webview.asWebviewUri(vscode.Uri.file(localUri.fsPath)),
+        asWebviewUri: (localUri) =>
+          this.panel!.webview.asWebviewUri(
+            localUri instanceof vscode.Uri ? localUri : vscode.Uri.parse(localUri.toString()),
+          ),
       });
       return wrapPreviewHtml(rewritten, this.panel!.webview.cspSource);
     } catch (error) {
@@ -84,7 +102,7 @@ function wrapPreviewHtml(body: string, cspSource?: string): string {
   const csp = [
     "default-src 'none'",
     "style-src 'unsafe-inline'",
-    "img-src data: https:",
+    `img-src${cspSource ? ` ${cspSource}` : ''} data: https:`,
     `font-src data:${cspSource ? ` ${cspSource}` : ''}`,
   ].join('; ');
   return `<!DOCTYPE html>
@@ -98,16 +116,34 @@ pre { background: var(--vscode-textBlockQuote-background); padding: 0.5rem; }
 </style></head><body>${body}</body></html>`;
 }
 
+async function resolveMarpSourceContent(uri: vscode.Uri): Promise<string> {
+  const openCustomDoc = getMarkdownEditorProvider()?.getOpenDocument(uri);
+  if (openCustomDoc) {
+    return openCustomDoc.markdownText;
+  }
+  const openTextDoc = vscode.workspace.textDocuments.find(
+    (doc) => doc.uri.toString() === uri.toString(),
+  );
+  if (openTextDoc) {
+    return openTextDoc.getText();
+  }
+  const data = await vscode.workspace.fs.readFile(uri);
+  return Buffer.from(data).toString('utf8');
+}
+
 export function registerMarpPreviewCommand(
   _context: vscode.ExtensionContext,
   manager: MarpPreviewManager,
 ): vscode.Disposable {
   return vscode.commands.registerCommand('md-wysiwyg-editor.showMarpPreview', async () => {
     const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab;
-    if (activeTab?.input instanceof vscode.TabInputCustom && activeTab.input.uri.path.endsWith('.md')) {
+    if (
+      activeTab?.input instanceof vscode.TabInputCustom &&
+      activeTab.input.uri.path.toLowerCase().endsWith('.md')
+    ) {
       const uri = activeTab.input.uri;
-      const data = await vscode.workspace.fs.readFile(uri);
-      await manager.show(uri, Buffer.from(data).toString('utf8'));
+      const content = await resolveMarpSourceContent(uri);
+      await manager.show(uri, content);
       return;
     }
 
@@ -117,12 +153,22 @@ export function registerMarpPreviewCommand(
       return;
     }
 
+    const activeCustomUri = getMarkdownEditorProvider()?.getActiveUri();
+    if (activeCustomUri && activeCustomUri.path.toLowerCase().endsWith('.md')) {
+      const content = await resolveMarpSourceContent(activeCustomUri);
+      await manager.show(activeCustomUri, content);
+      return;
+    }
+
     const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs);
     for (const tab of tabs) {
-      if (tab.input instanceof vscode.TabInputCustom && tab.input.uri.path.endsWith('.md')) {
+      if (
+        tab.input instanceof vscode.TabInputCustom &&
+        tab.input.uri.path.toLowerCase().endsWith('.md')
+      ) {
         const uri = tab.input.uri;
-        const data = await vscode.workspace.fs.readFile(uri);
-        await manager.show(uri, Buffer.from(data).toString('utf8'));
+        const content = await resolveMarpSourceContent(uri);
+        await manager.show(uri, content);
         return;
       }
     }

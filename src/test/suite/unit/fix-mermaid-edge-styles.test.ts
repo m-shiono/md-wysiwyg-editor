@@ -4,12 +4,12 @@
  * Theme/presentation canonical suite: mermaid-redux-elk-fidelity.
  */
 import * as assert from 'assert';
-import type { Config } from 'dompurify';
+import { sanitizeMermaidSvg } from '../../../utils/mermaid-sanitize';
 import {
   getUtilExport,
   readRepoFile,
-  safeSanitizeSvg,
 } from '../../helpers/test-utils';
+import { mountJsdomGlobals } from '../../helpers/webview-jsdom-harness';
 
 type MermaidThemeConfig = {
   theme: string;
@@ -69,18 +69,13 @@ function mermaidPreviewAppendedBeforeSource(editorSrc: string): boolean {
   return p >= 0 && s >= 0 && p < s;
 }
 
-function extractSanitizeMermaidSvgOptions(editorSrc: string): Config {
-  const match = editorSrc.match(
-    /function\s+sanitizeMermaidSvg\s*\(\s*svg\s*:\s*string\s*\)\s*:\s*string\s*\{[\s\S]*?DOMPurify\.sanitize\(\s*svg\s*,\s*(\{[\s\S]*?\})\s*\)/,
-  );
-  assert.ok(match?.[1], 'sanitizeMermaidSvg DOMPurify options object must exist in media/editor.ts');
-  return new Function(`return (${match[1]})`)() as Config;
-}
-
 function runProductionSanitize(svg: string): string {
-  const editorSrc = readRepoFile('media/editor.ts');
-  const options = extractSanitizeMermaidSvgOptions(editorSrc);
-  return safeSanitizeSvg(svg, options as Record<string, unknown>);
+  const dom = mountJsdomGlobals();
+  try {
+    return sanitizeMermaidSvg(svg);
+  } finally {
+    dom.dispose();
+  }
 }
 
 const XSS_LABEL_SVG = [
@@ -224,10 +219,12 @@ suite('fix-mermaid-edge-styles', () => {
   });
 
   test('TC-007: HIP foreignobject remains enabled', () => {
-    const editorSrc = readRepoFile('media/editor.ts');
+    const sanitized = runProductionSanitize(
+      '<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="80" height="40"><div xmlns="http://www.w3.org/1999/xhtml">Cause A</div></foreignObject></svg>',
+    );
     assert.ok(
-      /HTML_INTEGRATION_POINTS\s*:\s*\{[\s\S]*?foreignobject\s*:\s*true/i.test(editorSrc),
-      'HTML_INTEGRATION_POINTS: { foreignobject: true } required (AD-006)',
+      /<foreignObject/i.test(sanitized) && /Cause A/.test(sanitized),
+      'sanitizeMermaidSvg must preserve foreignObject XHTML label (HTML_INTEGRATION_POINTS: { foreignobject: true }, AD-006)',
     );
   });
 

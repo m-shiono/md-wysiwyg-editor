@@ -1,7 +1,14 @@
 import * as path from 'path';
+import * as vscode from 'vscode';
 import { isSafeImagePath } from './image-numbering';
 
-export type MdFileUri = { fsPath: string; toString(): string };
+export type MdFileUri = {
+  fsPath: string;
+  scheme?: string;
+  authority?: string;
+  path?: string;
+  toString(): string;
+};
 export type WebviewUriResolver = {
   asWebviewUri: (uri: MdFileUri) => { toString(): string };
 };
@@ -27,11 +34,19 @@ function resolveWebviewImageUri(
   if (!isSafeImagePath(mdUri.toString(), src)) {
     return src;
   }
-  const absPath = path.join(path.dirname(mdUri.fsPath), src);
-  const fileUri: MdFileUri = {
-    fsPath: absPath,
-    toString: () => `file://${absPath}`,
-  };
+  const mdUriStr = mdUri.toString();
+  const baseUri =
+    typeof mdUri.scheme === 'string' && typeof mdUri.path === 'string'
+      ? (mdUri as vscode.Uri)
+      : /^[a-z][a-z0-9+.-]*:/i.test(mdUriStr)
+        ? vscode.Uri.parse(mdUriStr)
+        : undefined;
+  if (baseUri?.scheme === 'untitled') {
+    return src;
+  }
+  const fileUri: MdFileUri = baseUri
+    ? vscode.Uri.joinPath(baseUri, '..', src)
+    : vscode.Uri.file(path.join(path.dirname(mdUri.fsPath), src));
   let uri = webview.asWebviewUri(fileUri).toString();
   // Real webview URIs encode path segments; apply same for unit-test mocks (TC-124).
   if (uri.includes(src)) {

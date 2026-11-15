@@ -15,15 +15,26 @@ export class MarkdownDocument implements vscode.CustomDocument {
     uri: vscode.Uri,
     backupId: string | undefined,
   ): Promise<MarkdownDocument | undefined> {
+    if (uri.scheme === 'untitled' && !backupId) {
+      const existing = vscode.workspace.textDocuments.find(
+        (d) => d.uri.toString() === uri.toString(),
+      );
+      const initialText = existing ? existing.getText() : '';
+      return new MarkdownDocument(uri, Buffer.from(initialText, 'utf8'));
+    }
     try {
       const source = backupId ? vscode.Uri.parse(backupId) : uri;
       const data = await vscode.workspace.fs.readFile(source);
       return new MarkdownDocument(uri, data);
     } catch (error) {
       logError('Failed to read document', error);
-      void vscode.window.showErrorMessage(`Failed to open ${uri.fsPath}`);
+      void vscode.window.showErrorMessage(`Failed to open ${uri.fsPath || uri.toString()}`);
       return undefined;
     }
+  }
+
+  static createFallback(uri: vscode.Uri): MarkdownDocument {
+    return new MarkdownDocument(uri, new Uint8Array());
   }
 
   private readonly _uri: vscode.Uri;

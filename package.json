@@ -33,7 +33,9 @@
     "onCommand:md-wysiwyg-editor.convertMarkdownTableToCsv",
     "onCommand:md-wysiwyg-editor.copyTableAsCsv",
     "onCommand:md-wysiwyg-editor.copyAsBacklog",
-    "onCommand:md-wysiwyg-editor.pasteBacklogAsMarkdown"
+    "onCommand:md-wysiwyg-editor.pasteBacklogAsMarkdown",
+    "onCommand:md-wysiwyg-editor.toggleReadonly",
+    "onCommand:md-wysiwyg-editor.showMarpPreview"
   ],
   "main": "./dist/extension.js",
   "contributes": {

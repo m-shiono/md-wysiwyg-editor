@@ -25,7 +25,8 @@ export function isBuiltinSwitchToSameMdFile(
   if (!activeTab?.input) {
     return false;
   }
-  if (!disposedUri.fsPath.toLowerCase().endsWith('.md')) {
+  const targetPath = (disposedUri.path || disposedUri.fsPath || '').toLowerCase();
+  if (!targetPath.endsWith('.md')) {
     return false;
   }
 
@@ -41,9 +42,16 @@ export function isBuiltinSwitchToSameMdFile(
   }
 
   if (activeTab.input instanceof vscode.TabInputCustom) {
+    const viewType = activeTab.input.viewType;
+    if (
+      typeof viewType === 'string' &&
+      /markdown\.preview|cursor\.|windsurf\.|antigravity\.|aichat|composer|diff/i.test(viewType)
+    ) {
+      return false;
+    }
     return (
       activeTab.input.uri.toString() === disposedKey &&
-      activeTab.input.viewType !== wysiwygViewType
+      viewType !== wysiwygViewType
     );
   }
 
@@ -72,7 +80,7 @@ function getActiveMarkdownUri(): vscode.Uri | undefined {
     return activeTab.input.uri;
   }
   const doc = vscode.window.activeTextEditor?.document;
-  if (doc && doc.uri.fsPath.toLowerCase().endsWith('.md')) {
+  if (doc && (doc.uri.path || doc.uri.fsPath || '').toLowerCase().endsWith('.md')) {
     return doc.uri;
   }
   return undefined;

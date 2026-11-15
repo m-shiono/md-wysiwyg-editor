@@ -24,14 +24,54 @@ suite('Editor switch guard (Pattern A)', () => {
     );
   });
 
-  test('TC-083: detects non-wysiwyg custom editor on same .md URI', () => {
+  test('TC-083: detects non-wysiwyg non-preview custom editor on same .md URI', () => {
     const uri = vscode.Uri.file('/tmp/switch-test.md');
     const tab: MockTab = {
-      input: new vscode.TabInputCustom(uri, 'markdown.preview.editor'),
+      input: new vscode.TabInputCustom(uri, 'some.other.custom.editor'),
     };
     assert.strictEqual(
       isBuiltinSwitchToSameMdFile(uri, tab as vscode.Tab, WYSIWYG_VIEW_TYPE),
       true,
+    );
+  });
+
+  test('TC-I31-036: excludes TabInputCustom preview editors and TabInputWebview while keeping TabInputText', () => {
+    const uri = vscode.Uri.file('/tmp/switch-preview-exclusion.md');
+
+    const vscodePreviewCustom: MockTab = {
+      input: new vscode.TabInputCustom(uri, 'vscode.markdown.preview.editor'),
+    };
+    assert.strictEqual(
+      isBuiltinSwitchToSameMdFile(uri, vscodePreviewCustom as vscode.Tab, WYSIWYG_VIEW_TYPE),
+      false,
+      'TabInputCustom(vscode.markdown.preview.editor) must return false',
+    );
+
+    const genericPreviewCustom: MockTab = {
+      input: new vscode.TabInputCustom(uri, 'markdown.preview.editor'),
+    };
+    assert.strictEqual(
+      isBuiltinSwitchToSameMdFile(uri, genericPreviewCustom as vscode.Tab, WYSIWYG_VIEW_TYPE),
+      false,
+      'TabInputCustom(markdown.preview.editor) must return false',
+    );
+
+    const webviewPreview: MockTab = {
+      input: new vscode.TabInputWebview('markdown.preview'),
+    };
+    assert.strictEqual(
+      isBuiltinSwitchToSameMdFile(uri, webviewPreview as vscode.Tab, WYSIWYG_VIEW_TYPE),
+      false,
+      'TabInputWebview(markdown.preview) must return false',
+    );
+
+    const textTab: MockTab = {
+      input: new vscode.TabInputText(uri),
+    };
+    assert.strictEqual(
+      isBuiltinSwitchToSameMdFile(uri, textTab as vscode.Tab, WYSIWYG_VIEW_TYPE),
+      true,
+      'TabInputText(uri) must return true',
     );
   });
 
