@@ -4,9 +4,18 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      # TipTap パッケージは相互の peerDependencies が厳密にバージョン一致を要求するため一括更新する
+      tiptap:
+        patterns:
+          - "@tiptap/*"
     ignore:
       # @marp-team/marp-core が katex@^0.18.2 を peer 依存として要求しており、
       # 0.19 以上では npm ci が ERESOLVE で失敗するため除外する。
       # marp-core が katex 0.19 に対応したら、この ignore を削除すること。
       - dependency-name: "katex"
         versions: [">=0.19.0"]
+      # CI (.github/workflows/package-vsix.yml) は Node 22、engines.vscode は ^1.85.0 のため
+      # Node 23 以降の型定義を除外してランタイム外の API 利用を検知できるようにする。
+      - dependency-name: "@types/node"
+        versions: [">=23.0.0"]
