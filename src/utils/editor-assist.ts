@@ -1,3 +1,5 @@
+import { splitYamlFrontmatter } from './yaml-frontmatter';
+
 /**
  * Markdown Editor Assist Utility
  * Provides list continuation, indentation, task list toggle, formatting toggles,
@@ -311,7 +313,8 @@ export interface HeadingItem {
  */
 export function extractHeadings(markdown: string): HeadingItem[] {
   const headings: HeadingItem[] = [];
-  const lines = markdown.split('\n');
+  const { body } = splitYamlFrontmatter(markdown);
+  const lines = body.split(/\r?\n/);
   let inCodeBlock = false;
 
   const slugCounts = new Map<string, number>();

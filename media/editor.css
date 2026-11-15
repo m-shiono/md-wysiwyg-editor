@@ -400,6 +400,25 @@ body[data-readonly='true'] #link-input-bar {
   margin-bottom: 0.5em;
 }
 
+.ProseMirror h1 {
+  font-size: 1.8em;
+  font-weight: 600;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.ProseMirror h2 {
+  font-size: 1.4em;
+  font-weight: 600;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.ProseMirror h3 {
+  font-size: 1.2em;
+  font-weight: 600;
+}
+
 .ProseMirror p {
   margin: 0.5em 0;
 }
@@ -444,20 +463,17 @@ body[data-readonly='true'] #link-input-bar {
 .ProseMirror .frontmatter-block .frontmatter-yaml {
   display: block;
   font-family: var(--vscode-editor-font-family);
-  font-size: var(--vscode-editor-font-size);
+  font-size: 0.85em;
   font-weight: var(--vscode-editor-font-weight, normal);
   line-height: 1.5;
   white-space: pre-wrap;
   word-wrap: break-word;
   overflow-wrap: break-word;
   color: var(--vscode-editor-foreground);
+  opacity: 0.85;
   background: transparent;
   padding: 0;
   border-radius: 0;
-}
-
-body[data-mode='preview'] .ProseMirror .frontmatter-block .frontmatter-yaml {
-  line-height: 1.5;
 }
 
 .ProseMirror a {
@@ -470,9 +486,10 @@ body[data-mode='preview'] .ProseMirror .frontmatter-block .frontmatter-yaml {
 }
 
 .ProseMirror blockquote {
-  margin: 0.5em 0;
-  padding-left: 1em;
-  border-left: 3px solid var(--vscode-panel-border);
+  margin: 0.6em 0;
+  padding: 0.25em 1em;
+  border-left: 4px solid var(--vscode-textBlockQuote-border, var(--vscode-panel-border));
+  background: var(--vscode-textBlockQuote-background, transparent);
   color: var(--vscode-descriptionForeground);
 }
 
@@ -930,6 +947,10 @@ body[data-mode='preview'] #editor .ProseMirror {
 body[data-mode='preview'] #toolbar,
 body[data-mode='preview'] #link-input-bar,
 body[data-mode='raw'] #link-input-bar {
+  display: none;
+}
+
+body[data-mode='preview'] .frontmatter-block {
   display: none;
 }
 

@@ -10,6 +10,7 @@ import remarkRehype from 'remark-rehype';
 import rehypeRaw from 'rehype-raw';
 import rehypeStringify from 'rehype-stringify';
 import { isMarpDocument } from '../utils/is-marp-document';
+import { splitYamlFrontmatter } from '../utils/yaml-frontmatter';
 import type { MarkdownEditorProvider } from '../providers/markdown-editor-provider';
 import { logError } from '../utils/logger';
 
@@ -107,14 +108,16 @@ export async function convertMarkdownToStandaloneHtml(
   markdown: string,
   baseDir: string,
 ): Promise<string> {
-  // Convert markdown to HTML body via unified pipeline
+  const { frontmatterBody, body } = splitYamlFrontmatter(markdown);
+
+  // Convert markdown body (excluding YAML frontmatter) to HTML body via unified pipeline
   const file = await unified()
     .use(remarkParse)
     .use(remarkGfm)
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(rehypeRaw)
     .use(rehypeStringify)
-    .process(markdown);
+    .process(body);
 
   let htmlBody = String(file);
 
@@ -147,9 +150,20 @@ export async function convertMarkdownToStandaloneHtml(
     }
   }
 
-  // Extract first H1 heading as document title if available
-  const titleMatch = markdown.match(/^#\s+(.+)$/m);
-  const title = titleMatch ? titleMatch[1].trim() : 'Document Export';
+  // Extract first H1 heading from body, else frontmatter `title`, else fallback
+  const titleMatch = body.match(/^#\s+(.+)$/m);
+  let rawTitle = titleMatch ? titleMatch[1].trim() : '';
+  if (!rawTitle && frontmatterBody !== null) {
+    const fmTitleMatch = frontmatterBody.match(/^\s*title\s*:\s*(.+)$/im);
+    if (fmTitleMatch) {
+      rawTitle = fmTitleMatch[1].trim().replace(/^(['"])(.*)\1$/, '$2');
+    }
+  }
+  const title = (rawTitle || 'Document Export')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 
   return `<!DOCTYPE html>
 <html lang="en">

@@ -157,7 +157,6 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
         undo: event.undo,
         redo: event.redo,
       });
-      void this.marpManager.updatePreview(document.uri, document.markdownText);
     });
 
     document.onDidContentChange(() => {
@@ -436,6 +435,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
           type: 'docUpdated',
           markdownText: document.markdownText,
         });
+        void this.marpManager.updatePreview(document.uri, document.markdownText);
         break;
       case 'updateRaw':
         // Late flush after Raw→other mode must still apply; only file RO blocks.
@@ -457,6 +457,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
               docJson: document.docJson,
               markdownText: document.markdownText,
             });
+            void this.marpManager.updatePreview(document.uri, document.markdownText);
           }
         }
         break;

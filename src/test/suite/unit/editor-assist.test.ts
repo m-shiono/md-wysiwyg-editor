@@ -212,6 +212,23 @@ def foo():
       const updated = updateOrInsertTableOfContents(result);
       assert.strictEqual(updated, result);
     });
+
+    test('ignores # comment lines inside leading YAML frontmatter', () => {
+      const mdWithFm = [
+        '---',
+        '# YAML comment that looks like H1',
+        'title: Document',
+        '---',
+        '',
+        '# Real Heading',
+        '',
+        '## Sub Heading',
+      ].join('\n');
+      const headings = extractHeadings(mdWithFm);
+      assert.strictEqual(headings.length, 2);
+      assert.strictEqual(headings[0].text, 'Real Heading');
+      assert.strictEqual(headings[1].text, 'Sub Heading');
+    });
   });
 });
 
