@@ -11,6 +11,7 @@ export { NO_MARP_MESSAGE, isMarpDocument };
 export class MarpPreviewManager {
   private panel: vscode.WebviewPanel | undefined;
   private currentUri: vscode.Uri | undefined;
+  private lastRenderedContent: string | undefined;
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -30,15 +31,21 @@ export class MarpPreviewManager {
       this.panel.onDidDispose(() => {
         this.panel = undefined;
         this.currentUri = undefined;
+        this.lastRenderedContent = undefined;
       });
     }
     this.currentUri = uri;
+    this.lastRenderedContent = content;
     this.panel.title = `Marp Preview — ${uri.path.split('/').pop() ?? 'document'}`;
     this.panel.webview.html = this.renderHtml(uri, content);
   }
 
   async updatePreview(uri: vscode.Uri, content: string): Promise<void> {
-    if (this.panel && this.currentUri?.toString() === uri.toString()) {
+    if (!this.panel) {
+      return;
+    }
+    if (this.currentUri?.toString() === uri.toString() && this.lastRenderedContent !== content) {
+      this.lastRenderedContent = content;
       this.panel.webview.html = this.renderHtml(uri, content);
     }
   }

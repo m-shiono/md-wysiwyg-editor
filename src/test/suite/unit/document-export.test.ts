@@ -210,6 +210,23 @@ suite('document-export (TC-EXP-001–008)', () => {
         'export-document.ts must use os.tmpdir() for print temporary HTML',
       );
     });
+
+    test('strips YAML frontmatter from exported HTML body and uses frontmatter title fallback', async () => {
+      const md = [
+        '---',
+        'title: "Frontmatter Title"',
+        'author: Alice',
+        '---',
+        '',
+        'Body paragraph without H1.',
+      ].join('\n');
+      const html = await convertMarkdownToStandaloneHtml(md, process.cwd());
+
+      assert.ok(html.includes('<title>Frontmatter Title</title>'));
+      assert.ok(!html.includes('author: Alice'), 'frontmatter must not render inside HTML body');
+      assert.ok(!html.includes('<h2>'), 'frontmatter must not render as Setext H2 heading');
+      assert.ok(html.includes('<p>Body paragraph without H1.</p>'));
+    });
   });
 });
 

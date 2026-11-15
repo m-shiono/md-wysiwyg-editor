@@ -472,6 +472,8 @@ let isEditorInitialized = false;
 let latestMarkdownText = "";
 let rawSyncTimer: ReturnType<typeof setTimeout> | undefined;
 let rawUpdateTimer: ReturnType<typeof setTimeout> | undefined;
+const VISUAL_UPDATE_DEBOUNCE_MS = 120;
+let visualUpdateTimer: ReturnType<typeof setTimeout> | undefined;
 /** Bumped on HTML→GFM convert so Host can drop pre-convert `update` messages. */
 let updateEpoch = 0;
 let gfmConvertPending = false;
@@ -1483,6 +1485,50 @@ function ensureTitleVisible(svgRoot: SVGSVGElement): void {
         expandBoundsForSvgText(node as SVGGraphicsElement, bounds);
       });
     }
+    // Also union transformed <g>, <foreignObject>, and shape elements into svgRoot coordinates
+    // so Mermaid diagrams with translated/scaled labels or edges are never clipped.
+    const rootCtm =
+      typeof svgRoot.getScreenCTM === "function" ? svgRoot.getScreenCTM() : null;
+    if (rootCtm) {
+      try {
+        const invRootCtm = rootCtm.inverse();
+        svgRoot
+          .querySelectorAll("g, foreignObject, path, rect, circle, ellipse, polygon")
+          .forEach((node) => {
+            const el = node as SVGGraphicsElement;
+            if (typeof el.getBBox !== "function" || typeof el.getScreenCTM !== "function") {
+              return;
+            }
+            const elCtm = el.getScreenCTM();
+            if (!elCtm) {
+              return;
+            }
+            const b = el.getBBox();
+            if (!Number.isFinite(b.x) || !Number.isFinite(b.y) || !(b.width > 0 || b.height > 0)) {
+              return;
+            }
+            const m = invRootCtm.multiply(elCtm);
+            const corners = [
+              [b.x, b.y],
+              [b.x + b.width, b.y],
+              [b.x, b.y + b.height],
+              [b.x + b.width, b.y + b.height],
+            ];
+            for (const [cx, cy] of corners) {
+              const rx = m.a * cx + m.c * cy + m.e;
+              const ry = m.b * cx + m.d * cy + m.f;
+              if (Number.isFinite(rx) && Number.isFinite(ry)) {
+                bounds.minX = Math.min(bounds.minX, rx);
+                bounds.minY = Math.min(bounds.minY, ry);
+                bounds.maxX = Math.max(bounds.maxX, rx);
+                bounds.maxY = Math.max(bounds.maxY, ry);
+              }
+            }
+          });
+      } catch {
+        // Ignore if matrix is non-invertible (e.g. hidden element)
+      }
+    }
     const padY = MERMAID_TITLE_VIEWBOX_PAD;
     const padX = MERMAID_TITLE_VIEWBOX_PAD_X;
     const vbX = bounds.minX - padX;
@@ -1972,6 +2018,7 @@ function setModeUi(mode: EditorMode): void {
   const previousMode = editorMode;
   if (previousMode === "markdown" && mode !== "markdown") {
     flushFrontmatterEditsBeforeModeLeave();
+    flushPendingVisualUpdate();
   }
   editorMode = mode;
   document.body.setAttribute("data-mode", mode);
@@ -2181,6 +2228,31 @@ function flushPendingRawUpdate(): void {
   }
   // Host accepts late updateRaw when !readonly (even if UI already left Raw).
   vscode.postMessage({ type: "updateRaw", markdown: raw.value });
+}
+
+/** Flush pending Visual debounce before mode switch or explicit actions. */
+function flushPendingVisualUpdate(): void {
+  if (!visualUpdateTimer) {
+    return;
+  }
+  clearTimeout(visualUpdateTimer);
+  visualUpdateTimer = undefined;
+  if (
+    !editor ||
+    suppressUpdate ||
+    gfmConvertPending ||
+    readonly ||
+    editorMode !== "markdown"
+  ) {
+    return;
+  }
+  const json = editor.getJSON();
+  vscode.postMessage({
+    type: "update",
+    docJson: JSON.stringify(json),
+    epoch: updateEpoch,
+  });
+  checkTableLimitsFromEditor(editor, json);
 }
 
 // --- Image Rich Editing (Popover, Lightbox, Drag & Drop) ---
@@ -2545,13 +2617,27 @@ function initEditor(initialDoc: TipTapDoc): void {
         ) {
           return;
         }
-        const json = ed.getJSON();
-        vscode.postMessage({
-          type: "update",
-          docJson: JSON.stringify(json),
-          epoch: updateEpoch,
-        });
-        checkTableLimitsFromEditor(ed);
+        if (visualUpdateTimer) {
+          clearTimeout(visualUpdateTimer);
+        }
+        visualUpdateTimer = setTimeout(() => {
+          visualUpdateTimer = undefined;
+          if (
+            suppressUpdate ||
+            gfmConvertPending ||
+            readonly ||
+            editorMode !== "markdown"
+          ) {
+            return;
+          }
+          const json = ed.getJSON();
+          vscode.postMessage({
+            type: "update",
+            docJson: JSON.stringify(json),
+            epoch: updateEpoch,
+          });
+          checkTableLimitsFromEditor(ed, json);
+        }, VISUAL_UPDATE_DEBOUNCE_MS);
       },
     });
 
@@ -2580,6 +2666,10 @@ function applyExternalDoc(doc: TipTapDoc, options?: { force?: boolean }): void {
   if (editorMode === "markdown" && editor.isFocused && !options?.force) {
     return;
   }
+  if (visualUpdateTimer) {
+    clearTimeout(visualUpdateTimer);
+    visualUpdateTimer = undefined;
+  }
   suppressUpdate = true;
   editor.commands.setContent(prepareDocForEditor(doc));
   suppressUpdate = false;
@@ -2597,7 +2687,24 @@ function applyExternalDoc(doc: TipTapDoc, options?: { force?: boolean }): void {
   }
 }
 
-/** Block keyboard/paste/drop edits while Preview is active (strict RO). Scroll is allowed. */
+const NON_MUTATING_PREVIEW_KEYS = new Set([
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "PageUp",
+  "PageDown",
+  "Home",
+  "End",
+  "Tab",
+  "Escape",
+  "Shift",
+  "Control",
+  "Alt",
+  "Meta",
+]);
+
+/** Block keyboard/paste/drop edits while Preview is active (strict RO). Scroll, selection copy, and navigation are allowed. */
 function attachPreviewGuard(): void {
   const editorEl = getEditorRoot();
   if (!editorEl || editorEl.dataset.previewGuard === "1") {
@@ -2613,7 +2720,26 @@ function attachPreviewGuard(): void {
     event.stopPropagation();
   };
 
-  editorEl.addEventListener("keydown", blockWhenPreview, true);
+  editorEl.addEventListener(
+    "keydown",
+    (event) => {
+      if (editorMode !== "preview") {
+        return;
+      }
+      if (NON_MUTATING_PREVIEW_KEYS.has(event.key)) {
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && !event.altKey) {
+        const lower = event.key.toLowerCase();
+        if (lower === "c" || lower === "a" || lower === "f") {
+          return;
+        }
+      }
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    true,
+  );
   editorEl.addEventListener("beforeinput", blockWhenPreview, true);
   editorEl.addEventListener("paste", blockWhenPreview, true);
   editorEl.addEventListener("drop", blockWhenPreview, true);
@@ -3382,13 +3508,17 @@ function postDocUpdate(): void {
   if (!editor || readonly || editorMode !== "markdown" || gfmConvertPending) {
     return;
   }
+  if (visualUpdateTimer) {
+    clearTimeout(visualUpdateTimer);
+    visualUpdateTimer = undefined;
+  }
   const json = editor.getJSON();
   vscode.postMessage({
     type: "update",
     docJson: JSON.stringify(json),
     epoch: updateEpoch,
   });
-  checkTableLimitsFromEditor(editor);
+  checkTableLimitsFromEditor(editor, json);
 }
 
 function handleTableOperation(op: string): void {
@@ -3592,6 +3722,10 @@ function handleTableOperation(op: string): void {
         return;
       }
       // Confirm on Host. Do not postDocUpdate first — that HTML snapshot races the convert.
+      if (visualUpdateTimer) {
+        clearTimeout(visualUpdateTimer);
+        visualUpdateTimer = undefined;
+      }
       gfmConvertPending = true;
       updateEpoch += 1;
       vscode.postMessage({
@@ -3787,8 +3921,11 @@ function attachPasteHandler(): void {
   });
 }
 
-function checkTableLimitsFromEditor(ed: Editor): void {
-  const json = ed.getJSON();
+function checkTableLimitsFromEditor(
+  ed: Editor,
+  precomputedJson?: JSONContent,
+): void {
+  const json = precomputedJson ?? ed.getJSON();
   let maxRows = 0;
   let maxCols = 0;
   for (const node of json.content ?? []) {
