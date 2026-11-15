@@ -23,18 +23,17 @@ async function promptSaveOrCancelBeforePreview(): Promise<string | undefined> {
 }
 
 /**
- * Ensure a proper file Uri for markdown.showPreview — Custom Editor tabs
- * may pass a Uri that the built-in Markdown preview ignores unless the
- * TextDocument is opened first and/or Uri.file(fsPath) is used.
+ * Ensure the TextDocument is opened before markdown.showPreview — Custom Editor
+ * tabs may pass a Uri that the built-in Markdown preview ignores unless the
+ * TextDocument is opened first. Preserve original scheme/authority (AD-005).
  */
 async function resolvePreviewUri(uri: vscode.Uri): Promise<vscode.Uri> {
-  const previewUri = vscode.Uri.file(uri.fsPath);
   try {
-    const doc = await vscode.workspace.openTextDocument(previewUri);
+    const doc = await vscode.workspace.openTextDocument(uri);
     return doc.uri;
   } catch (error) {
     logError('openTextDocument before native Markdown Preview failed', error);
-    return previewUri;
+    return uri;
   }
 }
 

@@ -2,12 +2,12 @@
 
 ## 概要
 
-- **対象:** 初期 `editorMode` を Raw に変更、mode-toolbar の非モード **Default Preview**（標準 Markdown Preview を **同一 editor group** に開く）、dirty Save/Cancel ゲート、三点モード往復回帰、Pattern A / Marp 非干渉、表示ラベル（Visual \| Source \| Preview \| Default Preview）、Host 同一グループ補償（preferred `activeIndex+1` best-effort）
-- **対応仕様:** [doc/requirements/systemspec.md](../requirements/systemspec.md) §1（初期 Raw・Default Preview・三点往復・表示ラベル）、§8（dirty Save/Cancel ゲート）、§10（`showNativeMarkdownPreview`・同一グループ補償・Pattern A / Marp 非干渉）、アーキテクチャ AD-016
+- **対象:** mode-toolbar の非モード **Default Preview**（標準 Markdown Preview を **同一 editor group** に開く）、dirty Save/Cancel ゲート、三点モード往復回帰、Pattern A / Marp 非干渉、表示ラベル（Visual \| Source \| Preview \| Default Preview）、Host 同一グループ補償（preferred `activeIndex+1` best-effort）。※初期 `editorMode` は 2026-10-28 `default-editor-mode-config` により既定 **Visual (`markdown`)** へ更新済み
+- **対応仕様:** [doc/requirements/systemspec.md](../requirements/systemspec.md) §1（既定 Visual / `defaultMode`・Default Preview・三点往復・表示ラベル）、§8（dirty Save/Cancel ゲート）、§10（`showNativeMarkdownPreview`・同一グループ補償・Pattern A / Marp 非干渉）、アーキテクチャ AD-016
 - **Requirements Brief:** `temporary/requirements-brief-native-preview-side-and-default-raw.md`（AD-001–014）; `temporary/requirements-brief-default-preview-same-tab-group.md`（AD-001–010 — オープン API / 同一グループ / コマンド ID / ラベル）
-- **テストコード:** `src/test/suite/unit/native-preview-side-and-default-raw.test.ts`（mocha + vscode mock）。関連回帰は既存三点モード suite と併用可。`default-preview-same-tab-group` の Expected 更新分は **TDD Red 実装済み**（2026-09-06）
+- **テストコード:** `src/test/suite/unit/native-preview-side-and-default-raw.test.ts`（mocha + vscode mock）。関連回帰は既存三点モード suite と併用可
 - **作成日:** 2026-09-05
-- **関連:** [doc/test/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) TC-070–084（三点・Pattern A）。本機能の検証正本は本ファイル。TC-070 の初期モード期待は `raw` へ整合済み
+- **関連:** [doc/test/testspec-vsc-md-wysiwyg.md](testspec-vsc-md-wysiwyg.md) TC-070–084（三点・Pattern A）、[doc/test/testspec-default-editor-mode-config.md](testspec-default-editor-mode-config.md) TC-MODE-001–011。本機能の検証正本は本ファイル。TC-070 の初期モード期待は現行仕様 `Visual`（`markdown`）へ整合済み
 
 ## Spec Digest
 
@@ -15,7 +15,7 @@
 
 | 引数 / 入力 | 型 | 最小 | 最大 | 備考 |
 |------------|-----|------|------|------|
-| `DEFAULT_EDITOR_MODE` | `'raw'`（定数） | — | — | オープン時の初期 mode id（AD-001 / AD-016） |
+| `DEFAULT_EDITOR_MODE` | `'markdown'`（定数） | — | — | オープン時（`defaultMode` 未設定時）の既定 mode id（Visual、AD-016 / `default-editor-mode-config` で旧 `'raw'` を置換） |
 | `editorMode` | `"preview" \| "markdown" \| "raw"` | — | — | 第 4 mode id なし |
 | `modeSwitchCommand` / mode-toolbar 三点 | UI / postMessage | — | — | `data-mode` のみ。ディスク I/O なし |
 | Default Preview ボタン | DOM | — | — | `data-action="native-preview"`（または同等）。**`data-mode` なし**。表示ラベル `Default Preview` |
@@ -30,7 +30,7 @@
 
 | 条件 | 戻り値 / ステータス | 仕様根拠 |
 |------|-------------------|---------|
-| オープン成功 | 初期 `editorMode === "raw"`、`body[data-mode="raw"]`、Raw 三点ボタン `active`、表示ラベル Source | §1 Outputs |
+| オープン成功 | 初期 `editorMode === "markdown"`、`body[data-mode="markdown"]`、Visual 三点ボタン `active`、表示ラベル Visual（`defaultMode` 未設定時） | §1 Outputs |
 | 三点往復成功 | `preview` ↔ `markdown` ↔ `raw` が mode-toolbar で切替可。Document / ディスク不変（内容未変更時） | §1 受け入れ P0 |
 | Default Preview・clean | 現在面不変のまま `markdown.showPreview` 実行。Preview はアクティブ WYSIWYG と **同一 editor group**。Beside 新規グループなし。ダイアログなし | §1 Outputs, §10 |
 | Default Preview・dirty→Save 成功 | save 成功後のみ `markdown.showPreview` + 同一グループ補償。dirty 解除 | §8 正常系 8 |
@@ -67,7 +67,7 @@
 
 | ID | Category | Domain Tag | Priority | Input | Expected | Rationale | Spec Ref |
 |----|----------|------------|----------|-------|----------|-----------|----------|
-| TC-001 | Happy | default-raw-open | P0 | Custom Editor で保存済み `.md` を開く（セッション永続モードなし） | `DEFAULT_EDITOR_MODE === 'raw'`。初期 `editorMode` / `body[data-mode]` / 三点 toolbar `active` が `raw`。表示ラベル Source | 初期面が Raw であること | §1 正常系 1, AD-016 |
+| TC-001 | Happy | default-visual-open | P0 | Custom Editor で保存済み `.md` を開く（`defaultMode` 未設定、セッション永続モードなし） | `DEFAULT_EDITOR_MODE === 'markdown'`。初期 `editorMode` / `body[data-mode]` / 三点 toolbar `active` が `markdown`。表示ラベル Visual（設定変更は `TC-MODE-001–011`） | 初期面が Visual であること（C-3 同期） | §1 正常系 1, AD-016 |
 | TC-002 | Happy | mode-round-trip | P0 | mode-toolbar 三点で `preview` → `markdown` → `raw` → `preview` を往復（内容未変更） | 各 mode id へ切替成功。`body[data-mode]` / toolbar `active` が一致。ディスク書込なし・dirty 不変 | モード切替バグ回帰（P0） | §1 受け入れ |
 | TC-003 | Happy | default-preview-non-mode | P0 | `#mode-toolbar` 内 Default Preview ボタンを検査し、任意の三点面で押下 | セグメント `Visual` \| `Source`、単独 `Preview`、アクション `Default Preview`。文言 `Default Preview`。`data-action="native-preview"`・**`data-mode` なし**。押下後 `editorMode` / `body[data-mode]` / 三点 `active` 不変 | 第4モード化防止・面不変・表示ラベル | §1 mode-toolbar Default Preview |
 | TC-004 | Happy | default-preview-clean | P0 | Document clean で Default Preview 押下（または同等 Host コマンド） | ダイアログなし。`markdown.showPreview` が対象 URI で 1 回実行。**`showPreviewToSide` 非実行**。現在面不変。Preview は同一 editor group（Beside 新規グループなし） | clean 即オープン + 同 group | §1 Outputs, §10 |
@@ -121,16 +121,16 @@
 
 ## Trace Results
 
-### TC-001 (P0): 初期 Raw オープン
+### TC-001 (P0): 初期 Visual オープン
 
 | Step | State / Action | Value |
 |------|----------------|-------|
 | Input | 保存済み `sample.md` を Custom Editor で開く | viewType `md-wysiwyg-editor.wysiwyg` |
-| 1 | 定数 / Host 初期 mode | `DEFAULT_EDITOR_MODE === 'raw'` |
-| 2 | Webview 初期 HTML | `body[data-mode="raw"]`、Source ボタン `active` |
-| Output | 初期面 | Source / mode id `raw` |
+| 1 | 定数 / Host 初期 mode | `DEFAULT_EDITOR_MODE === 'markdown'` |
+| 2 | Webview 初期 HTML | `body[data-mode="markdown"]`、Visual ボタン `active` |
+| Output | 初期面 | Visual / mode id `markdown` |
 
-**Result:** ✅ Pass（2026-09-06 unit — 契約不変）
+**Result:** ✅ Pass（現行仕様 Visual に同期済み）
 
 ---
 
@@ -138,7 +138,7 @@
 
 | Step | State / Action | Value |
 |------|----------------|-------|
-| Input | 初期 `raw` | — |
+| Input | 初期 `markdown` | — |
 | 1 | Preview ボタン | `editorMode === 'preview'` |
 | 2 | Visual | `editorMode === 'markdown'` |
 | 3 | Source | `editorMode === 'raw'` |
@@ -299,7 +299,7 @@
 | ID | Priority | Result | Notes |
 |----|----------|--------|-------|
 | TC-001–021 | P0/P1 | ✅ Pass | unit suite green（`moveActiveEditor` 同一グループ補償含む） |
-| TC-070（wysiwyg） | P0 | 初期 raw 期待は既存 | 本タスク対象外 |
+| TC-070（wysiwyg） | P0 | 初期 Visual（`markdown`）期待へ整合済み | `testspec-default-editor-mode-config.md` と同期 |
 
 ---
 
@@ -374,3 +374,4 @@
 | 2026-09-29 | **BREAKING** `rename-md-wysiwyg`: 貢献 ID を `md-wysiwyg-editor.*` に同期（viewType / 正本コマンド / 製品内 `…ToSide` 別名）。旧 `vsc-md-editor.*` は未登録を Expected に明記（AD-002/004）。テストコード未変更（design only） | `rename-md-wysiwyg` |
 | 2026-09-29 | testspec-implementation（Red）: TC-007 期待を `md-wysiwyg-editor.*` + 旧プレフィックス未登録にコード化。Trace Red | `rename-md-wysiwyg` |
 | 2026-09-29 | Trace Results: TC-007 を Pass に同期（Quality Gate green 後。Expected 不変） | `rename-md-wysiwyg` |
+| 2026-11-15 | 初期モード表記を現行仕様（`DEFAULT_EDITOR_MODE = 'markdown'` / Visual、`defaultMode` 既定 `visual`）へ同期し、関連テストの現行 Green 状態を反映（`issue-31-test-review` / C-3, C-6） | `issue-31-test-review` |

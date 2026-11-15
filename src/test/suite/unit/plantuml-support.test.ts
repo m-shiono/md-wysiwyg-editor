@@ -3,6 +3,7 @@
  */
 import * as assert from 'assert';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { PlantUmlRenderer } from '../../../utils/plantuml-renderer';
 
@@ -130,19 +131,27 @@ suite('plantuml-support (TC-PUML-001–010)', () => {
   });
 
   suite('Edge Cases & Robustness', () => {
-    test('TC-PUML-006: respects custom timeout and handles timeout rejection', async () => {
-      // Use sleep to force timeout
+    test('TC-PUML-006 / TC-I31-025: respects custom timeout with real waiting process and rejects on timeout', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'puml-timeout-'));
+      const slowScript = path.join(tmpDir, 'slow-puml.js');
+      fs.writeFileSync(
+        slowScript,
+        '#!/usr/bin/env node\nsetTimeout(() => { process.exit(0); }, 5000);\n',
+        { mode: 0o755 },
+      );
+
       const renderer = new PlantUmlRenderer(() => ({
-        command: 'sleep',
+        command: slowScript,
       }));
+
       try {
-        await renderer.renderSvg('test', { timeoutMs: 100 });
-        // If sleep is not installed or immediate, fallback
-      } catch (err: unknown) {
-        assert.ok(
-          err instanceof Error && err.message.includes('timeout'),
-          'Must reject with timeout error',
+        await assert.rejects(
+          () => renderer.renderSvg('Bob -> Alice : timeout', { timeoutMs: 100 }),
+          (err: unknown) => err instanceof Error && /timeout/i.test(err.message),
+          'Must reach timeoutMs and reject with timeout error',
         );
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
       }
     });
 

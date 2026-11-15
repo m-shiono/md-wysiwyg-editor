@@ -66,7 +66,10 @@ suite('Table HTML→GFM convert integration', () => {
       );
     } finally {
       vscode.window.showWarningMessage = originalShowWarning;
+      await vscode.commands.executeCommand('workbench.action.files.saveAll');
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await waitFor(() => provider.getOpenDocument(uri) === undefined, 5000);
+      await new Promise((r) => setTimeout(r, 100));
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });

@@ -3,12 +3,14 @@
  * Island-light + classic default/dark withdrawn (mermaid-redux-elk-fidelity / fix-mermaid-edge-styles).
  */
 import * as assert from 'assert';
-import type { Config } from 'dompurify';
+import * as fs from 'fs';
+import * as path from 'path';
+import { parseMarkdown, serializeMarkdown } from '../../../serializers/markdown-serializer';
 import {
   getUtilExport,
   readRepoFile,
-  safeSanitizeSvg,
 } from '../../helpers/test-utils';
+import { mountJsdomGlobals } from '../../helpers/webview-jsdom-harness';
 
 /** flowchart 相当: foreignObject 内 XHTML ラベル */
 const FLOWCHART_LABEL_SVG = [
@@ -44,26 +46,34 @@ const XSS_LABEL_SVG = [
 ].join('');
 
 /**
- * media/editor.ts の sanitizeMermaidSvg と同一 options で DOMPurify を実行する薄いラッパ。
- * 本番 export は禁止範囲のため、ソース上の options リテラルを評価して使う。
+ * Resolve production sanitizeMermaidSvg directly without new Function() or regex extraction.
+ * build-agent should export sanitizeMermaidSvg from src/utils/mermaid-sanitize.ts (or out/utils/mermaid-sanitize.js).
  */
-function extractSanitizeMermaidSvgOptions(editorSrc: string): Config {
-  const match = editorSrc.match(
-    /function\s+sanitizeMermaidSvg\s*\(\s*svg\s*:\s*string\s*\)\s*:\s*string\s*\{[\s\S]*?DOMPurify\.sanitize\(\s*svg\s*,\s*(\{[\s\S]*?\})\s*\)/,
+function loadDirectSanitizeMermaidSvg(): (svg: string) => string {
+  const fromUtils = getUtilExport<(svg: string) => string>('mermaid-sanitize', 'sanitizeMermaidSvg');
+  if (fromUtils) {
+    return fromUtils;
+  }
+  const mediaDistPath = path.resolve(process.cwd(), 'media/mermaid-sanitize.js');
+  if (fs.existsSync(mediaDistPath)) {
+    const mod = require(mediaDistPath) as Record<string, unknown>;
+    if (typeof mod.sanitizeMermaidSvg === 'function') {
+      return mod.sanitizeMermaidSvg as (svg: string) => string;
+    }
+  }
+  assert.fail(
+    'TC-I31-022: sanitizeMermaidSvg must be exported directly (e.g. src/utils/mermaid-sanitize.ts) for JSDOM runtime testing without new Function()',
   );
-  assert.ok(match?.[1], 'sanitizeMermaidSvg DOMPurify options object must exist in media/editor.ts');
-  // 本番 options リテラルのみ評価（ソースと 1:1）
-  return new Function(`return (${match[1]})`)() as Config;
 }
 
-function runProductionSanitize(svg: string): string {
-  const editorSrc = readRepoFile('media/editor.ts');
-  const options = extractSanitizeMermaidSvgOptions(editorSrc);
-  return safeSanitizeSvg(svg, options as Record<string, unknown>);
-}
-
-function hasHipForeignObject(editorSrc: string): boolean {
-  return /HTML_INTEGRATION_POINTS\s*:\s*\{[\s\S]*?foreignobject\s*:\s*true/i.test(editorSrc);
+function runDirectSanitize(svg: string): string {
+  const dom = mountJsdomGlobals();
+  try {
+    const sanitize = loadDirectSanitizeMermaidSvg();
+    return sanitize(svg);
+  } finally {
+    dom.dispose();
+  }
 }
 
 /** 島セレクタブロックに明るい背景があるか（hex / named / rgb） */
@@ -94,8 +104,8 @@ type MermaidThemeConfig = {
 };
 
 suite('mermaid-contrast-readable', () => {
-  test('TC-001: sanitize keeps foreignObject inner label HTML (Cause A)', () => {
-    const sanitized = runProductionSanitize(FLOWCHART_LABEL_SVG);
+  test('TC-001 / TC-I31-022: direct sanitizeMermaidSvg keeps foreignObject inner label HTML (Cause A)', () => {
+    const sanitized = runDirectSanitize(FLOWCHART_LABEL_SVG);
 
     assert.ok(/foreignObject/i.test(sanitized), 'foreignObject shell must remain');
     assert.ok(
@@ -112,20 +122,16 @@ suite('mermaid-contrast-readable', () => {
     );
   });
 
-  test('TC-002: sanitizeMermaidSvg options require HTML_INTEGRATION_POINTS.foreignobject', () => {
-    const editorSrc = readRepoFile('media/editor.ts');
-    assert.ok(
-      hasHipForeignObject(editorSrc),
-      'DOMPurify options must include HTML_INTEGRATION_POINTS: { foreignobject: true } (ADD_TAGS alone is Fail)',
-    );
-    assert.ok(
-      /ADD_TAGS\s*:\s*\[[^\]]*foreignObject/.test(editorSrc),
-      'ADD_TAGS must still include foreignObject',
-    );
+  test('TC-002 / TC-I31-022: direct sanitizeMermaidSvg preserves nested foreignObject XHTML elements (HIP)', () => {
+    const nestedSvg =
+      '<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="120" height="50"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Nested <strong>Label</strong></span></div></foreignObject></svg>';
+    const sanitized = runDirectSanitize(nestedSvg);
+    assert.ok(/<foreignObject/i.test(sanitized), 'foreignObject must remain');
+    assert.ok(/Nested/.test(sanitized) && /Label/.test(sanitized), 'nested XHTML label must remain');
   });
 
-  test('TC-003: sanitize removes script and on* while keeping safe label', () => {
-    const sanitized = runProductionSanitize(XSS_LABEL_SVG);
+  test('TC-003 / TC-I31-022: direct sanitizeMermaidSvg removes script and on* while keeping safe label', () => {
+    const sanitized = runDirectSanitize(XSS_LABEL_SVG);
 
     assert.ok(!/<script\b/i.test(sanitized), 'script tags must be removed');
     assert.ok(!/\son\w+\s*=/i.test(sanitized), 'on* event attributes must be removed');
@@ -193,44 +199,29 @@ suite('mermaid-contrast-readable', () => {
     }
   });
 
-  test('TC-008: empty foreignObject shell sanitizes without throw', () => {
+  test('TC-008 / TC-I31-022: empty foreignObject shell sanitizes without throw', () => {
     let sanitized = '';
     assert.doesNotThrow(() => {
-      sanitized = runProductionSanitize(EMPTY_FOREIGN_OBJECT_SVG);
+      sanitized = runDirectSanitize(EMPTY_FOREIGN_OBJECT_SVG);
     });
     assert.ok(/foreignObject/i.test(sanitized) || sanitized.length >= 0, 'must complete without crash');
   });
 
-  test('TC-009: TC-152 regression suite contract still holds', () => {
-    const editorSrc = readRepoFile('media/editor.ts');
-    const usesBareMermaidSanitize =
-      /preview\.innerHTML\s*=\s*DOMPurify\.sanitize\(\s*svg\s*\)\s*;/.test(editorSrc);
-    assert.ok(!usesBareMermaidSanitize, 'must not use bare DOMPurify.sanitize(svg)');
-    const preservesViaHelper =
-      /preview\.innerHTML\s*=\s*sanitizeMermaidSvg\(\s*svg\s*\)\s*;/.test(editorSrc);
-    const preservesViaSanitizeOptions =
-      /preview\.innerHTML\s*=\s*DOMPurify\.sanitize\(\s*svg\s*,[\s\S]*?foreignObject[\s\S]*?\)\s*;/.test(
-        editorSrc,
-      );
+  test('TC-009 / TC-I31-022: TC-152 foreignObject-preserving sanitize contract holds directly', () => {
+    const sanitized = runDirectSanitize(FLOWCHART_LABEL_SVG);
     assert.ok(
-      preservesViaHelper || preservesViaSanitizeOptions,
+      /<foreignObject/i.test(sanitized) && /Cause A/.test(sanitized),
       'TC-152: foreignObject-preserving sanitize path required',
     );
   });
 
-  test('TC-010: display-layer mermaid changes do not touch Document serialize APIs', () => {
-    const serializerSrc = readRepoFile('src/serializers/markdown-serializer.ts');
-    const documentSrc = readRepoFile('src/providers/markdown-document.ts');
-    assert.ok(
-      !/HTML_INTEGRATION_POINTS|sanitizeMermaidSvg|mermaid-preview/.test(serializerSrc),
-      'markdown-serializer must not own Mermaid display sanitize/CSS',
-    );
-    assert.ok(
-      !/HTML_INTEGRATION_POINTS|sanitizeMermaidSvg/.test(documentSrc),
-      'markdown-document must not own Mermaid SVG sanitize',
-    );
-    const editorSrc = readRepoFile('media/editor.ts');
-    assert.ok(/sanitizeMermaidSvg/.test(editorSrc), 'sanitize stays in Webview display layer');
+  test('TC-010: display-layer mermaid changes do not alter Document serialization', () => {
+    const md = '```mermaid\ngraph TD\nA[Cause A] --> B\n```\n';
+    const doc = parseMarkdown(md);
+    const out = serializeMarkdown(doc);
+    assert.ok(out.includes('```mermaid'), 'mermaid fence preserved');
+    assert.ok(out.includes('A[Cause A] --> B'), 'mermaid source preserved verbatim');
+    assert.ok(!/<foreignObject|<svg/i.test(out), 'serializer must not emit rendered SVG');
   });
 
   test('TC-011: highContrast maps to Mermaid theme redux-dark like dark kind', () => {
@@ -256,8 +247,8 @@ suite('mermaid-contrast-readable', () => {
     }
   });
 
-  test('TC-012: sanitize keeps SVG text label Simple Approach', () => {
-    const sanitized = runProductionSanitize(TEXT_LABEL_SVG);
+  test('TC-012 / TC-I31-022: sanitize keeps SVG text label Simple Approach', () => {
+    const sanitized = runDirectSanitize(TEXT_LABEL_SVG);
     assert.ok(/Simple Approach/.test(sanitized), 'SVG <text> label must survive sanitize');
   });
 });

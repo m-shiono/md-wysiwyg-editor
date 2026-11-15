@@ -30,6 +30,19 @@
 
 障害調査時は VS Code の **Output** チャンネル（表示名 `MD WYSIWYG Editor`）を確認する（architecture AD-015）。
 
+## CI 検証とリリース前スモークチェック（UD-002）
+
+> `doc/deploy/deployment.md` は 2026-10-03 に廃止済みのため、VSIX 検証・リリース前運用の最小指針を本節に保持する。
+
+- **PR 時 CI 自動検証（`.github/workflows/package-vsix.yml`）:**
+  - `push`（`main`）・`workflow_dispatch` に加え、`pull_request` トリガで `ubuntu-latest` 上の `lint` / `typecheck` / `compile` / `test:unit` / `xvfb-run` 経由 `test:integration` / VSIX パッケージ化を PR ごとに自動実行する（コスト抑制のため Multi-OS マトリクスは採用しない — `UD-002` Option A）。
+  - オフライン環境や初回キャッシュ未作成環境での `@vscode/test-electron` 実行時は `.vscode-test/` キャッシュまたは `VSCODE_TEST_EXECUTABLE_PATH` を利用する（`RK-003`）。
+- **リリース前手動スモークチェックリスト（macOS / Windows・下限バージョン・派生 IDE）:**
+  - [ ] **macOS / Windows / VS Code 下限（`engines.vscode: ^1.85.0`）:** `.md` を Custom Editor で開き、三点モード切替（Visual / Source / Preview）・編集・保存・Undo/Redo・Hot Exit・Default Preview（同一グループ配置）がエラーなく動作すること。
+  - [ ] **派生 IDE（Cursor / Windsurf / Antigravity / VSCodium）:** Switch Guard（Pattern A）が組み込みプレビューや AI 差分タブで誤発火しないこと、およびエディタ内ショートカット（`Cmd+F` / `Cmd+H` / `Cmd+K` 等）が IDE グローバルショートカット（Cursor `Cmd+K` / `Cmd+L` 等）を不必要に横取りしないこと。
+  - [ ] **VS Code Remote (`vscode-remote`):** リモートワークスペース上の `.md` で画像貼付・相対画像描画・Marp Preview・Export が正常動作すること。
+  - [ ] **外部 CLI 依存機能（任意導入環境）:** Pandoc / Marp CLI / PlantUML が未導入またはオフライン環境でもクラッシュせず、契約どおりのフォールバック（PlantUML 非表示）または明瞭なエラー通知が出ること。
+
 ## Out of scope
 
 - Cursor エージェントフロー・ハーネス → `.cursor/development.md`
@@ -44,3 +57,4 @@
 | 2026-09-29 | 製品リネーム（`rename-md-wysiwyg`）: viewType / コマンド / Extension ID を `md-wysiwyg-editor` 系に同期 |
 | 2026-09-19 | doc-reorg: AD-008 最小運用を新設 |
 | 2026-10-03 | doc 整理: Marketplace 記述を全廃。拡張機能識別子（name: vsc-md-editor、他は md-wysiwyg-editor 統一）の記録を追加 |
+| 2026-11-15 | `UD-002`（Option A）に基づき「CI 検証とリリース前スモークチェック」節を追加（`package-vsix.yml` の `pull_request` トリガ方針および macOS/Windows・`^1.85.0`・派生 IDE・Remote 手動スモークチェックリスト） |

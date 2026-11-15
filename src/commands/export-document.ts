@@ -12,6 +12,7 @@ import rehypeStringify from 'rehype-stringify';
 import { isMarpDocument } from '../utils/is-marp-document';
 import { splitYamlFrontmatter } from '../utils/yaml-frontmatter';
 import type { MarkdownEditorProvider } from '../providers/markdown-editor-provider';
+import { getMarkdownEditorProvider } from '../utils/editor-provider-hook';
 import { logError } from '../utils/logger';
 
 const ALLOWED_IMAGE_EXTENSIONS = new Set([
@@ -131,21 +132,21 @@ export async function convertMarkdownToStandaloneHtml(
     const src = match[2];
 
     if (!src.startsWith('data:') && !src.startsWith('http://') && !src.startsWith('https://')) {
-      const cleanSrc = decodeURI(src.split('?')[0].split('#')[0]);
-      const ext = path.extname(cleanSrc).toLowerCase().replace('.', '');
-      if (ALLOWED_IMAGE_EXTENSIONS.has(ext)) {
-        const fullPath = path.resolve(baseDir, cleanSrc);
-        if (fs.existsSync(fullPath)) {
-          try {
+      try {
+        const cleanSrc = decodeURI(src.split('?')[0].split('#')[0]);
+        const ext = path.extname(cleanSrc).toLowerCase().replace('.', '');
+        if (baseDir && ALLOWED_IMAGE_EXTENSIONS.has(ext)) {
+          const fullPath = path.resolve(baseDir, cleanSrc);
+          if (fs.existsSync(fullPath)) {
             const mime = ext === 'svg' ? 'image/svg+xml' : ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
             const b64 = fs.readFileSync(fullPath).toString('base64');
             const dataUri = `data:${mime};base64,${b64}`;
             const newTag = originalTag.replace(src, dataUri);
             htmlBody = htmlBody.replace(originalTag, newTag);
-          } catch (err) {
-            logError(`Failed to inline image ${src}: ${err}`);
           }
         }
+      } catch (err) {
+        logError(`Failed to inline image ${src}: ${err}`);
       }
     }
   }
@@ -182,9 +183,17 @@ ${htmlBody}
 }
 
 /**
- * Retrieves the latest document text, preferring in-memory text if document is open.
+ * Retrieves the latest document text, preferring open Custom Editor / TextDocument buffers.
  */
-export async function getDocumentText(targetUri: vscode.Uri): Promise<string> {
+export async function getDocumentText(
+  targetUri: vscode.Uri,
+  provider?: MarkdownEditorProvider,
+): Promise<string> {
+  const customDoc =
+    provider?.getOpenDocument(targetUri) ?? getMarkdownEditorProvider()?.getOpenDocument(targetUri);
+  if (customDoc) {
+    return customDoc.markdownText;
+  }
   const openDoc = vscode.workspace.textDocuments?.find(
     (d) => d.uri.toString() === targetUri.toString(),
   );
@@ -196,22 +205,256 @@ export async function getDocumentText(targetUri: vscode.Uri): Promise<string> {
 }
 
 /**
- * Checks if a command is available on system PATH.
+ * Checks if a command is available on system PATH (shell: false, timeout-guarded).
  */
-export function checkCommandAvailable(command: string, args: string[] = ['--version']): Promise<boolean> {
+export function checkCommandAvailable(
+  command: string,
+  args: string[] = ['--version'],
+  timeoutMs = 10000,
+): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const finish = (ok: boolean): void => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        resolve(ok);
+      }
+    };
+    const timer = setTimeout(() => {
+      finish(false);
+    }, timeoutMs);
     try {
-      const proc = child_process.spawn(command, args, { stdio: 'ignore' });
-      proc.on('error', () => resolve(false));
-      proc.on('close', (code) => resolve(code === 0 || code === null));
+      const proc = child_process.spawn(command, args, { stdio: 'ignore', shell: false });
+      proc.on('error', () => finish(false));
+      proc.on('close', (code) => finish(code === 0 || code === null));
     } catch {
-      resolve(false);
+      finish(false);
     }
   });
 }
 
+type CliInvocation = {
+  command: string;
+  prefixArgs: string[];
+  source: 'local' | 'path' | 'npx';
+};
+
+function getLocalSearchRoots(
+  context: vscode.ExtensionContext,
+  targetUri: vscode.Uri,
+): string[] {
+  const roots: string[] = [];
+  if (targetUri.scheme === 'file' && targetUri.fsPath) {
+    let dir = path.dirname(targetUri.fsPath);
+    for (let i = 0; i < 6; i++) {
+      roots.push(dir);
+      const parent = path.dirname(dir);
+      if (parent === dir) {
+        break;
+      }
+      dir = parent;
+    }
+  }
+  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    if (folder.uri.scheme === 'file' && folder.uri.fsPath) {
+      roots.push(folder.uri.fsPath);
+    }
+  }
+  if (context.extensionPath) {
+    roots.push(context.extensionPath);
+  }
+  return roots;
+}
+
+function resolveMarpCliPackageEntry(root: string): string | undefined {
+  const pkgDir = path.join(root, 'node_modules', '@marp-team', 'marp-cli');
+  const pkgJsonPath = path.join(pkgDir, 'package.json');
+  if (!fs.existsSync(pkgJsonPath)) {
+    return undefined;
+  }
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8')) as {
+      bin?: string | Record<string, string>;
+    };
+    const binRel =
+      typeof pkg.bin === 'string'
+        ? pkg.bin
+        : pkg.bin && typeof pkg.bin === 'object'
+          ? (pkg.bin.marp ?? Object.values(pkg.bin)[0])
+          : undefined;
+    if (typeof binRel !== 'string' || !binRel) {
+      return undefined;
+    }
+    const entryPath = path.resolve(pkgDir, binRel);
+    const rel = path.relative(pkgDir, entryPath);
+    if (rel.startsWith('..') || path.isAbsolute(rel)) {
+      return undefined;
+    }
+    if (fs.existsSync(entryPath)) {
+      return entryPath;
+    }
+  } catch {
+    /* ignore malformed package.json */
+  }
+  return undefined;
+}
+
+function findLocalMarpInvocation(
+  context: vscode.ExtensionContext,
+  targetUri: vscode.Uri,
+): CliInvocation | undefined {
+  for (const root of getLocalSearchRoots(context, targetUri)) {
+    // Resolve @marp-team/marp-cli JS entry via process.execPath on both win32 and POSIX
+    // to avoid spawning marp.cmd with shell: false (EINVAL on Windows).
+    const pkgEntry = resolveMarpCliPackageEntry(root);
+    if (pkgEntry) {
+      return { command: process.execPath, prefixArgs: [pkgEntry], source: 'local' };
+    }
+    const localBin = path.join(root, 'node_modules', '.bin', 'marp');
+    if (fs.existsSync(localBin)) {
+      try {
+        const head = fs.readFileSync(localBin, 'utf8').slice(0, 128);
+        if (/^#!.*\bnode\b/.test(head)) {
+          return { command: process.execPath, prefixArgs: [localBin], source: 'local' };
+        }
+      } catch {
+        /* fallback below on POSIX */
+      }
+      if (process.platform !== 'win32') {
+        return { command: localBin, prefixArgs: [], source: 'local' };
+      }
+    }
+  }
+  return undefined;
+}
+
+export async function resolveMarpCliCommand(
+  context: vscode.ExtensionContext,
+  targetUri: vscode.Uri,
+): Promise<CliInvocation | undefined> {
+  const localInvocation = findLocalMarpInvocation(context, targetUri);
+  if (localInvocation) {
+    return localInvocation;
+  }
+  if (await checkCommandAvailable('marp', ['--version'])) {
+    return { command: 'marp', prefixArgs: [], source: 'path' };
+  }
+  if (await checkCommandAvailable('npx', ['@marp-team/marp-cli', '--version'], 12000)) {
+    return { command: 'npx', prefixArgs: ['-y', '@marp-team/marp-cli'], source: 'npx' };
+  }
+  return undefined;
+}
+
+function getDefaultExportUri(targetUri: vscode.Uri, ext: string): vscode.Uri {
+  const basePath = (targetUri.path || targetUri.fsPath).replace(/\.md$/i, '') + ext;
+  if (targetUri.scheme === 'untitled') {
+    return vscode.Uri.file(path.posix.basename(basePath));
+  }
+  return targetUri.with({ path: basePath });
+}
+
+function getDocumentBaseDir(targetUri: vscode.Uri): string {
+  return targetUri.scheme === 'file' ? path.dirname(targetUri.fsPath) : '';
+}
+
+async function ensureCleanForExport(
+  targetUri: vscode.Uri,
+  provider: MarkdownEditorProvider,
+): Promise<boolean> {
+  const customDoc = provider.getOpenDocument(targetUri);
+  const textDoc = vscode.workspace.textDocuments?.find(
+    (d) => d.uri.toString() === targetUri.toString(),
+  );
+  const isDirty = Boolean(customDoc?.isDirty || textDoc?.isDirty);
+  if (!isDirty) {
+    return true;
+  }
+  if (customDoc?.isRawParseFailed) {
+    void vscode.window.showErrorMessage(
+      'Raw Markdown parse failed. Fix syntax errors before saving or exporting.',
+    );
+    return false;
+  }
+  const choice = await vscode.window.showWarningMessage(
+    'Document has unsaved changes. Save before exporting?',
+    { modal: true },
+    'Save',
+    'Cancel',
+  );
+  if (choice !== 'Save') {
+    return false;
+  }
+  try {
+    if (customDoc?.isDirty) {
+      const cts = new vscode.CancellationTokenSource();
+      try {
+        await customDoc.save(cts.token);
+      } finally {
+        cts.dispose();
+      }
+    }
+    if (textDoc?.isDirty) {
+      await textDoc.save();
+    }
+    return true;
+  } catch (err) {
+    logError(`Save before export failed: ${err}`);
+    void vscode.window.showErrorMessage(`Failed to save before export: ${err}`);
+    return false;
+  }
+}
+
+function runSpawnCommand(
+  command: string,
+  args: string[],
+  label: string,
+  timeoutMs = 30000,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const proc = child_process.spawn(command, args, { shell: false });
+    let stderr = '';
+    proc.stderr?.on('data', (chunk: Buffer | string) => {
+      stderr += chunk.toString();
+    });
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        try {
+          proc.kill();
+        } catch {
+          /* ignore */
+        }
+        reject(new Error(`${label} timed out after ${timeoutMs}ms (network/offline or CLI hung).`));
+      }
+    }, timeoutMs);
+    proc.on('close', (code) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      if (code === 0) {
+        resolve();
+      } else {
+        const detail = stderr.trim() ? `: ${stderr.trim()}` : '';
+        reject(new Error(`${label} exited with code ${code}${detail}`));
+      }
+    });
+    proc.on('error', (err) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+}
+
 export function registerExportCommands(
-  _context: vscode.ExtensionContext,
+  context: vscode.ExtensionContext,
   provider: MarkdownEditorProvider,
 ): vscode.Disposable[] {
   const disposables: vscode.Disposable[] = [];
@@ -281,7 +524,11 @@ export function registerExportCommands(
         return;
       }
 
-      const defaultUri = vscode.Uri.file(targetUri.fsPath.replace(/\.md$/i, '.html'));
+      if (!(await ensureCleanForExport(targetUri, provider))) {
+        return;
+      }
+
+      const defaultUri = getDefaultExportUri(targetUri, '.html');
       const saveUri = await vscode.window.showSaveDialog({
         defaultUri,
         filters: { 'HTML Document': ['html', 'htm'] },
@@ -293,13 +540,14 @@ export function registerExportCommands(
       }
 
       try {
-        const text = await getDocumentText(targetUri);
-        const baseDir = path.dirname(targetUri.fsPath);
+        const text = await getDocumentText(targetUri, provider);
+        const baseDir = getDocumentBaseDir(targetUri);
         const html = await convertMarkdownToStandaloneHtml(text, baseDir);
 
         await vscode.workspace.fs.writeFile(saveUri, Buffer.from(html, 'utf-8'));
+        const label = path.posix.basename(saveUri.path || saveUri.fsPath);
         const action = await vscode.window.showInformationMessage(
-          `Exported HTML: ${path.basename(saveUri.fsPath)}`,
+          `Exported HTML: ${label}`,
           'Open in Browser',
         );
         if (action === 'Open in Browser') {
@@ -321,13 +569,17 @@ export function registerExportCommands(
         return;
       }
 
-      // Check if Marp document
-      const text = await getDocumentText(targetUri);
+      if (!(await ensureCleanForExport(targetUri, provider))) {
+        return;
+      }
 
-      if (isMarpDocument(text)) {
-        const hasMarpCli = await checkCommandAvailable('npx', ['@marp-team/marp-cli', '--version']);
-        if (hasMarpCli) {
-          const defaultUri = vscode.Uri.file(targetUri.fsPath.replace(/\.md$/i, '.pdf'));
+      // Check if Marp document
+      const text = await getDocumentText(targetUri, provider);
+
+      if (isMarpDocument(text) && targetUri.scheme === 'file') {
+        const marpCli = await resolveMarpCliCommand(context, targetUri);
+        if (marpCli) {
+          const defaultUri = getDefaultExportUri(targetUri, '.pdf');
           const saveUri = await vscode.window.showSaveDialog({
             defaultUri,
             filters: { 'PDF Document': ['pdf'] },
@@ -337,35 +589,25 @@ export function registerExportCommands(
             return;
           }
 
-          // Ensure dirty buffer is saved to disk for CLI
-          const openDoc = vscode.workspace.textDocuments?.find(
-            (d) => d.uri.toString() === targetUri.toString(),
-          );
-          if (openDoc?.isDirty) {
-            await openDoc.save();
-          }
-
           try {
             await vscode.window.withProgress(
               { location: vscode.ProgressLocation.Notification, title: 'Exporting Marp PDF...' },
               async () => {
-                return new Promise<void>((resolve, reject) => {
-                  const proc = child_process.spawn('npx', ['-y', '@marp-team/marp-cli', targetUri.fsPath, '--pdf', '-o', saveUri.fsPath]);
-                  proc.on('close', (code) => {
-                    if (code === 0) {
-                      void vscode.window.showInformationMessage(`Exported PDF: ${path.basename(saveUri.fsPath)}`);
-                      resolve();
-                    } else {
-                      reject(new Error(`Marp CLI exited with code ${code}`));
-                    }
-                  });
-                  proc.on('error', reject);
-                });
+                await runSpawnCommand(
+                  marpCli.command,
+                  [...marpCli.prefixArgs, targetUri.fsPath, '--pdf', '-o', saveUri.fsPath],
+                  'Marp CLI',
+                );
+                void vscode.window.showInformationMessage(
+                  `Exported PDF: ${path.basename(saveUri.fsPath)}`,
+                );
               },
             );
           } catch (err) {
             logError(`Marp PDF export failed: ${err}`);
-            void vscode.window.showErrorMessage(`Export PDF failed: ${err}`);
+            void vscode.window.showErrorMessage(
+              `Export PDF failed: ${err}. If offline, install @marp-team/marp-cli locally.`,
+            );
           }
           return;
         }
@@ -373,11 +615,12 @@ export function registerExportCommands(
 
       // Fallback: Generate standalone HTML in OS temp dir and open for printing
       try {
-        const baseDir = path.dirname(targetUri.fsPath);
+        const baseDir = getDocumentBaseDir(targetUri);
         const html = await convertMarkdownToStandaloneHtml(text, baseDir);
+        const baseName = path.posix.basename(targetUri.path || targetUri.fsPath || 'document.md');
         const tempHtmlPath = path.join(
           os.tmpdir(),
-          `md-wysiwyg-print-${Date.now()}-${path.basename(targetUri.fsPath)}.html`,
+          `md-wysiwyg-print-${Date.now()}-${baseName}.html`,
         );
         await fs.promises.writeFile(tempHtmlPath, html, 'utf-8');
 
@@ -401,6 +644,15 @@ export function registerExportCommands(
         return;
       }
 
+      if (!(await ensureCleanForExport(targetUri, provider))) {
+        return;
+      }
+
+      if (targetUri.scheme !== 'file') {
+        void vscode.window.showWarningMessage('Save document to local disk before exporting to DOCX.');
+        return;
+      }
+
       const hasPandoc = await checkCommandAvailable('pandoc', ['--version']);
       if (!hasPandoc) {
         const installAction = await vscode.window.showWarningMessage(
@@ -413,7 +665,7 @@ export function registerExportCommands(
         return;
       }
 
-      const defaultUri = vscode.Uri.file(targetUri.fsPath.replace(/\.md$/i, '.docx'));
+      const defaultUri = getDefaultExportUri(targetUri, '.docx');
       const saveUri = await vscode.window.showSaveDialog({
         defaultUri,
         filters: { 'Word Document': ['docx'] },
@@ -423,30 +675,18 @@ export function registerExportCommands(
         return;
       }
 
-      // Ensure dirty buffer is saved to disk for CLI
-      const openDoc = vscode.workspace.textDocuments?.find(
-        (d) => d.uri.toString() === targetUri.toString(),
-      );
-      if (openDoc?.isDirty) {
-        await openDoc.save();
-      }
-
       try {
         await vscode.window.withProgress(
           { location: vscode.ProgressLocation.Notification, title: 'Exporting DOCX via Pandoc...' },
           async () => {
-            return new Promise<void>((resolve, reject) => {
-              const proc = child_process.spawn('pandoc', [targetUri.fsPath, '-f', 'markdown', '-t', 'docx', '-o', saveUri.fsPath]);
-              proc.on('close', (code) => {
-                if (code === 0) {
-                  void vscode.window.showInformationMessage(`Exported DOCX: ${path.basename(saveUri.fsPath)}`);
-                  resolve();
-                } else {
-                  reject(new Error(`Pandoc exited with code ${code}`));
-                }
-              });
-              proc.on('error', reject);
-            });
+            await runSpawnCommand(
+              'pandoc',
+              [targetUri.fsPath, '-f', 'markdown', '-t', 'docx', '-o', saveUri.fsPath],
+              'Pandoc',
+            );
+            void vscode.window.showInformationMessage(
+              `Exported DOCX: ${path.basename(saveUri.fsPath)}`,
+            );
           },
         );
       } catch (err) {
@@ -465,7 +705,11 @@ export function registerExportCommands(
         return;
       }
 
-      const text = await getDocumentText(targetUri);
+      if (!(await ensureCleanForExport(targetUri, provider))) {
+        return;
+      }
+
+      const text = await getDocumentText(targetUri, provider);
 
       if (!isMarpDocument(text)) {
         void vscode.window.showInformationMessage(
@@ -474,7 +718,20 @@ export function registerExportCommands(
         return;
       }
 
-      const defaultUri = vscode.Uri.file(targetUri.fsPath.replace(/\.md$/i, '.pptx'));
+      if (targetUri.scheme !== 'file') {
+        void vscode.window.showWarningMessage('Save document to local disk before exporting to PPTX.');
+        return;
+      }
+
+      const marpCli = await resolveMarpCliCommand(context, targetUri);
+      if (!marpCli) {
+        void vscode.window.showErrorMessage(
+          'Marp CLI is not installed locally and npx is unavailable (offline). Install @marp-team/marp-cli to export PPTX.',
+        );
+        return;
+      }
+
+      const defaultUri = getDefaultExportUri(targetUri, '.pptx');
       const saveUri = await vscode.window.showSaveDialog({
         defaultUri,
         filters: { 'PowerPoint Presentation': ['pptx'] },
@@ -484,35 +741,25 @@ export function registerExportCommands(
         return;
       }
 
-      // Ensure dirty buffer is saved to disk for CLI
-      const pptxOpenDoc = vscode.workspace.textDocuments?.find(
-        (d) => d.uri.toString() === targetUri.toString(),
-      );
-      if (pptxOpenDoc?.isDirty) {
-        await pptxOpenDoc.save();
-      }
-
       try {
         await vscode.window.withProgress(
           { location: vscode.ProgressLocation.Notification, title: 'Exporting Marp PPTX...' },
           async () => {
-            return new Promise<void>((resolve, reject) => {
-              const proc = child_process.spawn('npx', ['-y', '@marp-team/marp-cli', targetUri.fsPath, '--pptx', '-o', saveUri.fsPath]);
-              proc.on('close', (code) => {
-                if (code === 0) {
-                  void vscode.window.showInformationMessage(`Exported PPTX: ${path.basename(saveUri.fsPath)}`);
-                  resolve();
-                } else {
-                  reject(new Error(`Marp CLI exited with code ${code}`));
-                }
-              });
-              proc.on('error', reject);
-            });
+            await runSpawnCommand(
+              marpCli.command,
+              [...marpCli.prefixArgs, targetUri.fsPath, '--pptx', '-o', saveUri.fsPath],
+              'Marp CLI',
+            );
+            void vscode.window.showInformationMessage(
+              `Exported PPTX: ${path.basename(saveUri.fsPath)}`,
+            );
           },
         );
       } catch (err) {
         logError(`Marp PPTX export failed: ${err}`);
-        void vscode.window.showErrorMessage(`Export PPTX failed: ${err}`);
+        void vscode.window.showErrorMessage(
+          `Export PPTX failed: ${err}. If offline, install @marp-team/marp-cli locally.`,
+        );
       }
     }),
   );

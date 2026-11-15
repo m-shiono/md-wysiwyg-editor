@@ -863,7 +863,9 @@ suite('native-preview-side-and-default-raw (TC-001–021)', () => {
     const originalTabGroups = vscode.window.tabGroups;
     const originalActiveTextEditor = vscode.window.activeTextEditor;
 
-    const fakeTab = { input: { viewType: WYSIWYG_VIEW_TYPE } };
+    const uri = vscode.Uri.file('/tmp/native-preview-same-group.md');
+    mockVscode.setMockFile(uri, '# same group\n');
+    const fakeTab = { input: new vscode.TabInputCustom(uri, WYSIWYG_VIEW_TYPE) };
     const fakeGroup = {
       viewColumn,
       activeTab: fakeTab,
@@ -882,8 +884,6 @@ suite('native-preview-side-and-default-raw (TC-001–021)', () => {
     }) as typeof vscode.commands.executeCommand;
 
     try {
-      const uri = vscode.Uri.file('/tmp/native-preview-same-group.md');
-      mockVscode.setMockFile(uri, '# same group\n');
       await showFn!({ isDirty: false, uri });
 
       assert.strictEqual(
@@ -943,24 +943,24 @@ suite('native-preview-side-and-default-raw (TC-001–021)', () => {
       'WYSIWYG still active must not be Pattern A',
     );
 
-    // Unknown preview-like tab input (e.g. webview preview) must not count as builtin text switch.
-    const previewLikeTab = { input: { viewType: 'vscode.markdown.preview.editor' } } as vscode.Tab;
+    // TabInputCustom preview editor must not count as builtin text switch (AD-003 / AD-006).
+    const previewCustomTab = {
+      input: new vscode.TabInputCustom(uri, 'vscode.markdown.preview.editor'),
+    } as vscode.Tab;
     assert.strictEqual(
-      isBuiltinSwitchToSameMdFile(uri, previewLikeTab, WYSIWYG_VIEW_TYPE),
+      isBuiltinSwitchToSameMdFile(uri, previewCustomTab, WYSIWYG_VIEW_TYPE),
       false,
-      'Markdown Preview tab kind must not be Pattern A builtin switch',
+      'Markdown Preview TabInputCustom must not be Pattern A builtin switch',
     );
 
-    if (typeof vscode.TabInputWebview === 'function') {
-      const webviewPreviewTab = {
-        input: new vscode.TabInputWebview('vscode.markdown.preview.editor'),
-      } as vscode.Tab;
-      assert.strictEqual(
-        isBuiltinSwitchToSameMdFile(uri, webviewPreviewTab, WYSIWYG_VIEW_TYPE),
-        false,
-        'TabInputWebview Preview must be excluded from Pattern A',
-      );
-    }
+    const webviewPreviewTab = {
+      input: new vscode.TabInputWebview('vscode.markdown.preview.editor'),
+    } as vscode.Tab;
+    assert.strictEqual(
+      isBuiltinSwitchToSameMdFile(uri, webviewPreviewTab, WYSIWYG_VIEW_TYPE),
+      false,
+      'TabInputWebview Preview must be excluded from Pattern A',
+    );
 
     const cmdSrc = assertNativePreviewCommandSource();
     assert.ok(

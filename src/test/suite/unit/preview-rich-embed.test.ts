@@ -106,13 +106,13 @@ suite('preview-rich-embed (TC-124–142)', () => {
     );
   });
 
-  test('TC-124: imageInserted relativePath rewrites to webview URI for immediate display', () => {
+  test('TC-124: imageInserted keeps relativePath as img/ while rewriting displaySrc to webview URI', () => {
     const applyDisplayUriRewrite = getUtilExport<
       (
-        message: { type: string; relativePath: string },
+        message: { type: string; relativePath: string; displaySrc?: string },
         mdUri: vscode.Uri,
         webview: { asWebviewUri: (uri: vscode.Uri) => vscode.Uri },
-      ) => { type: string; relativePath: string }
+      ) => { type: string; relativePath: string; displaySrc?: string }
     >('preview-projection', 'applyDisplayUriRewrite');
     assert.ok(applyDisplayUriRewrite, 'applyDisplayUriRewrite export required');
 
@@ -125,13 +125,22 @@ suite('preview-rich-embed (TC-124–142)', () => {
     );
 
     assert.strictEqual(message.type, 'imageInserted');
-    assert.ok(
-      message.relativePath.includes('vscode-webview://'),
-      'imageInserted must send webview URI for TipTap display',
+    assert.strictEqual(
+      message.relativePath,
+      'img/image-0001.png',
+      'imageInserted must preserve relativePath for Markdown/docJson persistence (AD-004)',
     );
     assert.ok(
-      !message.relativePath.includes('img/image-0001.png'),
-      'imageInserted must not send raw relative path to webview',
+      !message.relativePath.includes('vscode-webview://'),
+      'imageInserted relativePath must not leak webview URI',
+    );
+    assert.ok(
+      typeof message.displaySrc === 'string' && message.displaySrc.startsWith('vscode-webview://'),
+      `imageInserted must rewrite displaySrc to webview URI for immediate TipTap display, got: ${String(message.displaySrc)}`,
+    );
+    assert.ok(
+      decodeURIComponent(message.displaySrc).includes('/workspace/docs/img/image-0001.png'),
+      `imageInserted displaySrc must resolve relative to mdUri, got: ${String(message.displaySrc)}`,
     );
   });
 

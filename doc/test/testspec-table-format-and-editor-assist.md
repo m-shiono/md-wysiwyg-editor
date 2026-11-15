@@ -6,7 +6,7 @@
 - **テストコード:**
   - `src/test/suite/unit/table-formatter.test.ts`
   - `src/test/suite/unit/editor-assist.test.ts`
-  - `src/test/suite/unit/markdown-serializer-table.test.ts`
+  - `src/test/suite/unit/markdown-serializer.test.ts`
 
 ## Test Matrix
 
@@ -33,4 +33,13 @@
 | `TC-TAB-012` | P1 | 連続 `<br>` の単一改行正規化 | セル内に連続した `<br /><br />` を含む入力 | 単一改行として正規化され、空行相当の多重改行への膨張を防止する（§3 / AD-005） |
 | `TC-AST-008` | P1 | TOC 生成の重複見出しとコードブロック除外 | 重複見出し（例: 複数 `## 概要`）やコードブロック内 `#` コメントを含む文書 | アンカースラグが重複回避され、コードブロック内の `#` コメントは目次に抽出されない |
 | `TC-AST-009` | P1 | スマート URL ペースト（クエリ・既存リンク置換） | クエリ/フラグメント付き URL ペースト、または既存リンク `[テキスト](旧URL)` 選択ペースト | URL パラメータを保持したリンクが生成され、既存リンク選択時は URL のみが更新される |
+
+---
+
+## 改訂履歴
+
+| 日付 | 変更内容 |
+|---|---|
+| 2026-10-23 | 初版作成（`table-format-and-editor-assist`） |
+| 2026-11-15 | 存在しないテスト参照 `markdown-serializer-table.test.ts` を実在する `src/test/suite/unit/markdown-serializer.test.ts` に修正（`issue-31-test-review` / C-5） |
 

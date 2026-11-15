@@ -13,6 +13,7 @@ import {
   canEditContent,
   isVisualSurfaceReadOnly,
 } from '../../../utils/editor-mode';
+import { bootEditorWebviewInJsdom } from '../../helpers/webview-jsdom-harness';
 
 const { parseMarkdown, serializeMarkdown, roundTrip } = serializer;
 
@@ -334,17 +335,30 @@ suite('GFM format toolbar (TC-107–123)', () => {
       '#toolbar must use pointer-events none under file RO',
     );
 
-    const editorSrc = readRepoFile('media/editor.ts');
-    assert.ok(
-      /readonly/.test(editorSrc) && /data-cmd|attachToolbarHandlers/.test(editorSrc),
-      'toolbar handlers must guard readonly',
-    );
-    // New In commands and task checkbox must respect the same RO guard (no Document mutation path).
-    for (const cmd of ['strike', 'inlineCode', 'taskList', 'blockquote', 'horizontalRule']) {
-      assert.ok(
-        editorSrc.includes(`'${cmd}'`) || editorSrc.includes(`"${cmd}"`),
-        `editor must wire data-cmd ${cmd} behind RO guard`,
-      );
+    const docJson = JSON.stringify({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Readonly text' }] }],
+    });
+    const harness = bootEditorWebviewInJsdom({
+      initMessage: {
+        docJson,
+        markdownText: 'Readonly text',
+        readonly: true,
+        editorMode: 'markdown',
+      },
+    });
+    try {
+      assert.strictEqual(harness.document.body.getAttribute('data-readonly'), 'true');
+      const updatesBefore = harness.postedMessages.filter((m) => m.type === 'update').length;
+      for (const cmd of ['strike', 'inlineCode', 'taskList', 'blockquote', 'horizontalRule']) {
+        const btn = harness.document.querySelector(`#toolbar [data-cmd="${cmd}"]`);
+        assert.ok(btn, `#toolbar must expose data-cmd="${cmd}"`);
+        btn.click();
+      }
+      const updatesAfter = harness.postedMessages.filter((m) => m.type === 'update').length;
+      assert.strictEqual(updatesAfter, updatesBefore, 'Toolbar clicks must not mutate doc when readonly=true');
+    } finally {
+      harness.dispose();
     }
   });
 
@@ -367,18 +381,39 @@ suite('GFM format toolbar (TC-107–123)', () => {
       'Raw must not hide #toolbar',
     );
 
-    const editorSrc = readRepoFile('media/editor.ts');
-    assert.ok(
-      !/addEventListener\s*\(\s*['"]mousedown['"]/.test(
-        editorSrc.slice(editorSrc.indexOf('attachPreviewGuard')),
-      ),
-      'Preview guard must not block mousedown (allows scroll drag)',
-    );
-    assert.ok(
-      /editorMode\s*!==\s*['"]markdown['"]/.test(editorSrc) ||
-        /editorMode\s*===\s*['"]markdown['"]/.test(editorSrc),
-      'format commands must no-op unless Markdown mode',
-    );
+    const docJson = JSON.stringify({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Mode guard text' }] }],
+    });
+    const harness = bootEditorWebviewInJsdom({
+      initMessage: {
+        docJson,
+        markdownText: 'Mode guard text',
+        readonly: false,
+        editorMode: 'raw',
+      },
+    });
+    try {
+      const updatesBefore = harness.postedMessages.filter((m) => m.type === 'update').length;
+      for (const cmd of ['strike', 'inlineCode', 'taskList', 'blockquote', 'horizontalRule']) {
+        harness.document.querySelector(`#toolbar [data-cmd="${cmd}"]`)?.click();
+      }
+      assert.strictEqual(
+        harness.postedMessages.filter((m) => m.type === 'update').length,
+        updatesBefore,
+        'Format toolbar commands must no-op in raw mode',
+      );
+      harness.sendHostMessage({ type: 'modeChanged', editorMode: 'preview' });
+      assert.strictEqual(harness.document.body.getAttribute('data-mode'), 'preview');
+      harness.document.querySelector('#toolbar [data-cmd="bold"]')?.click();
+      assert.strictEqual(
+        harness.postedMessages.filter((m) => m.type === 'update').length,
+        updatesBefore,
+        'Format toolbar commands must no-op in preview mode',
+      );
+    } finally {
+      harness.dispose();
+    }
   });
 
   test('TC-116: numbered task list normalizes to unordered on serialize', () => {
@@ -430,7 +465,7 @@ suite('GFM format toolbar (TC-107–123)', () => {
     assert.ok(result.includes('x') && result.includes('y'));
   });
 
-  test('TC-120: format toolbar exposes role toolbar and aria-pressed on toggles not HR', () => {
+  test('TC-120 / TC-I31-020: format toolbar runtime clicks execute commands and sync aria-pressed', () => {
     const html = formatToolbarHtmlFromProvider();
     assert.ok(/id="toolbar"[^>]*role="toolbar"/.test(html) || /role="toolbar"[^>]*id="toolbar"/.test(html) ||
       /<div id="toolbar" role="toolbar"/.test(html),
@@ -455,11 +490,38 @@ suite('GFM format toolbar (TC-107–123)', () => {
       'HR is insert-only and must not declare aria-pressed on the button markup',
     );
 
-    const editorSrc = readRepoFile('media/editor.ts');
-    assert.ok(
-      /aria-pressed/.test(editorSrc),
-      'editor must sync aria-pressed with selection for toggle commands',
-    );
+    const harness = bootEditorWebviewInJsdom({
+      initMessage: {
+        docJson: JSON.stringify({
+          type: 'doc',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Toolbar item' }] }],
+        }),
+        markdownText: 'Toolbar item',
+        readonly: false,
+        editorMode: 'markdown',
+      },
+    });
+    try {
+      const blockquoteBtn = harness.document.querySelector('#toolbar [data-cmd="blockquote"]')!;
+      assert.strictEqual(blockquoteBtn.getAttribute('aria-pressed'), 'false');
+      blockquoteBtn.click();
+      assert.ok(harness.document.querySelector('#editor blockquote'), 'Clicking blockquote button must wrap paragraph in blockquote');
+      assert.strictEqual(blockquoteBtn.getAttribute('aria-pressed'), 'true');
+
+      const h3Btn = harness.document.querySelector('#toolbar [data-cmd="heading"][data-level="3"]')!;
+      h3Btn.click();
+      assert.ok(harness.document.querySelector('#editor h3'), 'Clicking H3 button must toggle heading level 3');
+
+      const taskBtn = harness.document.querySelector('#toolbar [data-cmd="taskList"]')!;
+      taskBtn.click();
+      assert.ok(harness.document.querySelector('#editor ul[data-type="taskList"]'), 'Clicking taskList button must create taskList');
+
+      const hrToolbarBtn = harness.document.querySelector('#toolbar [data-cmd="horizontalRule"]')!;
+      hrToolbarBtn.click();
+      assert.ok(harness.document.querySelector('#editor hr'), 'Clicking horizontalRule button must insert <hr>');
+    } finally {
+      harness.dispose();
+    }
   });
 
   test('TC-121: single tilde does not become strike', () => {
@@ -470,7 +532,7 @@ suite('GFM format toolbar (TC-107–123)', () => {
     assert.ok(!/~~notstrike~~/.test(out), 'must not upgrade to GFM strike');
   });
 
-  test('TC-122: no new format keybindings; Strike and Blockquote defaults disabled', () => {
+  test('TC-122: no new format keybindings; Strike and Blockquote defaults disabled in runtime', () => {
     const pkg = JSON.parse(readRepoFile('package.json')) as {
       contributes?: { keybindings?: unknown[] };
     };
@@ -481,24 +543,26 @@ suite('GFM format toolbar (TC-107–123)', () => {
       'must not add contributes.keybindings for new format commands',
     );
 
-    const editorSrc = readRepoFile('media/editor.ts');
-    assert.ok(
-      /Strike|strike/.test(editorSrc),
-      'Strike extension must be configured in editor',
-    );
-    assert.ok(
-      /Mod-Shift-s|enableInputRules|keyboardShortcuts|addKeyboardShortcuts/.test(editorSrc),
-      'Strike default Mod-Shift-s must be disabled explicitly',
-    );
-    assert.ok(
-      /Blockquote|blockquote/.test(editorSrc) &&
-        /Mod-Shift-b|keyboardShortcuts|addKeyboardShortcuts/.test(editorSrc),
-      'Blockquote default Mod-Shift-b must be disabled explicitly',
-    );
-    assert.ok(
-      !/horizontalRule.*Mod-|Mod-.*horizontalRule|taskList.*Mod-|Mod-.*taskList/.test(editorSrc),
-      'HR / Task must not gain new shortcuts',
-    );
+    const harness = bootEditorWebviewInJsdom({
+      initMessage: {
+        docJson: JSON.stringify({
+          type: 'doc',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Shortcut check' }] }],
+        }),
+        markdownText: 'Shortcut check',
+        readonly: false,
+        editorMode: 'markdown',
+      },
+    });
+    try {
+      const pm = harness.document.querySelector('#editor .ProseMirror') ?? harness.document.getElementById('editor')!;
+      harness.dispatchKeydown(pm, { key: 's', ctrlKey: true, shiftKey: true });
+      harness.dispatchKeydown(pm, { key: 'b', ctrlKey: true, shiftKey: true });
+      assert.strictEqual(harness.document.querySelector('#editor s'), null, 'Mod-Shift-s must not toggle strike');
+      assert.strictEqual(harness.document.querySelector('#editor blockquote'), null, 'Mod-Shift-b must not toggle blockquote');
+    } finally {
+      harness.dispose();
+    }
   });
 
   test('TC-123: format toolbar has four visual groups and required labels without Out buttons', () => {

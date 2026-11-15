@@ -1,133 +1,124 @@
-/**
- * TC-160–165: Table context menu in Visual mode (table-context-menu).
- * Strict TDD Red — Webview HTML, CSS, and editor.ts implementation will satisfy these tests.
- */
 import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
+import { bootEditorWebviewInJsdom } from '../../helpers/webview-jsdom-harness';
 
-function readRepoFile(...parts: string[]): string {
-  return fs.readFileSync(path.resolve(process.cwd(), ...parts), 'utf8');
+function createSampleTableDoc(): string {
+  return JSON.stringify({
+    type: 'doc',
+    content: [
+      {
+        type: 'table',
+        content: [
+          {
+            type: 'tableRow',
+            content: [
+              { type: 'tableHeader', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Col A' }] }] },
+              { type: 'tableHeader', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Col B' }] }] },
+            ],
+          },
+          {
+            type: 'tableRow',
+            content: [
+              { type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'R1A' }] }] },
+              { type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'R1B' }] }] },
+            ],
+          },
+        ],
+      },
+    ],
+  });
 }
 
-suite('table-context-menu (TC-160–165)', () => {
-  const providerSrc = readRepoFile('src/providers/markdown-editor-provider.ts');
-  const editorTsSrc = readRepoFile('media/editor.ts');
-  const editorCssSrc = readRepoFile('media/editor.css');
-
-  suite('TC-160: HTML structure and initial state', () => {
-    test('HTML includes #table-context-menu with role="menu" and class hidden', () => {
-      assert.ok(
-        providerSrc.includes('id="table-context-menu"'),
-        '#table-context-menu element must exist in markdown-editor-provider',
-      );
-      assert.ok(
-        /<div\s+id="table-context-menu"[^>]*class="[^"]*hidden[^"]*"/.test(providerSrc),
-        '#table-context-menu must have hidden class',
-      );
-      assert.ok(
-        /<div\s+id="table-context-menu"[^>]*role="menu"/.test(providerSrc),
-        '#table-context-menu must have role="menu"',
-      );
+suite('Table Context Menu Tests (JSDOM runtime)', () => {
+  test('TC-I31-019a: Right-clicking table cell opens context menu and executes row operation', () => {
+    const harness = bootEditorWebviewInJsdom({
+      initMessage: {
+        docJson: createSampleTableDoc(),
+        markdownText: '| Col A | Col B |\n| --- | --- |\n| R1A | R1B |',
+        readonly: false,
+        editorMode: 'markdown',
+      },
     });
+    try {
+      const editorEl = harness.document.getElementById('editor')!;
+      const cell = editorEl.querySelector('td')!;
+      assert.ok(cell, 'Expected rendered td in TipTap table');
 
-    test('contains all required row and column operations in English', () => {
-      const match = providerSrc.match(/<div id="table-context-menu"[\s\S]*?<\/div>/);
-      assert.ok(match, '#table-context-menu block must be extracted');
-      const menuHtml = match[0];
+      const menu = harness.document.getElementById('table-context-menu')!;
+      assert.strictEqual(menu.classList.contains('hidden'), true);
 
-      const expectedOps = [
-        { op: 'addRowBefore', label: 'Add row above' },
-        { op: 'addRowAfter', label: 'Add row below' },
-        { op: 'deleteRow', label: 'Delete row' },
-        { op: 'addColumnBefore', label: 'Add column left' },
-        { op: 'addColumnAfter', label: 'Add column right' },
-        { op: 'deleteColumn', label: 'Delete column' },
-        { op: 'deleteTable', label: 'Delete table' },
-      ];
+      cell.dispatchEvent(new harness.window.MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 24,
+        clientY: 24,
+      }));
 
-      for (const { op, label } of expectedOps) {
-        assert.ok(
-          menuHtml.includes(`data-table-op="${op}"`),
-          `Context menu must include data-table-op="${op}"`,
-        );
-        assert.ok(
-          menuHtml.includes(label),
-          `Context menu item for ${op} must have label "${label}"`,
-        );
-      }
-    });
+      assert.strictEqual(menu.classList.contains('hidden'), false);
+      assert.strictEqual(editorEl.querySelectorAll('tr').length, 2);
 
-    test('has separators between row ops, column ops, and table deletion', () => {
-      const match = providerSrc.match(/<div id="table-context-menu"[\s\S]*?<\/div>/);
-      assert.ok(match, '#table-context-menu block must be extracted');
-      const menuHtml = match[0];
-      const separatorCount = (menuHtml.match(/class="[^"]*toolbar-dropdown-sep[^"]*"|<hr/g) || []).length;
-      assert.ok(separatorCount >= 2, 'Must have at least 2 separators in context menu');
-    });
+      const addRowAfterBtn = menu.querySelector('[data-table-op="addRowAfter"]')!;
+      addRowAfterBtn.click();
+
+      assert.strictEqual(menu.classList.contains('hidden'), true);
+      assert.strictEqual(editorEl.querySelectorAll('tr').length, 3);
+      assert.ok(harness.postedMessages.some((m) => m.type === 'update'));
+    } finally {
+      harness.dispose();
+    }
   });
 
-  suite('TC-161 & TC-162: Event handling and operations binding in editor.ts', () => {
-    test('registers contextmenu listener for table cell targets', () => {
-      assert.ok(
-        editorTsSrc.includes('"contextmenu"') || editorTsSrc.includes("'contextmenu'"),
-        'editor.ts must register contextmenu event listener',
-      );
-      assert.ok(
-        editorTsSrc.includes('closest("td, th")') ||
-        editorTsSrc.includes("closest('td, th')") ||
-        editorTsSrc.includes('target.tagName === "TD"') ||
-        editorTsSrc.includes('target.closest("table")'),
-        'contextmenu handler must target table cells / table',
-      );
+  test('TC-I31-019b: Context menu closes on Escape and is blocked in readonly and non-visual modes', () => {
+    const harness = bootEditorWebviewInJsdom({
+      initMessage: {
+        docJson: createSampleTableDoc(),
+        markdownText: '| Col A | Col B |\n| --- | --- |\n| R1A | R1B |',
+        readonly: false,
+        editorMode: 'markdown',
+      },
     });
+    try {
+      const editorEl = harness.document.getElementById('editor')!;
+      const cell = editorEl.querySelector('td')!;
+      const menu = harness.document.getElementById('table-context-menu')!;
 
-    test('dispatches operations to handleTableOperation on click', () => {
-      assert.ok(
-        editorTsSrc.includes('handleTableOperation'),
-        'handleTableOperation must be used for executing table operations',
-      );
-      assert.ok(
-        editorTsSrc.includes('closeTableContextMenu') ||
-        editorTsSrc.includes('tableContextMenu'),
-        'context menu close/open helpers must exist in editor.ts',
-      );
-    });
+      cell.dispatchEvent(new harness.window.MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 16,
+        clientY: 16,
+      }));
+      assert.strictEqual(menu.classList.contains('hidden'), false);
+
+      harness.dispatchKeydown(harness.document, { key: 'Escape' });
+      assert.strictEqual(menu.classList.contains('hidden'), true);
+
+      harness.sendHostMessage({ type: 'readonlyChanged', readonly: true });
+      cell.dispatchEvent(new harness.window.MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 16,
+        clientY: 16,
+      }));
+      assert.strictEqual(menu.classList.contains('hidden'), true);
+
+      harness.sendHostMessage({ type: 'readonlyChanged', readonly: false });
+      harness.sendHostMessage({ type: 'modeChanged', editorMode: 'preview' });
+      cell.dispatchEvent(new harness.window.MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 16,
+        clientY: 16,
+      }));
+      assert.strictEqual(menu.classList.contains('hidden'), true);
+    } finally {
+      harness.dispose();
+    }
   });
 
-  suite('TC-163: Menu dismissal conditions', () => {
-    test('handles Escape key to close context menu', () => {
-      assert.ok(
-        editorTsSrc.includes('"Escape"') || editorTsSrc.includes("'Escape'"),
-        'editor.ts must handle Escape key to close the context menu',
-      );
-    });
-
-    test('closes on external click or window blur/resize/scroll', () => {
-      assert.ok(
-        editorTsSrc.includes('closeTableContextMenu') ||
-        editorTsSrc.includes('table-context-menu'),
-        'editor.ts must dismiss context menu on external events',
-      );
-    });
-  });
-
-  suite('TC-164 & TC-165: Guards for Readonly and Non-Markdown modes', () => {
-    test('guards against opening context menu when readonly is true or editorMode is not markdown', () => {
-      assert.ok(
-        editorTsSrc.includes('readonly') && editorTsSrc.includes('editorMode'),
-        'editor.ts must check readonly and editorMode before opening context menu',
-      );
-    });
-  });
-
-  suite('Styling in editor.css', () => {
-    test('defines fixed/absolute positioning and styling for #table-context-menu', () => {
-      assert.ok(
-        editorCssSrc.includes('#table-context-menu') ||
-        editorCssSrc.includes('.table-context-menu'),
-        'editor.css must define styling for #table-context-menu',
-      );
-    });
+  test('TC-I31-019c: editor.css defines context menu styles', () => {
+    const css = fs.readFileSync(path.resolve(process.cwd(), 'media/editor.css'), 'utf8');
+    assert.ok(css.includes('#table-context-menu'), 'media/editor.css must define #table-context-menu');
   });
 });

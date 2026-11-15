@@ -6,6 +6,21 @@ import {
   markdownTableToBacklogTable,
 } from '../utils/backlog-converter';
 import { findTableBlockAtCursor } from '../utils/table-formatter';
+import { getMarkdownEditorProvider } from '../utils/editor-provider-hook';
+import { WYSIWYG_VIEW_TYPE } from '../utils/editor-switch-guard';
+
+const CUSTOM_EDITOR_TEXT_ONLY_NOTICE =
+  'This command is only available in the Text Editor (Reopen Editor With... > Text Editor). In Visual mode, use smart paste or the table menu.';
+
+function notifyIfCustomEditorActive(): void {
+  const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab;
+  const isCustomEditorTab =
+    activeTab?.input instanceof vscode.TabInputCustom &&
+    activeTab.input.viewType === WYSIWYG_VIEW_TYPE;
+  if (isCustomEditorTab || getMarkdownEditorProvider()?.getActiveUri()) {
+    void vscode.window.showInformationMessage(CUSTOM_EDITOR_TEXT_ONLY_NOTICE);
+  }
+}
 
 /**
  * Register CSV / Backlog format conversion commands.
@@ -22,6 +37,7 @@ export function registerTableCsvBacklogCommands(
       async () => {
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
+          notifyIfCustomEditorActive();
           return;
         }
 
@@ -54,6 +70,7 @@ export function registerTableCsvBacklogCommands(
       async () => {
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
+          notifyIfCustomEditorActive();
           return;
         }
 
@@ -97,6 +114,7 @@ export function registerTableCsvBacklogCommands(
       async () => {
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
+          notifyIfCustomEditorActive();
           return;
         }
 
@@ -132,6 +150,16 @@ export function registerTableCsvBacklogCommands(
       async () => {
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
+          const provider = getMarkdownEditorProvider();
+          const activeUri = provider?.getActiveUri();
+          const openDoc = activeUri ? provider?.getOpenDocument(activeUri) : undefined;
+          if (openDoc) {
+            const backlogText = markdownToBacklog(openDoc.markdownText);
+            await vscode.env.clipboard.writeText(backlogText);
+            void vscode.window.showInformationMessage('Copied as Backlog format');
+            return;
+          }
+          notifyIfCustomEditorActive();
           return;
         }
 
@@ -166,6 +194,7 @@ export function registerTableCsvBacklogCommands(
       async () => {
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
+          notifyIfCustomEditorActive();
           return;
         }
 
