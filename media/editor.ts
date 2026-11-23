@@ -475,6 +475,7 @@ let rawSyncTimer: ReturnType<typeof setTimeout> | undefined;
 let rawUpdateTimer: ReturnType<typeof setTimeout> | undefined;
 const VISUAL_UPDATE_DEBOUNCE_MS = 120;
 let visualUpdateTimer: ReturnType<typeof setTimeout> | undefined;
+let lastSyncedDocJsonStr = "";
 /** Bumped on HTML→GFM convert so Host can drop pre-convert `update` messages. */
 let updateEpoch = 0;
 let gfmConvertPending = false;
@@ -751,6 +752,13 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
             renderPreview(updatedNode.textContent);
             return true;
           },
+          ignoreMutation: (mutation) => {
+            return !code.contains(mutation.target);
+          },
+          stopEvent: (event) => {
+            const target = event.target as Node | null;
+            return !target || !code.contains(target);
+          },
         };
       }
 
@@ -831,6 +839,13 @@ const MermaidAwareCodeBlock = CodeBlockLowlight.extend({
             }
             renderPreview(updatedNode.textContent);
             return true;
+          },
+          ignoreMutation: (mutation) => {
+            return !code.contains(mutation.target);
+          },
+          stopEvent: (event) => {
+            const target = event.target as Node | null;
+            return !target || !code.contains(target);
           },
           destroy: () => {
             const timer = plantUmlTimers.get(viewId);
@@ -1797,6 +1812,7 @@ function getEditorExtensions() {
       // StarterKit 同梱の Strike / Blockquote はショートカット付きのため差し替え（AD-004）
       strike: false,
       blockquote: false,
+      link: false,
     }),
     StrikeWithoutShortcut,
     BlockquoteWithoutShortcut,
@@ -2248,9 +2264,14 @@ function flushPendingVisualUpdate(): void {
     return;
   }
   const json = editor.getJSON();
+  const docJson = serializeDocForHost(json);
+  if (docJson === lastSyncedDocJsonStr) {
+    return;
+  }
+  lastSyncedDocJsonStr = docJson;
   vscode.postMessage({
     type: "update",
-    docJson: serializeDocForHost(json),
+    docJson,
     epoch: updateEpoch,
   });
   checkTableLimitsFromEditor(editor, json);
@@ -2632,9 +2653,14 @@ function initEditor(initialDoc: TipTapDoc): void {
             return;
           }
           const json = ed.getJSON();
+          const docJson = serializeDocForHost(json);
+          if (docJson === lastSyncedDocJsonStr) {
+            return;
+          }
+          lastSyncedDocJsonStr = docJson;
           vscode.postMessage({
             type: "update",
-            docJson: serializeDocForHost(json),
+            docJson,
             epoch: updateEpoch,
           });
           checkTableLimitsFromEditor(ed, json);
@@ -2642,6 +2668,7 @@ function initEditor(initialDoc: TipTapDoc): void {
       },
     });
 
+    lastSyncedDocJsonStr = serializeDocForHost(editor.getJSON());
     isEditorInitialized = true;
     attachToolbarHandlers();
     attachLinkInputHandlers();
@@ -2673,6 +2700,7 @@ function applyExternalDoc(doc: TipTapDoc, options?: { force?: boolean }): void {
   }
   suppressUpdate = true;
   editor.commands.setContent(prepareDocForEditor(doc));
+  lastSyncedDocJsonStr = serializeDocForHost(editor.getJSON());
   suppressUpdate = false;
   updateTableMenuState();
 
@@ -3562,9 +3590,14 @@ function postDocUpdate(): void {
     visualUpdateTimer = undefined;
   }
   const json = editor.getJSON();
+  const docJson = serializeDocForHost(json);
+  if (docJson === lastSyncedDocJsonStr) {
+    return;
+  }
+  lastSyncedDocJsonStr = docJson;
   vscode.postMessage({
     type: "update",
-    docJson: serializeDocForHost(json),
+    docJson,
     epoch: updateEpoch,
   });
   checkTableLimitsFromEditor(editor, json);

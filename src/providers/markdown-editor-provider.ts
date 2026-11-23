@@ -45,6 +45,8 @@ import { setMarkdownEditorProvider } from '../utils/editor-provider-hook';
 
 export class MarkdownEditorProvider implements vscode.CustomEditorProvider<MarkdownDocument> {
   static readonly viewType = 'md-wysiwyg-editor.wysiwyg';
+  private static readonly EXTERNAL_CHANGE_DEBOUNCE_MS = 250;
+  private static readonly SELF_SAVE_SUPPRESS_MS = 500;
 
   private readonly _onDidChangeCustomDocument = new vscode.EventEmitter<
     vscode.CustomDocumentEditEvent<MarkdownDocument>
@@ -58,6 +60,10 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
   private readonly _minUpdateEpoch = new Map<string, number>();
   private readonly _readyUris = new Set<string>();
   private readonly _webviewHtml = new Map<string, string>();
+  private readonly _fileWatchers = new Map<string, vscode.FileSystemWatcher>();
+  private readonly _reloadDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly _savingUris = new Set<string>();
+  private readonly _selfSaveSuppressUntil = new Map<string, number>();
   private readonly _pendingDiagnostics = new Map<
     string,
     (snapshot: WebviewDiagnosticSnapshot) => void
@@ -94,6 +100,17 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
           }
         }
       }),
+      {
+        dispose: () => {
+          for (const key of Array.from(this._fileWatchers.keys())) {
+            this.disposeFileWatcher(key);
+          }
+          for (const timer of this._reloadDebounceTimers.values()) {
+            clearTimeout(timer);
+          }
+          this._reloadDebounceTimers.clear();
+        },
+      },
     );
   }
 
@@ -213,6 +230,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     });
 
     webviewPanel.onDidDispose(() => {
+      this.disposeFileWatcher(key);
       this._openPanels.delete(key);
       this._openDocuments.delete(key);
       this._modeStates.delete(key);
@@ -222,14 +240,87 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
       handleCustomEditorDisposed(this.context, document.uri);
     });
 
+    this.setupFileWatcher(document);
+
     void this.marpManager.updatePreview(document.uri, document.markdownText);
+  }
+
+  private setupFileWatcher(document: MarkdownDocument): void {
+    const scheme = document.uri.scheme;
+    if (scheme !== 'file' && scheme !== 'vscode-remote') {
+      return;
+    }
+    const key = document.uri.toString();
+    this.disposeFileWatcher(key);
+
+    const parentUri = vscode.Uri.joinPath(document.uri, '..');
+    const fileName = path.posix.basename(document.uri.path);
+    const pattern = new vscode.RelativePattern(parentUri, fileName);
+    const watcher = vscode.workspace.createFileSystemWatcher(pattern, true, false, true);
+
+    watcher.onDidChange(() => {
+      if (this.isSelfSaveSuppressed(key) || document.isDirty) {
+        return;
+      }
+      const existingTimer = this._reloadDebounceTimers.get(key);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+      }
+      const timer = setTimeout(() => {
+        this._reloadDebounceTimers.delete(key);
+        if (this.isSelfSaveSuppressed(key) || document.isDirty) {
+          return;
+        }
+        void document.reloadFromDisk();
+      }, MarkdownEditorProvider.EXTERNAL_CHANGE_DEBOUNCE_MS);
+      this._reloadDebounceTimers.set(key, timer);
+    });
+
+    this._fileWatchers.set(key, watcher);
+  }
+
+  private disposeFileWatcher(key: string): void {
+    const watcher = this._fileWatchers.get(key);
+    if (watcher) {
+      watcher.dispose();
+      this._fileWatchers.delete(key);
+    }
+    const timer = this._reloadDebounceTimers.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      this._reloadDebounceTimers.delete(key);
+    }
+    this._savingUris.delete(key);
+    this._selfSaveSuppressUntil.delete(key);
+  }
+
+  private isSelfSaveSuppressed(key: string): boolean {
+    if (this._savingUris.has(key)) {
+      return true;
+    }
+    const until = this._selfSaveSuppressUntil.get(key);
+    if (until === undefined) {
+      return false;
+    }
+    if (Date.now() <= until) {
+      return true;
+    }
+    this._selfSaveSuppressUntil.delete(key);
+    return false;
   }
 
   async saveCustomDocument(
     document: MarkdownDocument,
     cancellation: vscode.CancellationToken,
   ): Promise<void> {
-    await document.save(cancellation);
+    const key = document.uri.toString();
+    this._savingUris.add(key);
+    try {
+      await document.save(cancellation);
+    } finally {
+      this._savingUris.delete(key);
+      this._selfSaveSuppressUntil.set(key, Date.now() + MarkdownEditorProvider.SELF_SAVE_SUPPRESS_MS);
+    }
   }
 
   async saveCustomDocumentAs(
@@ -237,7 +328,19 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     destination: vscode.Uri,
     cancellation: vscode.CancellationToken,
   ): Promise<void> {
-    await document.saveAs(destination, cancellation);
+    const docKey = document.uri.toString();
+    const destKey = destination.toString();
+    this._savingUris.add(docKey);
+    this._savingUris.add(destKey);
+    try {
+      await document.saveAs(destination, cancellation);
+    } finally {
+      this._savingUris.delete(docKey);
+      this._savingUris.delete(destKey);
+      const until = Date.now() + MarkdownEditorProvider.SELF_SAVE_SUPPRESS_MS;
+      this._selfSaveSuppressUntil.set(docKey, until);
+      this._selfSaveSuppressUntil.set(destKey, until);
+    }
   }
 
   async revertCustomDocument(document: MarkdownDocument): Promise<void> {

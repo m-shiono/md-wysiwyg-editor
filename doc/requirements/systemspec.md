@@ -61,7 +61,10 @@ AD-* の HOW 境界・レイヤ方針の正本は [architecture.md](../design/ar
 | 成功（モード切替） | 対象面を表示、Document 内容は維持、**ディスク未書込** | dirty 状態も変更しない（内容未変更時）。三点往復可（下記受け入れ） |
 | 成功（Default Preview・clean） | 現在面不変のまま `markdown.showPreview` で標準 Preview を開き、**アクティブ WYSIWYG と同一 editor group** に配置する | Host コマンド §10。Beside（新規グループ）を作らない。`editorMode` は変更しない |
 | 成功（Default Preview・dirty→Save） | Save 成功後のみ標準 Preview を同一グループに開く | Cancel / 閉じる / save 失敗時は開かない |
-| 成功（保存） | ディスク上 `.md` 更新、`dirty` 解除 | AD-013 整形後 |
+| 成功（保存） | ディスク上 `.md` 更新、`dirty` 解除 | AD-013 整形後。自己保存抑止ウィンドウ（500ms）を設定 |
+| 成功（外部ファイル変更自動同期・`!isDirty`） | ディスク UTF-8 再読込、全表示面（`preview` / `markdown` / `raw` / `MarpPreviewManager`）へ一括同期、Undo スタックリセット、`isDirty === false` 維持 | AD-021（250ms デバウンス、自己保存・同一内容スキップ） |
+| 外部ファイル変更（`isDirty === true`） | 外部変更を無視しユーザー編集を保護（上書き・マージなし） | `reloadFromDisk()` 非実行、`readFile` 完了直前にも再確認 |
+| 外部ファイル読込 / パース失敗（`reloadFromDisk`） | 既存 `MarkdownDocument` 正本を維持・非破壊、Output にエラー記録 | モーダル通知は出さず次の変更イベントで自然回復 |
 | ファイル読込失敗（`openCustomDocument`） | プロバイダ側で予期せぬ例外を throw せず、安全なフォールバック状態（または空ドキュメント）でハンドリングし通知 + Output | VS Code に予期せぬエラーダイアログを表示させない（C-2 / `scm-diff-config-defaults`） |
 | シリアライズ失敗 | 保存拒否、`dirty` 維持、通知 + Output | Document 正本は維持。Default Preview も開かない |
 | Raw パース失敗 | Document **を更新しない**、通知 + Output、**save ブロック** | 失敗中フラグ。直前の有効 Document を保持。Default Preview Save ゲートも拒否 |
@@ -180,11 +183,30 @@ Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdow
 7. エディタを閉じる際、未保存変更があれば VS Code 標準の確認ダイアログが表示される
 8. **Default Preview:** ツールバー **Default Preview** 押下で Host が対象 URI を解決し、Document が clean なら即 `markdown.showPreview`（同一グループ補償付き — §10）。dirty のときは §8 / §10 の Save/Cancel ゲートに従う。押下は三点モード面（`editorMode`）を変更しない
 
+#### 誤 dirty 防止と外部ファイル変更の自動同期（`auto-sync-dirty-fix` / AD-021）
+
+1. **Host 実質差分判定（`MarkdownDocument.updateDoc`）:**
+   - `updateDoc` における実質差分判定は、ディスク由来の生テキスト `this._markdownText` ではなく、変更前モデル `previous` を同一 `SerializeOptions` でシリアライズした結果 `serializeMarkdown(previous, opts)` と新規シリアライズ結果 `serialized` の比較で行う。
+   - 両者が一致する場合（オープン直後の未整形 Markdown に対する無害なトランザクションや初期 `update` 等）は、`_doc` のみ更新し `_markdownText` / `_isDirty` / `_editStack`（Undo 履歴）を変更せず、無断フォーマット書き換えおよび誤 `dirty` 化を防ぐ（§8）。
+2. **Webview 誤発火抑止（`media/editor.ts`）:**
+   - `StarterKit` の設定で `link: false` を明示（または重複登録を排除）し、`Link.configure({ openOnClick: false })` との二重登録による警告および不要トランザクションを解消する。
+   - `onUpdate` デバウンス送信前に、直近の同期済み `docJson` 文字列と一致する場合は `postMessage({ type: 'update', ... })` を送信しない二次ガードを設ける（no-op `update` 送信抑止）。
+   - `math` / `plantuml` NodeView に `mermaid` NodeView と同等の `ignoreMutation`（`code` 要素外の DOM 変更を無視）および `stopEvent`（`code` 要素外のイベントを抑止）ガードを付与する（§12, §14）。
+3. **外部ファイル変更の自動同期（`FileSystemWatcher` & `MarkdownDocument.reloadFromDisk()`）:**
+   - **監視スコープ:** 開いている `MarkdownDocument` ごとに `vscode.workspace.createFileSystemWatcher` を作成する（`file` / `vscode-remote` スキームのみ対象、`untitled` は対象外）。監視パターンは対象ファイル親ディレクトリ＋ファイル名に限定した `vscode.RelativePattern`（単一ファイル監視、`ignoreCreateEvents: true`, `ignoreDeleteEvents: true`）とし、`webviewPanel.onDidDispose` で確実に `dispose()` する。
+   - **デバウンス:** `FileSystemWatcher.onDidChange` 受信時に URI 単位で `250ms` のデバウンスタイマーを挟み、連続書き込みを集約してから読込・再パース・投影を実行する。タイマーもパネル破棄時に `clearTimeout` する。
+   - **自己保存抑止:** `MarkdownDocument.save()` / `saveAs()`（および同一 URI への書き込み）の実行中は対象 URI を自己保存中としてマークし、完了後 `500ms` の抑止ウィンドウを設ける。さらにディスク読込後の文字列が現在の `document.markdownText` と完全一致する場合は no-op としてスキップする二重ガードにより、自己保存による再読込ループを防止する。
+   - **Dirty ガード:** 外部変更検知時は `document.isDirty === false` の場合のみ `reloadFromDisk()` を実行する。`document.isDirty === true` の場合はユーザー編集保護を最優先し、外部変更を無視して上書き・マージを行わない。また `reloadFromDisk()` 内で `readFile` 完了直前にも再度 `this._isDirty` を確認し、非同期読込中のユーザー編集開始による競合を防ぐ。
+   - **全モード同期と Undo スタック扱い:** `MarkdownDocument.reloadFromDisk()` はディスク UTF-8 読込・`parseMarkdown`・`_isRawParseFailed = false`・`_isDirty = false` を更新し、Host の `_editStack` / `_editIndex = -1` をリセットした上で `_onDidContentChange.fire()` を発火する（`_onDidChange` は発火しないためタブは clean / `isDirty === false` を維持）。`MarkdownEditorProvider` の `document.onDidContentChange` ハンドラ経由で、`preview` / `markdown`（Visual）/ `raw`（Source）/ サイド `MarpPreviewManager` へ一括投影する。Webview 側 `applyExternalDoc(..., { force: true })` により Visual フォーカス中でも `!isDirty` であれば最新化される。
+
 #### 例外系
 
 1. オープン時に `openCustomDocument` が読込不能や不正内容に遭遇した場合でも例外を throw して VS Code 標準の予期せぬエラー表示を誘発させず、安全なフォールバック文書またはエラー通知＋Output 記録でハンドリングする（C-2）。パース不能な Markdown/HTML 混在は可能な範囲で表示し、保存時にシリアライズエラーを報告する
 2. **Raw 編集中のパース失敗:** Document を破壊・上書きしない。ユーザーへ通知し Output に記録する。パース失敗が解消されるまで **save をブロック**する（直前の有効 Document 内容を正本として維持）
-3. 外部プロセスによるファイル変更は VS Code の標準リロード/競合フローに従う
+3. **外部ファイル変更時の例外系:**
+   - 外部ツールによる書き込み途中（truncate → write 等）で `reloadFromDisk()` の `readFile` または `parseMarkdown` が失敗した場合は、既存の `MarkdownDocument` 正本を破壊せず Output（`logError`）に記録するのみとし、モーダルエラーを連発せず次の変更イベントで自然回復させる（RK-033）。
+   - `isDirty === true` の状態で外部変更が発生した場合は自動上書き・マージを行わず、ユーザー編集内容を保持する。
+   - 外部でファイルが削除された場合は `ignoreDeleteEvents: true` によりタブの強制クローズを行わない。
 4. **Default Preview 失敗:** URI 解決不能・Save Cancel・save 失敗・`markdown.showPreview` 失敗時はプレビューを開かず、Warning / ErrorMessage + Output（§10）。**`markdown.showPreviewToSide` へのフォールバックはしない**
 
 ### Non-Goals
@@ -203,11 +225,14 @@ Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdow
 - VS Code ビルトイン Preview の嵌め込み・別 Webview 化・markdown-it HTML パイプラインへの全面置換（非 Marp Preview は TipTap RO 表示層を維持 — `preview-mode-quality` AD-001）
 - Default Preview 失敗時の **`markdown.showPreviewToSide` フォールバック**（同一グループ優先に反する）
 - 隣接タブ index（`activeIndex + 1`）の **厳密保証**（best-effort。必須は同一 group のみ — §10 / RK-018）
+- `isDirty === true` 時の外部ファイル変更による自動上書きまたは 3-way マージ
+- 外部でファイルが削除された際の Custom Editor タブ自動クローズ
 
 ### Related Tests
 
 - [doc/test/testspec-vsc-md-wysiwyg.md](../test/testspec-vsc-md-wysiwyg.md) — TC-001–009（基盤）および三点モード追加 TC。Preview Marp 分岐・`previewMarpHtml`・`isMarpDocument` 共用: TC-124–142（`preview-rich-embed`）。Preview 可読性・`themeUpdated`: TC-146–148（`preview-mode-quality`）
 - 既定エディタモード設定・Default Preview・dirty Save/Cancel・Pattern A 非干渉・三点往復・表示ラベル・同一グループ配置: [doc/test/testspec-default-editor-mode-config.md](../test/testspec-default-editor-mode-config.md)、[doc/test/testspec-native-preview-side-and-default-raw.md](../test/testspec-native-preview-side-and-default-raw.md)（`native-preview-side-and-default-raw` / `default-preview-same-tab-group`）
+- 誤 dirty 防止（`updateDoc` 実質差分判定・NodeView ガード・`Link` 重複排除・no-op `update` 抑止）および外部ファイル変更自動同期（`FileSystemWatcher` / `reloadFromDisk()`）: [doc/test/testspec-auto-sync-dirty-fix.md](../test/testspec-auto-sync-dirty-fix.md)
 
 ### Spec Gaps
 
@@ -902,7 +927,7 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 #### 正常系
 
 1. オープン時: `.md` → parse → `MarkdownDocument`
-2. Markdown モード編集: TipTap モデル → Document 更新 →（必要時）Raw 面へ投影
+2. Markdown モード編集: TipTap モデル → Document 更新（`MarkdownDocument.updateDoc` は変更前モデル `previous` を同一 `SerializeOptions` でシリアライズした文字列と新規 `serialized` を比較して実質差分を判定し、一致時は `_doc` のみ更新して `_markdownText` / `_isDirty` / `_editStack` を不変とし、無断フォーマット書き換えや誤 `dirty` 化を防ぐ — §1 / AD-021） →（必要時）Raw 面へ投影
 3. Raw モード編集: ソース文字列 → パース成功時のみ Document 更新 → Markdown / Preview 面へ投影
 4. 保存時: Document → stringify（固定オプション）→ `.md`
 5. HTML 表・許可 HTML は raw HTML ノードまたは同等手段で保持する
@@ -946,6 +971,7 @@ Marp 形式スライドのプレビューを提供する（UD-003, AD-008）。*
 - Default Preview dirty Save/Cancel ゲート: [doc/test/testspec-native-preview-side-and-default-raw.md](../test/testspec-native-preview-side-and-default-raw.md)
 - 表の列アライメント（GFM/HTML）往復シリアライズ: [doc/test/testspec-table-rich-editing.md](../test/testspec-table-rich-editing.md)
 - 画像の `![alt](src)` ⇄ `<img src="img/..." alt="..." width="..." align="..." />` 決定的往復シリアライズと相対パス保護: [doc/test/testspec-image-rich-editing.md](../test/testspec-image-rich-editing.md)
+- `MarkdownDocument.updateDoc` の `previous` シリアライズ比較による実質差分判定（誤 dirty・無断整形防止）: [doc/test/testspec-auto-sync-dirty-fix.md](../test/testspec-auto-sync-dirty-fix.md)
 
 ---
 
@@ -1199,6 +1225,8 @@ Markdown 内の ````plantuml ... ```` コードブロックを、ローカルの
    - **Visual (`markdown`) モード**: 図（`.plantuml-preview`）の下にソースコードエディタ（`.plantuml-source`）を表示し、編集可能。
    - **Preview (`preview`) モード**: 図のみを表示し、ソースは非表示（`display: none`）。編集イベントは送らない（厳密 RO）。
    - **Raw (`raw`) モード**: 通常のテキスト。
+5. **NodeView 誤 dirty 防止ガード（`auto-sync-dirty-fix` / AD-021）**:
+   - `plantuml` NodeView には `mermaid` NodeView と同等の `ignoreMutation`（`code` 要素外の DOM 変更を無視）および `stopEvent`（`code` 要素外のイベントを抑止）を付与し、非同期 SVG 描画等の DOM 更新がエディタ本文変更として誤認され `dirty` 化することを防止する。
 
 ---
 
@@ -1301,6 +1329,8 @@ LaTeX 構文の数式記法（````math ... ```` コードブロックおよび `
 2. **高速・安全レンダリング**:
    - `katex.renderToString` によりクライアントサイドで直接 HTML/MathML を生成。
    - 入力変更に対して debounce（約 200ms）を適用。
+3. **NodeView 誤 dirty 防止ガード（`auto-sync-dirty-fix` / AD-021）**:
+   - `math` NodeView には `mermaid` NodeView と同等の `ignoreMutation`（`code` 要素外の DOM 変更を無視）および `stopEvent`（`code` 要素外のイベントを抑止）を付与し、KaTeX 描画時の DOM 更新がエディタ本文変更として誤認され `dirty` 化することを防止する。
 
 ---
 
@@ -1453,6 +1483,9 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
 | RK-030 | Export PDF/PPTX (`npx -y @marp-team/marp-cli`) のオフライン/プロキシ失敗・遅延 | ローカル導入済み `marp` バイナリ優先探索・タイムアウト制御・「オフラインまたは CLI 未導入」エラー通知で緩和する（§13 / `issue-31-test-review` AD-007, RK-002） |
 | RK-031 | 派生 IDE（Cursor / Windsurf / Antigravity / VSCodium）の自動 E2E テスト不可 | `@vscode/test-electron` は公式 VS Code バイナリのみを起動対象とするため、派生 IDE 固有挙動は IDE プロファイルモックの単体テストとリリース前手動スモークチェックリスト（`doc/operations/operations.md`）で担保する（`issue-31-test-review` RK-004） |
 | RK-032 | `MarpPreviewManager` への `localResourceRoots` 追加に伴うファイル露出境界 | 対象 `.md` 親ディレクトリ配下の `img/` のみ（`getWorkspaceImgRoots` 同等）に厳格限定し、ワークスペース全体や親階層への拡大を禁止、かつ `isSafeImagePath` と併用する（§6, §9 / `issue-31-test-review` AD-004, RK-005） |
+| RK-033 | 外部ツール書き込み途中の不完全ファイル読込（truncate → write 途中） | `reloadFromDisk()` での `readFile` / `parseMarkdown` 失敗時は既存 `MarkdownDocument` 正本を破壊せず `logError` に留め、モーダルエラーを連発せず次の変更イベントで自然回復させる（§1 / `auto-sync-dirty-fix` RK-001） |
+| RK-034 | 外部変更とユーザー入力のミリ秒単位競合 | `!isDirty` 確認から `readFile` 完了までの非同期区間の編集開始に備え、`readFile` 後の反映直前にも `if (this._isDirty) return;` を再チェックしてデータ損失を防ぐ（§1 / `auto-sync-dirty-fix` AD-006, RK-002） |
+| RK-035 | `vscode-remote` 環境での `FileSystemWatcher` イベント遅延・重複発火 | URI 単位 `250ms` デバウンス（AD-004）および内容一致 no-op スキップ（AD-005）で吸収する（§1 / `auto-sync-dirty-fix` RK-003） |
 
 ---
 
@@ -1472,6 +1505,7 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
 | [doc/test/math/testspec-katex-math.md](../test/math/testspec-katex-math.md) | **作成済** — KaTeX 数式レンダリング（§14） |
 | [doc/test/plantuml/testspec-plantuml.md](../test/plantuml/testspec-plantuml.md) | **作成済** — PlantUML ローカル実行・フォールバック・タイムアウト（§12、`TC-PUML-006` タイムアウト実待機テスト是正済 / `TC-I31-025`） |
 | [doc/test/testspec-issue-31-test-review.md](../test/testspec-issue-31-test-review.md) | **作成済** — `TC-I31-001`–`042` 実装・Green 実測済（`issue-31-test-review`: 4層テスト刷新・Provider ライフサイクル・`vscode-remote:`/`untitled:`・`imageInserted` `epoch`・Marp CSP/バッファ・Export Dirty Gate・Readonly バッジ・Switch Guard・`activationEvents`・`^1.85.0`/派生 IDE・`UD-001` Option A） |
+| [doc/test/testspec-auto-sync-dirty-fix.md](../test/testspec-auto-sync-dirty-fix.md) | **作成予定**（後続 `spec-test-design`）— 誤 dirty 防止（`updateDoc` `previous` シリアライズ比較・`math`/`plantuml` NodeView ガード・`Link` 重複解消・no-op `update` 抑止）および外部ファイル変更自動同期（`FileSystemWatcher` 250ms デバウンス・自己保存 500ms 抑止・`!isDirty` ガード・`reloadFromDisk()` 全モード同期・不完全読込保護、§1, §8, §12, §14） |
 | MVP 外項目 | [doc/requirements/backlog.md](backlog.md) |
 
 ---
@@ -1507,6 +1541,7 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
 | 表リッチ編集（列アライメント・行列移動と行複製・スマートペースト） | 列アライメント（`left` \| `center` \| `right` \| `null`）の CSP 安全描画（`data-align` / `align` 属性＋外部 CSS）および GFM（`:---`, `:---:`, `---:`）/ HTML（`<th/td align="...">`）往復シリアライズ・Table Formatter 統合。行・列移動（`moveRowUp` / `moveRowDown` / `moveColumnLeft` / `moveColumnRight`）および行複製（`duplicateRow`）の 1 トランザクション実行・ヘッダ境界正規化・端 no-op・Table メニュー / コンテキストメニュー / ショートカット（`Alt+矢印`, `Shift+Alt+ArrowDown`）統合。TSV（2行×2列以上・コードブロック等ガード）および HTML `<table>` の Visual / Source スマートペースト | [doc/test/testspec-table-rich-editing.md](../test/testspec-table-rich-editing.md)（`table-rich-editing`） |
 | リッチ画像編集（サイズ・配置・Alt・D&D・Lightbox） | 画像選択時のドラッグリサイズ（最小 `32px`・アスペクト比維持）およびサイズプリセット（`25%`/`50%`/`75%`/`100%`）・配置（`left`/`center`/`right`/`null`）・Alt 編集ミニポップオーバー UI。CSP 安全描画（HTML `width` / `align` / `data-align` 属性＋外部 CSS、インライン `style` 不使用）。`width`/`align` 未指定時は `![alt](src)`、指定時は `<img src="img/..." alt="..." width="..." align="..." />` で決定的に双方向往復し Webview URI 非漏洩を保証。OS / ファイルツリーからの画像 D&D 挿入（`webp` 追加・遷移抑止・未保存/RO ガード）。Preview シングルクリック / Visual ダブルクリックまたは Zoom ボタンによる Lightbox 拡大モーダル表示 | [doc/test/testspec-image-rich-editing.md](../test/testspec-image-rich-editing.md)（`image-rich-editing`） |
 | CSV/TSV・Backlog 変換 5 コマンドの提供範囲 | **Text Editor フォーカス専用**とし、Custom Editor アクティブ時にコマンドパレット等から実行された場合は無言終了せず案内通知を表示（`copyAsBacklog` のみ `MarkdownDocument` 全体出力フォールバック許容、`UD-001` Option A）。Visual 表貼り付けはスマートペースト（§3 / §15）で対応 | [doc/test/testspec-table-csv-and-backlog-conversion.md](../test/testspec-table-csv-and-backlog-conversion.md) |
+| 誤 dirty 防止と外部ファイル変更自動同期（`auto-sync-dirty-fix`） | Host `MarkdownDocument.updateDoc` は変更前モデル `previous` の同一 `SerializeOptions` シリアライズ結果と比較して実質差分を判定（一致時は `_isDirty` / `_markdownText` / `_editStack` 不変）。Webview は `math`/`plantuml` NodeView に `ignoreMutation`/`stopEvent` 付与、`StarterKit` `link: false` で `Link` 重複排除、前回同期 `docJson` 一致時の `update` 送信抑止。外部変更はドキュメント単位 `FileSystemWatcher`（`file`/`vscode-remote`、`RelativePattern`、250ms デバウンス、自己保存後 500ms 抑止＋内容一致スキップ）で検知し、`!isDirty` 時のみ `reloadFromDisk()` で Undo スタックをリセットしつつ `_onDidContentChange` 経由で全表示面を同期し `isDirty === false` を維持 | [doc/test/testspec-auto-sync-dirty-fix.md](../test/testspec-auto-sync-dirty-fix.md)（後続作成） |
 
 ---
 
@@ -1567,4 +1602,5 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
 | 2026-11-01 | §7, §8, §9, RK-025–028, Spec Gaps, Related Tests, 改訂履歴 | リッチ画像編集（`image-rich-editing`）: 画像選択時のドラッグリサイズ・サイズプリセット（`25%`/`50%`/`75%`/`100%`）・配置切替（`left`/`center`/`right`/`null`）・Alt 編集ミニポップオーバー UI、CSP 安全描画（HTML `width` / `align` / `data-align` 属性＋外部 CSS、インライン `style` 禁止）、`![alt](src)` ⇄ `<img src="img/..." alt="..." width="..." align="..." />` の決定的往復シリアライズと相対パス保護（Webview URI 非漏洩）、OS / ファイルツリーからの画像ファイル D&D 挿入（`webp` 追加・遷移抑止・未保存/RO ガード）、および Lightbox モーダル拡大表示を契約化。Requirements Brief `image-rich-editing` AD-001〜AD-005 |
 | 2026-11-15 | 概要, §1, §4, §5, §6, §7, §8, §9, §10, §11, §13, §15, §16, RK-029–032, Related Tests, Spec Gaps, 改訂履歴 | 品質・互換性・三者整合修復（`issue-31-test-review`）: `AD-004`（`imageInserted` 表示URI/相対パス分離 + `update` `epoch` 必須付与、`MarpPreviewManager` `img/` 限定 `localResourceRoots` + `${cspSource}` `img-src`）、`AD-005`（`vscode-remote` / `untitled:` URI スキーム保全と `isSafeImagePath` 徹底、`file://` ハードコード廃止）、`AD-006`（Export 5種 / Marp Preview の `MarkdownDocument` 優先参照・全5種 Dirty Gate、`updateReadonlyBadge` `(Readonly)` 除去冪等化、`editor-switch-guard` `markdown.preview` 除外、`activationEvents` `toggleReadonly`/`showMarpPreview` 補完）、`AD-007`（`@types/vscode: ^1.85.0` API 下限、派生 IDE 非干渉・`FindWidget`/`raw-editor` フォーカス限定ショートカット、Marp CLI ローカル優先探索・タイムアウト、`shell: false` 厳守）、`UD-001` Option A（CSV/Backlog 5 コマンドの Text Editor 専用化＋Custom Editor 実行時案内通知）、および `C-2`〜`C-6`（`openCustomDocument` 安全読込、初期モード `Visual` 統一、Extension ID `mshiono.vsc-md-editor` 訂正、Related Tests 重複/未作成誤記修復、Mermaid `padding: 2` / `line-height: 1` / Preview ソース非表示表記統一）を反映 |
 | 2026-11-15 | Related Tests, 改訂履歴 | `issue-31-test-review` の testspec 作成・既存 testspec 是正・テスト実装完了（`TC-I31-001`–`042` / `TC-184` / `TC-PUML-006` / C-2, C-3, C-5, C-6 反映）に伴い、Related Tests 表を `**作成済**`・同期済へ更新 |
+| 2026-11-23 | §1, §8, §12, §14, RK-033–035, Related Tests, Spec Gaps, 改訂履歴 | 誤 dirty 防止と外部ファイル変更自動同期（`auto-sync-dirty-fix`）: Host `MarkdownDocument.updateDoc` での `previous` シリアライズ比較による実質差分判定、Webview `math`/`plantuml` NodeView `ignoreMutation`/`stopEvent` ガード・`StarterKit` `link: false` 重複排除・no-op `update` 送信抑止、およびドキュメント単位 `FileSystemWatcher`（`file`/`vscode-remote`、250ms デバウンス、自己保存 500ms 抑止＋内容一致スキップ、`!isDirty` ガード、`reloadFromDisk()` による Undo リセットと全モード同期・不完全読込非破壊ログ）を契約化。Requirements Brief `auto-sync-dirty-fix` AD-001–AD-007 |
 

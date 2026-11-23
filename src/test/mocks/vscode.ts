@@ -253,6 +253,24 @@ export class Uri {
   }
 }
 
+export class RelativePattern {
+  readonly baseUri: Uri;
+  readonly base: string;
+  readonly pattern: string;
+
+  constructor(base: { uri: Uri } | Uri | string, pattern: string) {
+    if (base instanceof Uri) {
+      this.baseUri = base;
+    } else if (typeof base === 'string') {
+      this.baseUri = Uri.file(base);
+    } else {
+      this.baseUri = base.uri;
+    }
+    this.base = this.baseUri.fsPath;
+    this.pattern = pattern;
+  }
+}
+
 export class TabInputText {
   constructor(readonly uri: Uri) {}
 }
@@ -555,6 +573,29 @@ export function createMockWebviewPanel(
   return panel;
 }
 
+// --- FileSystemWatcher mock ---
+
+export interface MockFileSystemWatcher {
+  readonly globPattern: string | RelativePattern;
+  readonly ignoreCreateEvents: boolean;
+  readonly ignoreChangeEvents: boolean;
+  readonly ignoreDeleteEvents: boolean;
+  disposed: boolean;
+  readonly onDidCreate: EventEmitter<Uri>['event'];
+  readonly onDidChange: EventEmitter<Uri>['event'];
+  readonly onDidDelete: EventEmitter<Uri>['event'];
+  dispose: () => void;
+  fireCreate: (uri: Uri) => void;
+  fireChange: (uri: Uri) => void;
+  fireDelete: (uri: Uri) => void;
+}
+
+const createdWatchers: MockFileSystemWatcher[] = [];
+
+export function getCreatedFileSystemWatchers(): MockFileSystemWatcher[] {
+  return createdWatchers;
+}
+
 // --- Recorded calls & interceptors ---
 
 const createdPanels: MockWebviewPanel[] = [];
@@ -727,6 +768,49 @@ const workspace = {
     };
   },
   onDidChangeConfiguration: onDidChangeConfigurationEmitter.event,
+  createFileSystemWatcher: (
+    globPattern: string | RelativePattern,
+    ignoreCreateEvents = false,
+    ignoreChangeEvents = false,
+    ignoreDeleteEvents = false,
+  ): MockFileSystemWatcher => {
+    const createEmitter = new EventEmitter<Uri>();
+    const changeEmitter = new EventEmitter<Uri>();
+    const deleteEmitter = new EventEmitter<Uri>();
+    const watcher: MockFileSystemWatcher = {
+      globPattern,
+      ignoreCreateEvents,
+      ignoreChangeEvents,
+      ignoreDeleteEvents,
+      disposed: false,
+      onDidCreate: createEmitter.event,
+      onDidChange: changeEmitter.event,
+      onDidDelete: deleteEmitter.event,
+      dispose: () => {
+        watcher.disposed = true;
+        createEmitter.dispose();
+        changeEmitter.dispose();
+        deleteEmitter.dispose();
+      },
+      fireCreate: (uri: Uri) => {
+        if (!watcher.disposed && !ignoreCreateEvents) {
+          createEmitter.fire(uri);
+        }
+      },
+      fireChange: (uri: Uri) => {
+        if (!watcher.disposed && !ignoreChangeEvents) {
+          changeEmitter.fire(uri);
+        }
+      },
+      fireDelete: (uri: Uri) => {
+        if (!watcher.disposed && !ignoreDeleteEvents) {
+          deleteEmitter.fire(uri);
+        }
+      },
+    };
+    createdWatchers.push(watcher);
+    return watcher;
+  },
   openTextDocument: async (uriOrOptions: Uri | string | { content?: string; language?: string }): Promise<MockTextDocument> => {
     if (uriOrOptions instanceof Uri) {
       const existing = workspace.textDocuments.find((d) => d.uri.toString() === uriOrOptions.toString());
@@ -923,6 +1007,7 @@ export function resetVscodeMock(): void {
     all: [],
   };
   createdPanels.length = 0;
+  createdWatchers.length = 0;
   registeredCommands.clear();
   registeredCustomEditors.clear();
   executedCommandCalls.length = 0;

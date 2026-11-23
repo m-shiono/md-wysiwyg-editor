@@ -132,6 +132,44 @@ export class MarkdownDocument implements vscode.CustomDocument {
     }
   }
 
+  async reloadFromDisk(): Promise<boolean> {
+    if (this._isDirty) {
+      return false;
+    }
+    let data: Uint8Array;
+    try {
+      data = await vscode.workspace.fs.readFile(this._uri);
+    } catch (error) {
+      logError('Failed to reload document from disk', error);
+      return false;
+    }
+    if (this._isDirty) {
+      return false;
+    }
+    const diskText = Buffer.from(data).toString('utf8');
+    if (diskText === this._markdownText && !this._isRawParseFailed) {
+      return false;
+    }
+    let newDoc: TipTapDoc;
+    try {
+      newDoc = parseMarkdown(diskText);
+    } catch (error) {
+      logError('Failed to parse reloaded document from disk', error);
+      return false;
+    }
+    if (this._isDirty) {
+      return false;
+    }
+    this._markdownText = diskText;
+    this._doc = newDoc;
+    this._isRawParseFailed = false;
+    this._isDirty = false;
+    this._editStack = [];
+    this._editIndex = -1;
+    this._onDidContentChange.fire();
+    return true;
+  }
+
   async revert(): Promise<void> {
     const data = await vscode.workspace.fs.readFile(this._uri);
     this._markdownText = Buffer.from(data).toString('utf8');
@@ -243,15 +281,22 @@ export class MarkdownDocument implements vscode.CustomDocument {
     this._doc = newDoc;
     this._isRawParseFailed = false;
     const opts = this.getSerializeOptions();
-    let serialized = this._markdownText;
+    let prevSerialized = this._markdownText;
+    try {
+      prevSerialized = serializeMarkdown(previous, opts);
+    } catch {
+      // Fallback to _markdownText if previous serialization fails
+    }
+
+    let serialized = prevSerialized;
     try {
       serialized = serializeMarkdown(newDoc, opts);
     } catch {
       // Keep in-memory doc; save will fail later
     }
 
-    if (serialized === this._markdownText) {
-      // No substantive Markdown diff (e.g. TipTap table attribute normalization).
+    if (serialized === prevSerialized) {
+      // No substantive Markdown diff (e.g. TipTap roundtrip / format variant normalization).
       // Keep updated in-memory doc model, but avoid marking document dirty or pushing undo item.
       if (options?.syncWebview !== false) {
         this._onDidContentChange.fire();
@@ -304,10 +349,16 @@ export class MarkdownDocument implements vscode.CustomDocument {
       document: this,
       label,
       undo: async () => {
+        if (this._editIndex < 0) {
+          return;
+        }
         this._editIndex--;
         this._editStack[this._editIndex + 1]?.undo();
       },
       redo: async () => {
+        if (this._editIndex + 1 >= this._editStack.length) {
+          return;
+        }
         this._editIndex++;
         this._editStack[this._editIndex]?.redo();
       },

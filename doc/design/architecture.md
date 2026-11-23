@@ -30,6 +30,7 @@
 | AD-018 | Source モード（textarea）での編集支援パイプライン。表内 Tab / Shift+Tab による自動整列・セル間移動・新規行自動追加、リスト自動継続（Enter でマーカー継続・解除、Tab でインデント）、書式トグルショートカット、スマート URL ペースト、目次（TOC）自動生成・同期を提供する（§3, §15） |
 | AD-019 | 表リッチ編集（`table-rich-editing`）: 列アライメントの一括更新・GFM/HTML 往復・Table Formatter 統合、行・列の入れ替え（`moveRowUp` / `moveRowDown` / `moveColumnLeft` / `moveColumnRight`）および行複製（`duplicateRow`）の 1 トランザクション実行（ヘッダ行 `th`/`td` 正規化・端 no-op・Table メニュー / コンテキストメニュー / `Alt+矢印` ショートカット統合）、ならびにクリップボード TSV（2行×2列以上・コードブロック等ガード）および HTML `<table>` の Visual / Source スマートペーストを提供する（§3, §8, §9, §15, §16） |
 | AD-020 | リッチ画像編集（`image-rich-editing`）: Visual モード画像選択時のドラッグリサイズ（最小 `32px`・アスペクト比維持）およびサイズプリセット（`25%`/`50%`/`75%`/`100%`）・配置切替（`left`/`center`/`right`/`null`）・Alt 編集ミニポップオーバー UI、CSP 安全描画（HTML `width` / `align` / `data-align` 属性＋外部 CSS、インライン `style` 禁止）、`width`/`align` 未指定時の `![alt](src)` と指定時の `<img src="img/..." alt="..." width="..." align="..." />` の決定的双方向往復シリアライズ（`originalSrc` / Host 逆変換による相対パス保護）、OS / ファイルツリーからの画像ファイル D&D 挿入（`webp` 対応・Webview 遷移抑止）、ならびに Preview シングルクリック / Visual ダブルクリックまたは Zoom ボタンによる Lightbox 拡大モーダル表示を提供する（§7, §8, §9） |
+| AD-021 | 誤 dirty 防止および外部ファイル変更自動同期（`auto-sync-dirty-fix`）: (1) Host `MarkdownDocument.updateDoc` は変更前モデル `previous` を同一 `SerializeOptions` でシリアライズした結果と比較して実質差分を判定し、一致時は `_isDirty` / `_markdownText` / `_editStack` を変更しない。(2) Webview（`media/editor.ts`）は `math` / `plantuml` NodeView への `ignoreMutation` / `stopEvent` ガード付与、`StarterKit` の `link: false` による `Link` 重複排除、および前回同期 `docJson` 一致時の `update` 送信抑止により誤発火を防ぐ。(3) 外部ファイル変更はドキュメント単位の `FileSystemWatcher`（`file` / `vscode-remote`、`RelativePattern`、250ms デバウンス、自己保存後 500ms 抑止ウィンドウ＋内容一致スキップ）で検知し、`!isDirty` 時に `reloadFromDisk()` で Undo スタックをリセットしつつ `_onDidContentChange` 経由で全表示面を同期し `isDirty === false` を維持する（§1, §8, §12, §14） |
 
 ---
 
@@ -44,8 +45,8 @@
 
 | レイヤ | 責務 | 備考 |
 |--------|------|------|
-| Extension Host | `MarkdownDocument` 正本、コマンド、画像 URI rewrite、Marp Host HTML、CSP / nonce、永続化 | AD-002, AD-009, AD-010, AD-015, AD-020 |
-| Webview（Custom Editor） | TipTap / Preview / Raw UI、Mermaid NodeView、表示層のみ | AD-003, AD-007, AD-016, AD-019, AD-020 |
+| Extension Host | `MarkdownDocument` 正本、コマンド、画像 URI rewrite、Marp Host HTML、CSP / nonce、永続化、外部変更監視（`FileSystemWatcher`） | AD-002, AD-009, AD-010, AD-015, AD-020, AD-021 |
+| Webview（Custom Editor） | TipTap / Preview / Raw UI、Mermaid / Math / PlantUML NodeView、表示層のみ | AD-003, AD-007, AD-016, AD-019, AD-020, AD-021 |
 | Serialize pipeline | remark/unified 往復、決定的整形 | AD-004, AD-005, AD-013, AD-017, AD-019, AD-020 |
 | Bundles | Host と Webview を別バンドルし `media/` 配置 | AD-011 |
 | Tests | round-trip ユニット + Custom Editor 統合 | AD-012 |
@@ -69,3 +70,4 @@
 | 2026-10-23 | AD-017, AD-018 | 表フォーマット切替（Aligned vs Compact）およびエディタ入力支援（`table-format-and-editor-assist`）: AD-017（表フォーマット形式制御、East Asian Width 対応）および AD-018（Source モード編集支援パイプライン、表 Tab 整列・セル移動、リスト継続、ショートカット、スマート URL ペースト、TOC）を追加 |
 | 2026-10-31 | AD-005, AD-019 | 表リッチ編集（`table-rich-editing`）: 列アライメント（CSP 安全描画・GFM/HTML 双方向往復・Table Formatter 統合）、行/列移動と行複製（`moveRowUp` / `moveRowDown` / `duplicateRow` / `moveColumnLeft` / `moveColumnRight`、メニュー・ショートカット統合）、TSV / HTML `<table>` スマートペースト（Visual / Source 両対応、誤変換防止ガード付き）を追加 |
 | 2026-11-01 | AD-009, AD-020 | リッチ画像編集（`image-rich-editing`）: 画像選択時のドラッグリサイズ・サイズプリセット・配置切替・Alt 編集ミニポップオーバー UI、CSP 安全描画（HTML `width` / `align` / `data-align` 属性＋外部 CSS）、`![alt](src)` ⇄ `<img src="img/..." alt="..." width="..." align="..." />` 決定的往復シリアライズと相対パス保護、画像ファイル D&D 挿入（`webp` 追加・遷移抑止）、Lightbox 拡大モーダル表示を追加 |
+| 2026-11-23 | AD-021, HOW 境界 | 誤 dirty 防止および外部ファイル変更自動同期（`auto-sync-dirty-fix`）: `MarkdownDocument.updateDoc` の `previous` シリアライズ比較による実質差分判定、Webview `math`/`plantuml` NodeView ガード・`Link` 重複排除・no-op `update` 抑止、およびドキュメント単位 `FileSystemWatcher`（250ms デバウンス・自己保存 500ms 抑止・`!isDirty` ガード・`reloadFromDisk()` 全モード同期）の AD-021 を追加 |
