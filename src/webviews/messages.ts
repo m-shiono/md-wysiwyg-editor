@@ -2,6 +2,11 @@ import type { EditorMode } from '../utils/editor-mode';
 
 export type { EditorMode };
 
+export interface EditorSelectionSnapshot {
+  visual?: { anchor: number; head: number };
+  raw?: { start: number; end: number };
+}
+
 export type WebviewOutboundMessage =
   | {
       type: 'init';
@@ -12,7 +17,15 @@ export type WebviewOutboundMessage =
       editorMode: EditorMode;
     }
   /** docJson omitted for Markdown-originated sync (markdownText only — TC-067). */
-  | { type: 'docUpdated'; docJson?: string; markdownText: string; updateEpoch?: number }
+  | {
+      type: 'docUpdated';
+      docJson?: string;
+      markdownText: string;
+      updateEpoch?: number;
+      selection?: EditorSelectionSnapshot;
+      isUndoRedo?: boolean;
+      origin?: 'raw';
+    }
   | { type: 'convertToGfmCancelled' }
   | { type: 'readonlyChanged'; readonly: boolean }
   | { type: 'tableLimitWarning'; exceeded: boolean; message?: string; rows: number; cols: number }
@@ -35,8 +48,23 @@ export type WebviewDiagnosticSnapshot = {
 
 export type WebviewInboundMessage =
   | { type: 'ready' }
-  | { type: 'update'; docJson: string; epoch?: number }
-  | { type: 'updateRaw'; markdown: string }
+  | {
+      type: 'update';
+      docJson: string;
+      epoch?: number;
+      undoGroupId?: string;
+      selectionBefore?: EditorSelectionSnapshot;
+      selectionAfter?: EditorSelectionSnapshot;
+    }
+  | {
+      type: 'updateRaw';
+      markdown: string;
+      undoGroupId?: string;
+      selectionBefore?: EditorSelectionSnapshot;
+      selectionAfter?: EditorSelectionSnapshot;
+    }
+  | { type: 'requestUndo' }
+  | { type: 'requestRedo' }
   | { type: 'setMode'; editorMode: EditorMode }
   | {
       type: 'requestConvertToGfm';

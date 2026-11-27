@@ -168,6 +168,9 @@ Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdow
 |-----------|------|---------|------|
 | `previewMarpHtml` | Host → Webview | `{ html: string }` | サニタイズ済み body 断片 + inline style。Webview は DOM 注入のみ（`innerHTML` は Host 済み HTML のみ） |
 | `themeUpdated` | Host → Webview | `{ kind: 'light' \| 'dark' \| 'highContrast' }` | VS Code カラーテーマ変更時（Host: `onDidChangeActiveColorTheme`）および Webview `init` / `ready` 時に送信。payload は列挙型 `kind` のみ — 任意 HTML / 設定オブジェクトは送らない（§9 / `preview-mode-quality` AD-010）。Webview は Mermaid グローバルテーマ更新・再描画に用いる（§5） |
+| `docUpdated`（Undo/Redo 拡張） | Host → Webview | `{ docJson?: string; markdownText: string; updateEpoch?: number; selection?: EditorSelectionSnapshot; isUndoRedo?: boolean }` | Undo/Redo 時は `_minUpdateEpoch` を進め、`isUndoRedo: true` と復元対象 `selection`（Visual `anchor`/`head` または Raw `start`/`end`）を付与して最小差分適用とカーソル復元を行う |
+| `update` / `updateRaw`（Undo 拡張） | Webview → Host | `undoGroupId?: string; selectionBefore?: EditorSelectionSnapshot; selectionAfter?: EditorSelectionSnapshot` | 連続入力の記録ポイント結合キーと編集前後カーソル位置を Host へ伝達 |
+| `requestUndo` / `requestRedo` | Webview → Host | `{ type: 'requestUndo' \| 'requestRedo' }` | Webview エディタ面からの Undo/Redo 要求。Host はドキュメント単位の直列キューで先行 flush 完了後に VS Code `undo` / `redo`（または `MarkdownDocument.undo()` / `redo()`）を実行 |
 | （既存）`docJson` 投影 | Host → Webview | TipTap JSON | 送信前に Host が `image.src` を rewrite |
 
 型定義は `src/webviews/messages.ts` に追加する。
@@ -179,7 +182,14 @@ Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdow
 3. **Preview** は Document の現在内容を **厳密 RO** で描画する一方通行。Preview 表示中に Document が更新されれば描画を追随する。**Preview への切替時**は Host が Document 最新を再投影する（Raw 離脱時の flush 後を含む）。非 Marp は rewrite 済み `docJson`、Marp 検出時は `previewMarpHtml` で `#preview-marp-root` を更新
 4. **モード切替**（Preview ↔ Markdown ↔ Raw）は表示面の切替のみであり、**ディスクへの書き込みを行わない**。内容に差分がなければ `dirty` も変化しない。Preview / Markdown への切替時は Document から視覚面を refresh する。Preview 離脱時は `#preview-marp-root` を空にし `#editor` を復帰
 5. Markdown / Raw での内容変更は既存の CustomDocument フローに乗り `dirty` となる。`save` / `saveAs` で Document 内容をシリアライズし UTF-8 で書き込む（§8）。`revert` / `backup`（Hot Exit 復元含む）および `onDidDispose` によるパネル/ドキュメント/Switch Guard のクリーンアップを完了する
-6. undo/redo は Document 経由で一貫して動作する（モードをまたいでも同一 Document 履歴）
+6. **単一正本 Undo / Redo（AD-002 / AD-022）:**
+   - Extension Host の `MarkdownDocument` を唯一の Undo / Redo 履歴正本（保持上限 `MAX_UNDO_HISTORY = 100` 段、最低 10 回以上の巻き戻しを保証）とし、Visual（TipTap `undoRedo: false`）および Source（独自 `rawUndoStack` 廃止）の二重スタック競合を排除する。Visual ↔ Source モードを跨いでも同一履歴として連続して Undo / Redo できる。
+   - **記録ポイント（`undoGroupId` コアレッシング）:** 同一 `undoGroupId` を持つ連続編集は `MarkdownDocument` の末尾エントリにインプレース結合し、グループ先頭でのみ VS Code `onDidChangeCustomDocument` を 1 回発火する。記録ポイントの区切りは以下に従う：
+     - **日本語等の IME 入力:** `compositionstart`〜`compositionend` の変換中未確定文字は履歴・Host 送信せず、`compositionend`（変換確定）ごとに 1 記録ポイントとする。
+     - **英語等の直接入力:** 連続文字入力は 1 グループにまとめ、単語・文節境界（空白・タブ入力後の次語開始、句読点 `.,!?;:)]}` / `、。，．！？；：」』）】` 後の次文字入力開始）、改行（`Enter`）、操作種別切替（挿入 ↔ `Backspace`/`Delete`）、テキスト変更を伴わないカーソル移動後の入力、打鍵休止（`800ms` 超）で新しい記録ポイントへ区切る。
+     - **構造・書式コマンド:** ペースト（通常・スマート URL・表・画像）、カット、選択範囲置換/削除、ツールバー書式、表操作、画像属性変更、検索置換、TOC 挿入、フロントマター編集はそれぞれ 1 操作＝1 記録ポイントとする。
+   - **キーバインドとワークベンチ連動:** エディタ面（`#editor`, `#raw-editor`）フォーカス時、OS を問わず `Ctrl+Z` および `Cmd+Z` で Undo、`Ctrl+Y` / `Ctrl+Shift+Z` / `Cmd+Shift+Z` / `Cmd+Y` で Redo が動作し、VS Code 標準メニュー `Edit > Undo` / `Redo` とも同一スタックで連動する（`#find-widget` / `#link-input-bar` / `#image-popover` 内の `<input>` フォーカス時は各入力欄のネイティブ操作を妨げず、Readonly / Preview 時は無効）。
+   - **状態・カーソル復元:** 初期状態または `save` / `saveAs` 時点の状態へ Undo / Redo で戻った場合は `isDirty === false` へ復帰する。Visual モード反映時は ProseMirror `Fragment.findDiffStart` / `findDiffEnd` による最小差分置換（NodeView 非破壊）＋ `TextSelection` 復元、Source モード反映時は `setSelectionRange` で編集箇所のカーソル・選択位置を復元する。
 7. エディタを閉じる際、未保存変更があれば VS Code 標準の確認ダイアログが表示される
 8. **Default Preview:** ツールバー **Default Preview** 押下で Host が対象 URI を解決し、Document が clean なら即 `markdown.showPreview`（同一グループ補償付き — §10）。dirty のときは §8 / §10 の Save/Cancel ゲートに従う。押下は三点モード面（`editorMode`）を変更しない
 
@@ -233,6 +243,7 @@ Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdow
 - [doc/test/testspec-vsc-md-wysiwyg.md](../test/testspec-vsc-md-wysiwyg.md) — TC-001–009（基盤）および三点モード追加 TC。Preview Marp 分岐・`previewMarpHtml`・`isMarpDocument` 共用: TC-124–142（`preview-rich-embed`）。Preview 可読性・`themeUpdated`: TC-146–148（`preview-mode-quality`）
 - 既定エディタモード設定・Default Preview・dirty Save/Cancel・Pattern A 非干渉・三点往復・表示ラベル・同一グループ配置: [doc/test/testspec-default-editor-mode-config.md](../test/testspec-default-editor-mode-config.md)、[doc/test/testspec-native-preview-side-and-default-raw.md](../test/testspec-native-preview-side-and-default-raw.md)（`native-preview-side-and-default-raw` / `default-preview-same-tab-group`）
 - 誤 dirty 防止（`updateDoc` 実質差分判定・NodeView ガード・`Link` 重複排除・no-op `update` 抑止）および外部ファイル変更自動同期（`FileSystemWatcher` / `reloadFromDisk()`）: [doc/test/testspec-auto-sync-dirty-fix.md](../test/testspec-auto-sync-dirty-fix.md)
+- 単一正本 Undo / Redo・記録ポイント（英語単語/文節・IME 確定）・`Ctrl+Z`/`Cmd+Z` 両対応・カーソル復元・`isDirty` 連動: [doc/test/testspec-undo-redo.md](../test/testspec-undo-redo.md)
 
 ### Spec Gaps
 
@@ -321,7 +332,7 @@ Raw（markdownText）  ←→  Document（doc + markdownText）  ←→  Markdow
 7. **タスクリスト:** TipTap `taskList` / `taskItem`。ネストは `TaskItem.nested: true` を維持。エディタ内チェックボックス操作は編集であり Document を更新する。パース/シリアライズに GFM task-list 拡張を用いる（direct dependency）
 8. **インラインコード vs フェンス:** `inlineCode` は `toggleCode`、Code Block は既存 `toggleCodeBlock`。インラインコード内の `~~` はコード文字として扱い、strike と同時適用しない（code 優先）
 9. **複合 mark:** 同一 text ノードに複数 mark（例: strike+bold）。`~~**bold**~~` / `**~~bold~~**` は strike+bold としてパースし、保存は決定的な一方のネストでよい。見た目同等なら byte 一致は要求しない。既存 phrasing 平坦化の全面書き換えはしない
-10. **キーボード:** 新項目の `contributes.keybindings` は追加しない。Strike 既定 `Mod-Shift-s`（Save All）と Blockquote 既定 `Mod-Shift-b`（Run Build Task）は **無効化**。HR / Task に新ショートカットは付けない。既存 Bold/Italic および Heading `Mod-Alt-1..6`（StarterKit）は変更しない。ショートカットは Markdown モードかつ Webview フォーカス時のみ
+10. **キーボード:** 新項目の `contributes.keybindings` は追加しない。Strike 既定 `Mod-Shift-s`（Save All）と Blockquote 既定 `Mod-Shift-b`（Run Build Task）は **無効化**。HR / Task に新ショートカットは付けない。既存 Bold/Italic および Heading `Mod-Alt-1..6`（StarterKit）は変更しない。ショートカットは Markdown モードかつ Webview フォーカス時のみ。TipTap の `UndoRedo`（`undoRedo: false`）は無効化し、§1 の単一正本 Undo/Redo（`Ctrl+Z` / `Cmd+Z`、`Ctrl+Y` / `Shift+Mod+Z`）および IME `compositionstart`〜`compositionend` 保護・最小差分カーソル復元を用いる
 11. **レイヤ分割:** ツールバー HTML は `markdown-editor-provider`、コマンドは `media/editor.ts`、往復は `src/serializers/markdown-serializer.ts`、見た目は `media/editor.css`。Table メニュー・画像 paste・三点 mode-toolbar は触らない。新編集面は作らない
 12. **GFM 拡張の追加面:** strikethrough と task-list のみ（既存 `gfm-table` は維持）。footnotes / autolink-literal / GitHub Alerts / tagfilter 変更は有効化しない
 
@@ -1342,6 +1353,7 @@ Source モード（Raw エディタ）およびエディタ全般における Ma
 
 ### 1. リスト編集支援（List Editing）
 
+- **IME 変換保護**: Visual / Source 両モードにおいて `compositionstart`〜`compositionend`（および `isComposing === true` / `keyCode === 229`）の変換確定 `Enter` 等はリスト自動継続・インデント等のショートカットを発火させず、変換確定単位で Undo 記録ポイントを形成する。
 - **自動リスト継続**: 箇条書き（`- `, `* `, `+ `）または番号付きリスト（`1. `, `2. ` 等）の行で `Enter` を押下した際、次の行へ自動的に同一種別のリストマーカーを挿入する。番号付きリストの場合は番号を自動的にインクリメント（+1）する。
 - **リスト終了**: マーカーのみ（本文が空）の行で `Enter` を押下した場合、現在の行のマーカーを削除し、リストを終了して通常の空行とする。
 - **インデント・アウトデント**: リスト行で `Tab` を押下した場合は 2 スペース分のインデント（ネスト深化）を行い、`Shift + Tab` を押下した場合はインデントを解除（アウトデント）する。
@@ -1505,7 +1517,8 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
 | [doc/test/math/testspec-katex-math.md](../test/math/testspec-katex-math.md) | **作成済** — KaTeX 数式レンダリング（§14） |
 | [doc/test/plantuml/testspec-plantuml.md](../test/plantuml/testspec-plantuml.md) | **作成済** — PlantUML ローカル実行・フォールバック・タイムアウト（§12、`TC-PUML-006` タイムアウト実待機テスト是正済 / `TC-I31-025`） |
 | [doc/test/testspec-issue-31-test-review.md](../test/testspec-issue-31-test-review.md) | **作成済** — `TC-I31-001`–`042` 実装・Green 実測済（`issue-31-test-review`: 4層テスト刷新・Provider ライフサイクル・`vscode-remote:`/`untitled:`・`imageInserted` `epoch`・Marp CSP/バッファ・Export Dirty Gate・Readonly バッジ・Switch Guard・`activationEvents`・`^1.85.0`/派生 IDE・`UD-001` Option A） |
-| [doc/test/testspec-auto-sync-dirty-fix.md](../test/testspec-auto-sync-dirty-fix.md) | **作成予定**（後続 `spec-test-design`）— 誤 dirty 防止（`updateDoc` `previous` シリアライズ比較・`math`/`plantuml` NodeView ガード・`Link` 重複解消・no-op `update` 抑止）および外部ファイル変更自動同期（`FileSystemWatcher` 250ms デバウンス・自己保存 500ms 抑止・`!isDirty` ガード・`reloadFromDisk()` 全モード同期・不完全読込保護、§1, §8, §12, §14） |
+| [doc/test/testspec-auto-sync-dirty-fix.md](../test/testspec-auto-sync-dirty-fix.md) | **作成済** — 誤 dirty 防止（`updateDoc` `previous` シリアライズ比較・`math`/`plantuml` NodeView ガード・`Link` 重複解消・no-op `update` 抑止）および外部ファイル変更自動同期（`FileSystemWatcher` 250ms デバウンス・自己保存 500ms 抑止・`!isDirty` ガード・`reloadFromDisk()` 全モード同期・不完全読込保護、§1, §8, §12, §14） |
+| [doc/test/testspec-undo-redo.md](../test/testspec-undo-redo.md) | **作成済** — TC-UNDO-001–014（単一正本 `MarkdownDocument` Undo/Redo・最大100段・英語単語/文節＆日本語 IME 確定記録ポイント・`Ctrl+Z`/`Cmd+Z` 両対応・カーソル復元・保存地点 `isDirty` 連動、§1, §2, §15） |
 | MVP 外項目 | [doc/requirements/backlog.md](backlog.md) |
 
 ---
@@ -1542,6 +1555,7 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
 | リッチ画像編集（サイズ・配置・Alt・D&D・Lightbox） | 画像選択時のドラッグリサイズ（最小 `32px`・アスペクト比維持）およびサイズプリセット（`25%`/`50%`/`75%`/`100%`）・配置（`left`/`center`/`right`/`null`）・Alt 編集ミニポップオーバー UI。CSP 安全描画（HTML `width` / `align` / `data-align` 属性＋外部 CSS、インライン `style` 不使用）。`width`/`align` 未指定時は `![alt](src)`、指定時は `<img src="img/..." alt="..." width="..." align="..." />` で決定的に双方向往復し Webview URI 非漏洩を保証。OS / ファイルツリーからの画像 D&D 挿入（`webp` 追加・遷移抑止・未保存/RO ガード）。Preview シングルクリック / Visual ダブルクリックまたは Zoom ボタンによる Lightbox 拡大モーダル表示 | [doc/test/testspec-image-rich-editing.md](../test/testspec-image-rich-editing.md)（`image-rich-editing`） |
 | CSV/TSV・Backlog 変換 5 コマンドの提供範囲 | **Text Editor フォーカス専用**とし、Custom Editor アクティブ時にコマンドパレット等から実行された場合は無言終了せず案内通知を表示（`copyAsBacklog` のみ `MarkdownDocument` 全体出力フォールバック許容、`UD-001` Option A）。Visual 表貼り付けはスマートペースト（§3 / §15）で対応 | [doc/test/testspec-table-csv-and-backlog-conversion.md](../test/testspec-table-csv-and-backlog-conversion.md) |
 | 誤 dirty 防止と外部ファイル変更自動同期（`auto-sync-dirty-fix`） | Host `MarkdownDocument.updateDoc` は変更前モデル `previous` の同一 `SerializeOptions` シリアライズ結果と比較して実質差分を判定（一致時は `_isDirty` / `_markdownText` / `_editStack` 不変）。Webview は `math`/`plantuml` NodeView に `ignoreMutation`/`stopEvent` 付与、`StarterKit` `link: false` で `Link` 重複排除、前回同期 `docJson` 一致時の `update` 送信抑止。外部変更はドキュメント単位 `FileSystemWatcher`（`file`/`vscode-remote`、`RelativePattern`、250ms デバウンス、自己保存後 500ms 抑止＋内容一致スキップ）で検知し、`!isDirty` 時のみ `reloadFromDisk()` で Undo スタックをリセットしつつ `_onDidContentChange` 経由で全表示面を同期し `isDirty === false` を維持 | [doc/test/testspec-auto-sync-dirty-fix.md](../test/testspec-auto-sync-dirty-fix.md)（後続作成） |
+| 単一正本 Undo / Redo（`undo-redo`） | `MarkdownDocument` を唯一の履歴正本（最大 100 段・保存地点復帰で `isDirty === false`）とし、TipTap `undoRedo: false`・Source 独自スタック廃止。`UndoGroupTracker` により英語単語/文節境界・800ms アイドル・削除種別・カーソル移動・IME `compositionend` 確定単位・構造コマンド単位で `undoGroupId` を発行し、`MarkdownDocument` で同一グループをインプレース結合。`Ctrl+Z`/`Cmd+Z` 両対応、最小差分適用＋カーソル復元 | [doc/test/testspec-undo-redo.md](../test/testspec-undo-redo.md) |
 
 ---
 
@@ -1603,4 +1617,5 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
 | 2026-11-15 | 概要, §1, §4, §5, §6, §7, §8, §9, §10, §11, §13, §15, §16, RK-029–032, Related Tests, Spec Gaps, 改訂履歴 | 品質・互換性・三者整合修復（`issue-31-test-review`）: `AD-004`（`imageInserted` 表示URI/相対パス分離 + `update` `epoch` 必須付与、`MarpPreviewManager` `img/` 限定 `localResourceRoots` + `${cspSource}` `img-src`）、`AD-005`（`vscode-remote` / `untitled:` URI スキーム保全と `isSafeImagePath` 徹底、`file://` ハードコード廃止）、`AD-006`（Export 5種 / Marp Preview の `MarkdownDocument` 優先参照・全5種 Dirty Gate、`updateReadonlyBadge` `(Readonly)` 除去冪等化、`editor-switch-guard` `markdown.preview` 除外、`activationEvents` `toggleReadonly`/`showMarpPreview` 補完）、`AD-007`（`@types/vscode: ^1.85.0` API 下限、派生 IDE 非干渉・`FindWidget`/`raw-editor` フォーカス限定ショートカット、Marp CLI ローカル優先探索・タイムアウト、`shell: false` 厳守）、`UD-001` Option A（CSV/Backlog 5 コマンドの Text Editor 専用化＋Custom Editor 実行時案内通知）、および `C-2`〜`C-6`（`openCustomDocument` 安全読込、初期モード `Visual` 統一、Extension ID `mshiono.vsc-md-editor` 訂正、Related Tests 重複/未作成誤記修復、Mermaid `padding: 2` / `line-height: 1` / Preview ソース非表示表記統一）を反映 |
 | 2026-11-15 | Related Tests, 改訂履歴 | `issue-31-test-review` の testspec 作成・既存 testspec 是正・テスト実装完了（`TC-I31-001`–`042` / `TC-184` / `TC-PUML-006` / C-2, C-3, C-5, C-6 反映）に伴い、Related Tests 表を `**作成済**`・同期済へ更新 |
 | 2026-11-23 | §1, §8, §12, §14, RK-033–035, Related Tests, Spec Gaps, 改訂履歴 | 誤 dirty 防止と外部ファイル変更自動同期（`auto-sync-dirty-fix`）: Host `MarkdownDocument.updateDoc` での `previous` シリアライズ比較による実質差分判定、Webview `math`/`plantuml` NodeView `ignoreMutation`/`stopEvent` ガード・`StarterKit` `link: false` 重複排除・no-op `update` 送信抑止、およびドキュメント単位 `FileSystemWatcher`（`file`/`vscode-remote`、250ms デバウンス、自己保存 500ms 抑止＋内容一致スキップ、`!isDirty` ガード、`reloadFromDisk()` による Undo リセットと全モード同期・不完全読込非破壊ログ）を契約化。Requirements Brief `auto-sync-dirty-fix` AD-001–AD-007 |
+| 2026-11-27 | §1, §2, §15, Related Tests, Spec Gaps, 改訂履歴 | 単一正本 Undo / Redo（`undo-redo`）: `MarkdownDocument` 単一履歴（上限 100 段・保存地点 `isDirty` 復帰）へ一本化し、TipTap `undoRedo: false`・Source 独自スタックを廃止。英語単語/文節境界・800ms アイドル・削除種別・カーソル移動・日本語 IME `compositionend` 確定単位・構造コマンド単位の `undoGroupId` コアレッシング、OS 非依存 `Ctrl+Z` / `Cmd+Z`・Redo 対応、直列メッセージキュー、ProseMirror 最小差分＋カーソル復元、IME `Enter` 保護を契約化 |
 

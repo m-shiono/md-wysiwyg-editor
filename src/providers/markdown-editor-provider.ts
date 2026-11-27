@@ -64,6 +64,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
   private readonly _reloadDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly _savingUris = new Set<string>();
   private readonly _selfSaveSuppressUntil = new Map<string, number>();
+  private readonly _messageQueues = new Map<string, Promise<void>>();
   private readonly _pendingDiagnostics = new Map<
     string,
     (snapshot: WebviewDiagnosticSnapshot) => void
@@ -190,7 +191,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
         return;
       }
       const message = raw as WebviewInboundMessage;
-      void this.handleMessage(document, webviewPanel, message);
+      void this.enqueueMessage(document, webviewPanel, message);
     });
 
     document.onDidChange((event) => {
@@ -203,8 +204,24 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     });
 
     document.onDidContentChange(() => {
+      const undoRedoCtx = document.activeUndoRedoContext;
       const mode = this.modeStateFor(document).mode;
-      if (mode === 'preview') {
+      if (undoRedoCtx) {
+        const nextEpoch = (this._minUpdateEpoch.get(key) ?? 0) + 1;
+        this._minUpdateEpoch.set(key, nextEpoch);
+        if (mode === 'preview') {
+          this.postPreviewProjection(document, webviewPanel.webview);
+        } else {
+          this.postDisplayMessage(document, webviewPanel.webview, {
+            type: 'docUpdated',
+            docJson: document.docJson,
+            markdownText: document.markdownText,
+            updateEpoch: nextEpoch,
+            selection: undoRedoCtx.selection,
+            isUndoRedo: true,
+          });
+        }
+      } else if (mode === 'preview') {
         this.postPreviewProjection(document, webviewPanel.webview);
       } else {
         this.postDisplayMessage(document, webviewPanel.webview, {
@@ -237,6 +254,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
       this._minUpdateEpoch.delete(key);
       this._readyUris.delete(key);
       this._webviewHtml.delete(key);
+      this._messageQueues.delete(key);
       handleCustomEditorDisposed(this.context, document.uri);
     });
 
@@ -445,7 +463,21 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     if (!panel || !document) {
       throw new Error(`No open custom editor for ${key}`);
     }
-    await this.handleMessage(document, panel, message);
+    await this.enqueueMessage(document, panel, message);
+  }
+
+  private enqueueMessage(
+    document: MarkdownDocument,
+    panel: vscode.WebviewPanel,
+    message: WebviewInboundMessage,
+  ): Promise<void> {
+    const key = document.uri.toString();
+    const prev = this._messageQueues.get(key) ?? Promise.resolve();
+    const next = prev
+      .catch(() => undefined)
+      .then(() => this.handleMessage(document, panel, message));
+    this._messageQueues.set(key, next);
+    return next;
   }
 
   refreshReadonly(uri: vscode.Uri, readonly: boolean): void {
@@ -616,7 +648,12 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
           return;
         }
         // Do not echo docJson — webview already has TipTap content (TC-067).
-        document.updateFromJson(message.docJson, 'Edit', { syncWebview: false });
+        document.updateFromJson(message.docJson, 'Edit', {
+          syncWebview: false,
+          undoGroupId: typeof message.undoGroupId === 'string' ? message.undoGroupId : undefined,
+          selectionBefore: message.selectionBefore,
+          selectionAfter: message.selectionAfter,
+        });
         // Markdown edit clears Raw-fail banner if it was showing.
         this.postMessage(panel.webview, {
           type: 'rawParseFailed',
@@ -635,7 +672,12 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
           return;
         }
         {
-          const ok = document.applyRawSource(message.markdown, 'Raw edit', { syncWebview: false });
+          const ok = document.applyRawSource(message.markdown, 'Raw edit', {
+            syncWebview: false,
+            undoGroupId: typeof message.undoGroupId === 'string' ? message.undoGroupId : undefined,
+            selectionBefore: message.selectionBefore,
+            selectionAfter: message.selectionAfter,
+          });
           this.postMessage(panel.webview, {
             type: 'rawParseFailed',
             failed: document.isRawParseFailed,
@@ -648,8 +690,56 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
               type: 'docUpdated',
               docJson: document.docJson,
               markdownText: document.markdownText,
+              origin: 'raw',
             });
             void this.marpManager.updatePreview(document.uri, document.markdownText);
+          }
+        }
+        break;
+      case 'requestUndo':
+        if (readonly) {
+          return;
+        }
+        if (!document.canUndo) {
+          if (modeState.mode !== 'preview') {
+            const key = document.uri.toString();
+            const nextEpoch = (this._minUpdateEpoch.get(key) ?? 0) + 1;
+            this._minUpdateEpoch.set(key, nextEpoch);
+            this.postDisplayMessage(document, panel.webview, {
+              type: 'docUpdated',
+              docJson: document.docJson,
+              markdownText: document.markdownText,
+              updateEpoch: nextEpoch,
+              isUndoRedo: true,
+            });
+          }
+          return;
+        }
+        {
+          const revBefore = document.historyRevision;
+          try {
+            await vscode.commands.executeCommand('undo');
+          } catch {
+            // Fallback handled below when command is unavailable or unbound
+          }
+          if (document.historyRevision === revBefore) {
+            document.undo();
+          }
+        }
+        break;
+      case 'requestRedo':
+        if (readonly || !document.canRedo) {
+          return;
+        }
+        {
+          const revBefore = document.historyRevision;
+          try {
+            await vscode.commands.executeCommand('redo');
+          } catch {
+            // Fallback handled below when command is unavailable or unbound
+          }
+          if (document.historyRevision === revBefore) {
+            document.redo();
           }
         }
         break;

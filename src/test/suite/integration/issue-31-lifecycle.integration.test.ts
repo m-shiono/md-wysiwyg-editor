@@ -245,6 +245,47 @@ suite('Issue #31 Real Extension Host Lifecycle & Webview Tests', () => {
     }
   });
 
+  test('TC-UNDO-014: CustomEditor supports 12 consecutive undo/redo steps back to initial state', async function () {
+    this.timeout(20000);
+    const ext = vscode.extensions.getExtension('mshiono.vsc-md-editor');
+    assert.ok(ext);
+    await ext.activate();
+
+    const provider = getMarkdownEditorProvider()!;
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-undo-14-'));
+    const mdPath = path.join(tmpDir, 'undo-12-steps.md');
+    const uri = vscode.Uri.file(mdPath);
+    fs.writeFileSync(mdPath, 'Step 0\n', 'utf8');
+
+    try {
+      await openCustomEditor(provider, uri);
+      const doc = provider.getOpenDocument(uri)!;
+
+      for (let i = 1; i <= 12; i++) {
+        await provider.deliverWebviewMessageForTest(uri, {
+          type: 'update',
+          docJson: tipTapDocJson(`Step ${i}`),
+          undoGroupId: `int-group-${i}`,
+        });
+      }
+      assert.ok(doc.markdownText.includes('Step 12'));
+
+      for (let i = 11; i >= 0; i--) {
+        await vscode.commands.executeCommand('undo');
+        await waitFor(() => doc.markdownText.includes(`Step ${i}`), 5000);
+      }
+      assert.strictEqual(doc.isDirty, false, 'returning to Step 0 clears dirty');
+
+      for (let i = 1; i <= 12; i++) {
+        await vscode.commands.executeCommand('redo');
+        await waitFor(() => doc.markdownText.includes(`Step ${i}`), 5000);
+      }
+      assert.ok(doc.markdownText.includes('Step 12'));
+    } finally {
+      await cleanupWorkspaceEditors(provider, [uri], tmpDir);
+    }
+  });
+
   test('TC-I31-007: updating md-wysiwyg-editor.defaultMode configuration synchronizes open editor mode', async function () {
     this.timeout(15000);
     const ext = vscode.extensions.getExtension('mshiono.vsc-md-editor');

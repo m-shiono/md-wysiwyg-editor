@@ -12,6 +12,11 @@ import Blockquote from "@tiptap/extension-blockquote";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import Image from "@tiptap/extension-image";
 import {
+  UndoGroupTracker,
+  type UndoInputEvent,
+} from "../src/utils/undo-grouping";
+import type { EditorSelectionSnapshot } from "../src/webviews/messages";
+import {
   applyImageSizePreset,
   normalizeImageDragWidth,
   toggleImageAlign,
@@ -476,9 +481,25 @@ let rawUpdateTimer: ReturnType<typeof setTimeout> | undefined;
 const VISUAL_UPDATE_DEBOUNCE_MS = 120;
 let visualUpdateTimer: ReturnType<typeof setTimeout> | undefined;
 let lastSyncedDocJsonStr = "";
-/** Bumped on HTML→GFM convert so Host can drop pre-convert `update` messages. */
+/** Bumped on HTML→GFM convert and Undo/Redo so Host can drop stale `update` messages. */
 let updateEpoch = 0;
 let gfmConvertPending = false;
+
+const visualUndoTracker = new UndoGroupTracker({ prefix: "vug" });
+const rawUndoTracker = new UndoGroupTracker({ prefix: "rug" });
+let isVisualComposing = false;
+let nextVisualInputMeta: UndoInputEvent | null = null;
+let pendingVisualGroupId: string | undefined;
+let pendingVisualSelectionBefore: EditorSelectionSnapshot | undefined;
+let lastCommittedVisualSelection: EditorSelectionSnapshot | undefined;
+let isRawComposing = false;
+let pendingRawGroupId: string | undefined;
+let pendingRawSelectionBefore: EditorSelectionSnapshot | undefined;
+let lastCommittedRawSelection: EditorSelectionSnapshot | undefined;
+let lastSyncedRawText = "";
+let applyRawTextChangeFn:
+  | ((updatedText: string, newCursorStart: number, newCursorEnd: number) => void)
+  | undefined;
 
 const HtmlTableExtension = Extension.create({
   name: "htmlTable",
@@ -611,7 +632,14 @@ const FrontmatterNode = Node.create({
       pre.appendChild(code);
       dom.appendChild(pre);
 
+      let isFmComposing = false;
+      let fmInputTimer: ReturnType<typeof setTimeout> | undefined;
+
       const syncAttrs = () => {
+        if (fmInputTimer) {
+          clearTimeout(fmInputTimer);
+          fmInputTimer = undefined;
+        }
         const next = code.textContent ?? "";
         const pos = getPos();
         if (typeof pos !== "number") {
@@ -635,6 +663,26 @@ const FrontmatterNode = Node.create({
       };
       refreshEditable();
 
+      code.addEventListener("compositionstart", () => {
+        isFmComposing = true;
+      });
+      code.addEventListener("compositionend", () => {
+        isFmComposing = false;
+        nextVisualInputMeta = { kind: "compositionConfirm", timestamp: Date.now() };
+        syncAttrs();
+      });
+      code.addEventListener("input", () => {
+        if (isFmComposing) {
+          return;
+        }
+        if (fmInputTimer) {
+          clearTimeout(fmInputTimer);
+        }
+        fmInputTimer = setTimeout(() => {
+          fmInputTimer = undefined;
+          syncAttrs();
+        }, 250);
+      });
       code.addEventListener("blur", syncAttrs);
 
       return {
@@ -644,6 +692,10 @@ const FrontmatterNode = Node.create({
             return false;
           }
           const text = (updatedNode.attrs.text as string) ?? "";
+          if (document.activeElement === code && code.textContent === text) {
+            refreshEditable();
+            return true;
+          }
           if (code.textContent !== text) {
             code.textContent = text;
           }
@@ -651,7 +703,13 @@ const FrontmatterNode = Node.create({
           return true;
         },
         ignoreMutation(mutation) {
-          return mutation.target === code;
+          return mutation.target === code || code.contains(mutation.target);
+        },
+        destroy() {
+          if (fmInputTimer) {
+            clearTimeout(fmInputTimer);
+            fmInputTimer = undefined;
+          }
         },
       };
     };
@@ -1813,6 +1871,8 @@ function getEditorExtensions() {
       strike: false,
       blockquote: false,
       link: false,
+      // 単一正本 MarkdownDocument 履歴に一本化するため TipTap 内蔵履歴を無効化（AD-022）
+      undoRedo: false,
     }),
     StrikeWithoutShortcut,
     BlockquoteWithoutShortcut,
@@ -1875,6 +1935,8 @@ function applyLinkFromInput(): void {
   if (!input) {
     return;
   }
+  flushPendingVisualUpdate();
+  nextVisualInputMeta = { kind: "command", timestamp: Date.now() };
   const url = input.value.trim();
   if (url) {
     editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
@@ -1908,7 +1970,11 @@ function isRawFocused(): boolean {
   return !!raw && document.activeElement === raw;
 }
 
-function syncRawTextFromHost(text: string, immediate = false): void {
+function syncRawTextFromHost(
+  text: string,
+  immediate = false,
+  rawSelection?: { start: number; end: number },
+): void {
   latestMarkdownText = text;
   // Host 正本の full sync（変換・undo 等）は Raw フォーカス中でも反映する。
   if (isRawFocused() && !immediate) {
@@ -1919,17 +1985,22 @@ function syncRawTextFromHost(text: string, immediate = false): void {
     if (!raw || (!immediate && isRawFocused())) {
       return;
     }
-    if (raw.value !== text) {
+    const targetStart = rawSelection
+      ? Math.max(0, Math.min(rawSelection.start, text.length))
+      : Math.min(raw.selectionStart, text.length);
+    const targetEnd = rawSelection
+      ? Math.max(0, Math.min(rawSelection.end, text.length))
+      : Math.min(raw.selectionEnd, text.length);
+    if (raw.value !== text || rawSelection) {
       suppressRawUpdate = true;
-      const start = raw.selectionStart;
-      const end = raw.selectionEnd;
       raw.value = text;
-      raw.setSelectionRange(
-        Math.min(start, text.length),
-        Math.min(end, text.length),
-      );
+      raw.setSelectionRange(targetStart, targetEnd);
       suppressRawUpdate = false;
     }
+    lastSyncedRawText = text;
+    lastCommittedRawSelection = {
+      raw: { start: targetStart, end: targetEnd },
+    };
   };
   if (immediate) {
     if (rawSyncTimer) {
@@ -2022,6 +2093,15 @@ function setModeUi(mode: EditorMode): void {
   if (previousMode === "markdown" && mode !== "markdown") {
     flushFrontmatterEditsBeforeModeLeave();
     flushPendingVisualUpdate();
+  }
+  if (previousMode !== mode) {
+    visualUndoTracker.reset();
+    rawUndoTracker.reset();
+    nextVisualInputMeta = null;
+    pendingVisualGroupId = undefined;
+    pendingVisualSelectionBefore = undefined;
+    pendingRawGroupId = undefined;
+    pendingRawSelectionBefore = undefined;
   }
   editorMode = mode;
   document.body.setAttribute("data-mode", mode);
@@ -2229,7 +2309,83 @@ function attachFindWidgetShortcuts(): void {
   });
 }
 
-/** Flush pending Raw debounce before leaving Raw so edits are not dropped. */
+const UNDO_REDO_EXCLUDE_SELECTOR =
+  "#find-widget input, #link-input-bar input, #image-popover input";
+
+function isUndoRedoInEditorScope(event: KeyboardEvent): boolean {
+  const targetEl = event.target instanceof Element ? event.target : null;
+  if (targetEl?.closest(UNDO_REDO_EXCLUDE_SELECTOR)) {
+    return false;
+  }
+  if (targetEl?.closest("#editor, #raw-editor")) {
+    return true;
+  }
+  const activeEl =
+    document.activeElement instanceof Element ? document.activeElement : null;
+  if (activeEl?.closest(UNDO_REDO_EXCLUDE_SELECTOR)) {
+    return false;
+  }
+  if (activeEl?.closest("#editor, #raw-editor")) {
+    return true;
+  }
+  return (
+    !targetEl ||
+    targetEl === document.body ||
+    targetEl === document.documentElement
+  );
+}
+
+function attachUndoRedoShortcuts(): void {
+  if (document.body.dataset.undoRedoShortcutsBound === "1") {
+    return;
+  }
+  document.body.dataset.undoRedoShortcutsBound = "1";
+
+  document.addEventListener(
+    "keydown",
+    (event: KeyboardEvent) => {
+      if (event.isComposing || event.keyCode === 229) {
+        return;
+      }
+      if (readonly || editorMode === "preview" || event.altKey) {
+        return;
+      }
+      const isMod = event.ctrlKey || event.metaKey;
+      if (!isMod) {
+        return;
+      }
+      const lower = event.key.toLowerCase();
+      const isRedo =
+        (lower === "z" && event.shiftKey) || (lower === "y" && !event.shiftKey);
+      const isUndo = lower === "z" && !event.shiftKey;
+      if (!isUndo && !isRedo) {
+        return;
+      }
+      if (!isUndoRedoInEditorScope(event)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      if (editorMode === "markdown") {
+        flushFrontmatterEditsBeforeModeLeave();
+        flushPendingVisualUpdate();
+      } else if (editorMode === "raw") {
+        flushPendingRawUpdate();
+      }
+      visualUndoTracker.reset();
+      rawUndoTracker.reset();
+      nextVisualInputMeta = null;
+      pendingVisualGroupId = undefined;
+      pendingVisualSelectionBefore = undefined;
+      pendingRawGroupId = undefined;
+      pendingRawSelectionBefore = undefined;
+      vscode.postMessage({ type: isRedo ? "requestRedo" : "requestUndo" });
+    },
+    true,
+  );
+}
+
+/** Flush pending Raw debounce before leaving Raw or performing undo/redo. */
 function flushPendingRawUpdate(): void {
   if (!rawUpdateTimer) {
     return;
@@ -2237,23 +2393,81 @@ function flushPendingRawUpdate(): void {
   clearTimeout(rawUpdateTimer);
   rawUpdateTimer = undefined;
   if (readonly) {
+    pendingRawGroupId = undefined;
+    pendingRawSelectionBefore = undefined;
     return;
   }
   const raw = getRawEditor();
   if (!raw) {
+    pendingRawGroupId = undefined;
+    pendingRawSelectionBefore = undefined;
     return;
   }
+  if (raw.value === lastSyncedRawText) {
+    pendingRawGroupId = undefined;
+    pendingRawSelectionBefore = undefined;
+    return;
+  }
+  const undoGroupId =
+    pendingRawGroupId ??
+    rawUndoTracker.nextGroupId({ kind: "command", timestamp: Date.now() });
+  const selectionBefore = pendingRawSelectionBefore ?? lastCommittedRawSelection;
+  const selectionAfter: EditorSelectionSnapshot = {
+    raw: { start: raw.selectionStart, end: raw.selectionEnd },
+  };
+  lastSyncedRawText = raw.value;
+  lastCommittedRawSelection = selectionAfter;
+  pendingRawGroupId = undefined;
+  pendingRawSelectionBefore = undefined;
   // Host accepts late updateRaw when !readonly (even if UI already left Raw).
-  vscode.postMessage({ type: "updateRaw", markdown: raw.value });
+  vscode.postMessage({
+    type: "updateRaw",
+    markdown: raw.value,
+    undoGroupId,
+    selectionBefore,
+    selectionAfter,
+  });
+}
+
+function getCurrentVisualSelectionSnapshot(): EditorSelectionSnapshot | undefined {
+  if (!editor) {
+    return undefined;
+  }
+  const { anchor, head } = editor.state.selection;
+  return { visual: { anchor, head } };
+}
+
+function emitVisualUpdatePayload(
+  json: JSONContent,
+  docJson: string,
+  forceCommandGroup = false,
+): void {
+  const undoGroupId = forceCommandGroup
+    ? visualUndoTracker.nextGroupId({ kind: "command", timestamp: Date.now() })
+    : pendingVisualGroupId ??
+      visualUndoTracker.nextGroupId(
+        nextVisualInputMeta ?? { kind: "command", timestamp: Date.now() },
+      );
+  const selectionBefore =
+    pendingVisualSelectionBefore ?? lastCommittedVisualSelection;
+  const selectionAfter = getCurrentVisualSelectionSnapshot();
+  lastSyncedDocJsonStr = docJson;
+  lastCommittedVisualSelection = selectionAfter;
+  pendingVisualGroupId = undefined;
+  pendingVisualSelectionBefore = undefined;
+  nextVisualInputMeta = null;
+  vscode.postMessage({
+    type: "update",
+    docJson,
+    epoch: updateEpoch,
+    undoGroupId,
+    selectionBefore,
+    selectionAfter,
+  });
 }
 
 /** Flush pending Visual debounce before mode switch or explicit actions. */
-function flushPendingVisualUpdate(): void {
-  if (!visualUpdateTimer) {
-    return;
-  }
-  clearTimeout(visualUpdateTimer);
-  visualUpdateTimer = undefined;
+function sendPendingVisualUpdate(forceCommandGroup = false): void {
   if (
     !editor ||
     suppressUpdate ||
@@ -2261,20 +2475,229 @@ function flushPendingVisualUpdate(): void {
     readonly ||
     editorMode !== "markdown"
   ) {
+    pendingVisualGroupId = undefined;
+    pendingVisualSelectionBefore = undefined;
+    nextVisualInputMeta = null;
     return;
   }
   const json = editor.getJSON();
   const docJson = serializeDocForHost(json);
   if (docJson === lastSyncedDocJsonStr) {
+    pendingVisualGroupId = undefined;
+    pendingVisualSelectionBefore = undefined;
+    nextVisualInputMeta = null;
     return;
   }
-  lastSyncedDocJsonStr = docJson;
-  vscode.postMessage({
-    type: "update",
-    docJson,
-    epoch: updateEpoch,
-  });
+  emitVisualUpdatePayload(json, docJson, forceCommandGroup);
   checkTableLimitsFromEditor(editor, json);
+}
+
+function flushPendingVisualUpdate(): void {
+  if (!visualUpdateTimer) {
+    return;
+  }
+  clearTimeout(visualUpdateTimer);
+  visualUpdateTimer = undefined;
+  sendPendingVisualUpdate(false);
+}
+
+function resolveVisualInputMeta(
+  event: InputEvent,
+  selectionReplaced: boolean,
+): UndoInputEvent | null {
+  const timestamp = Date.now();
+  const inputType = event.inputType || "";
+  if (
+    inputType === "deleteContentBackward" ||
+    inputType === "deleteWordBackward" ||
+    inputType === "deleteSoftLineBackward" ||
+    inputType === "deleteHardLineBackward"
+  ) {
+    return { kind: "deleteBackward", timestamp, selectionReplaced };
+  }
+  if (
+    inputType === "deleteContentForward" ||
+    inputType === "deleteWordForward" ||
+    inputType === "deleteSoftLineForward" ||
+    inputType === "deleteHardLineForward"
+  ) {
+    return { kind: "deleteForward", timestamp, selectionReplaced };
+  }
+  if (inputType === "insertParagraph" || inputType === "insertLineBreak") {
+    return { kind: "insertLineBreak", timestamp, selectionReplaced };
+  }
+  if (inputType === "insertText") {
+    return {
+      kind: "insertText",
+      insertedText: typeof event.data === "string" ? event.data : "",
+      timestamp,
+      selectionReplaced,
+    };
+  }
+  if (
+    inputType === "insertFromPaste" ||
+    inputType === "insertFromDrop" ||
+    inputType === "deleteByCut" ||
+    inputType === "deleteByDrag" ||
+    inputType === "insertReplacementText"
+  ) {
+    return { kind: "command", timestamp, selectionReplaced };
+  }
+  if (inputType.startsWith("history")) {
+    return null;
+  }
+  return { kind: "command", timestamp, selectionReplaced };
+}
+
+function resolveRawInputMeta(
+  event: InputEvent,
+  raw: HTMLTextAreaElement,
+): UndoInputEvent {
+  const timestamp = Date.now();
+  const selectionReplaced = raw.selectionStart !== raw.selectionEnd;
+  const inputType = event.inputType || "";
+  if (
+    inputType === "deleteContentBackward" ||
+    inputType === "deleteWordBackward" ||
+    inputType === "deleteSoftLineBackward" ||
+    inputType === "deleteHardLineBackward"
+  ) {
+    return { kind: "deleteBackward", timestamp, selectionReplaced };
+  }
+  if (
+    inputType === "deleteContentForward" ||
+    inputType === "deleteWordForward" ||
+    inputType === "deleteSoftLineForward" ||
+    inputType === "deleteHardLineForward"
+  ) {
+    return { kind: "deleteForward", timestamp, selectionReplaced };
+  }
+  if (inputType === "insertLineBreak" || inputType === "insertParagraph") {
+    return { kind: "insertLineBreak", timestamp, selectionReplaced };
+  }
+  if (inputType === "insertText") {
+    return {
+      kind: "insertText",
+      insertedText: typeof event.data === "string" ? event.data : "",
+      timestamp,
+      selectionReplaced,
+    };
+  }
+  return { kind: "command", timestamp, selectionReplaced };
+}
+
+function inferRawInputMetaFromDiff(prev: string, next: string): UndoInputEvent {
+  const timestamp = Date.now();
+  if (next.length === prev.length + 1) {
+    let prefix = 0;
+    while (prefix < prev.length && prev[prefix] === next[prefix]) {
+      prefix += 1;
+    }
+    const inserted = next[prefix] ?? "";
+    if (prev.slice(prefix) === next.slice(prefix + 1)) {
+      if (inserted === "\n" || inserted === "\r") {
+        return { kind: "insertLineBreak", timestamp };
+      }
+      return { kind: "insertText", insertedText: inserted, timestamp };
+    }
+  }
+  if (next.length + 1 === prev.length) {
+    let prefix = 0;
+    while (prefix < next.length && prev[prefix] === next[prefix]) {
+      prefix += 1;
+    }
+    if (prev.slice(prefix + 1) === next.slice(prefix)) {
+      return { kind: "deleteBackward", timestamp };
+    }
+  }
+  return { kind: "command", timestamp };
+}
+
+function attachVisualInputHandlers(): void {
+  const editorEl = getEditorRoot();
+  if (!editorEl || editorEl.dataset.undoInputBound === "1") {
+    return;
+  }
+  editorEl.dataset.undoInputBound = "1";
+
+  editorEl.addEventListener(
+    "compositionstart",
+    () => {
+      if (readonly || editorMode !== "markdown") {
+        return;
+      }
+      flushPendingVisualUpdate();
+      isVisualComposing = true;
+      pendingVisualSelectionBefore =
+        getCurrentVisualSelectionSnapshot() ?? lastCommittedVisualSelection;
+    },
+    true,
+  );
+
+  editorEl.addEventListener(
+    "compositionend",
+    () => {
+      if (readonly || editorMode !== "markdown") {
+        isVisualComposing = false;
+        return;
+      }
+      isVisualComposing = false;
+      const meta: UndoInputEvent = {
+        kind: "compositionConfirm",
+        timestamp: Date.now(),
+      };
+      nextVisualInputMeta = meta;
+      pendingVisualGroupId = visualUndoTracker.nextGroupId(meta);
+      // ProseMirror schedules endComposition after 20ms; flush after it settles.
+      setTimeout(() => {
+        if (
+          !isVisualComposing &&
+          editor &&
+          !readonly &&
+          editorMode === "markdown"
+        ) {
+          if (visualUpdateTimer) {
+            clearTimeout(visualUpdateTimer);
+            visualUpdateTimer = undefined;
+          }
+          sendPendingVisualUpdate(false);
+        }
+      }, 30);
+    },
+    true,
+  );
+
+  editorEl.addEventListener(
+    "beforeinput",
+    (event: Event) => {
+      if (!editor || readonly || editorMode !== "markdown" || isVisualComposing) {
+        return;
+      }
+      const ie = event as InputEvent;
+      if (ie.isComposing) {
+        return;
+      }
+      const meta = resolveVisualInputMeta(ie, !editor.state.selection.empty);
+      if (!meta) {
+        return;
+      }
+      const nextGroupId = visualUndoTracker.nextGroupId(meta);
+      if (
+        visualUpdateTimer &&
+        pendingVisualGroupId &&
+        nextGroupId !== pendingVisualGroupId
+      ) {
+        flushPendingVisualUpdate();
+      }
+      if (!pendingVisualGroupId) {
+        pendingVisualSelectionBefore =
+          getCurrentVisualSelectionSnapshot() ?? lastCommittedVisualSelection;
+      }
+      pendingVisualGroupId = nextGroupId;
+      nextVisualInputMeta = meta;
+    },
+    true,
+  );
 }
 
 // --- Image Rich Editing (Popover, Lightbox, Drag & Drop) ---
@@ -2373,6 +2796,7 @@ function updateActiveImageAttributes(attrs: { width?: string | null; align?: Ima
     return;
   }
   try {
+    flushPendingVisualUpdate();
     const pos = editor.view.posAtDOM(activeImageElement, 0);
     if (typeof pos !== "number" || pos < 0) {
       return;
@@ -2607,6 +3031,10 @@ function applyMode(mode: EditorMode, notifyHost: boolean): void {
       suppressRawUpdate = true;
       raw.value = latestMarkdownText;
       suppressRawUpdate = false;
+      lastSyncedRawText = latestMarkdownText;
+      lastCommittedRawSelection = {
+        raw: { start: raw.selectionStart, end: raw.selectionEnd },
+      };
     }
   }
   if (notifyHost) {
@@ -2635,9 +3063,19 @@ function initEditor(initialDoc: TipTapDoc): void {
           suppressUpdate ||
           gfmConvertPending ||
           readonly ||
-          editorMode !== "markdown"
+          editorMode !== "markdown" ||
+          isVisualComposing
         ) {
           return;
+        }
+        if (!pendingVisualGroupId) {
+          const meta = nextVisualInputMeta ?? {
+            kind: "command",
+            timestamp: Date.now(),
+          };
+          nextVisualInputMeta = null;
+          pendingVisualSelectionBefore = lastCommittedVisualSelection;
+          pendingVisualGroupId = visualUndoTracker.nextGroupId(meta);
         }
         if (visualUpdateTimer) {
           clearTimeout(visualUpdateTimer);
@@ -2650,33 +3088,55 @@ function initEditor(initialDoc: TipTapDoc): void {
             readonly ||
             editorMode !== "markdown"
           ) {
+            pendingVisualGroupId = undefined;
+            pendingVisualSelectionBefore = undefined;
+            nextVisualInputMeta = null;
             return;
           }
           const json = ed.getJSON();
           const docJson = serializeDocForHost(json);
           if (docJson === lastSyncedDocJsonStr) {
+            pendingVisualGroupId = undefined;
+            pendingVisualSelectionBefore = undefined;
+            nextVisualInputMeta = null;
             return;
           }
-          lastSyncedDocJsonStr = docJson;
-          vscode.postMessage({
-            type: "update",
-            docJson,
-            epoch: updateEpoch,
-          });
+          emitVisualUpdatePayload(json, docJson, false);
           checkTableLimitsFromEditor(ed, json);
         }, VISUAL_UPDATE_DEBOUNCE_MS);
       },
     });
 
     lastSyncedDocJsonStr = serializeDocForHost(editor.getJSON());
+    lastCommittedVisualSelection = getCurrentVisualSelectionSnapshot();
     isEditorInitialized = true;
     attachToolbarHandlers();
     attachLinkInputHandlers();
     attachCommonHandlers();
+    attachVisualInputHandlers();
     attachTableMenuHandlers();
     attachTableContextMenuHandlers();
     updateFormatToolbarPressedState();
-    editor.on("selectionUpdate", () => updateFormatToolbarPressedState());
+    editor.on("selectionUpdate", () => {
+      updateFormatToolbarPressedState();
+      if (
+        !suppressUpdate &&
+        !isVisualComposing &&
+        !pendingVisualGroupId &&
+        editorMode === "markdown"
+      ) {
+        const cur = getCurrentVisualSelectionSnapshot();
+        if (
+          cur?.visual &&
+          lastCommittedVisualSelection?.visual &&
+          (cur.visual.anchor !== lastCommittedVisualSelection.visual.anchor ||
+            cur.visual.head !== lastCommittedVisualSelection.visual.head)
+        ) {
+          visualUndoTracker.notifyCursorMove();
+          lastCommittedVisualSelection = cur;
+        }
+      }
+    });
     editor.on("transaction", () => updateFormatToolbarPressedState());
     attachPasteHandler();
     updateTableMenuButtonStyle();
@@ -2686,7 +3146,14 @@ function initEditor(initialDoc: TipTapDoc): void {
   }
 }
 
-function applyExternalDoc(doc: TipTapDoc, options?: { force?: boolean }): void {
+function applyExternalDoc(
+  doc: TipTapDoc,
+  options?: {
+    force?: boolean;
+    selection?: EditorSelectionSnapshot;
+    isUndoRedo?: boolean;
+  },
+): void {
   if (!editor) {
     return;
   }
@@ -2698,11 +3165,77 @@ function applyExternalDoc(doc: TipTapDoc, options?: { force?: boolean }): void {
     clearTimeout(visualUpdateTimer);
     visualUpdateTimer = undefined;
   }
+  pendingVisualGroupId = undefined;
+  pendingVisualSelectionBefore = undefined;
+  nextVisualInputMeta = null;
+  visualUndoTracker.reset();
+
   suppressUpdate = true;
-  editor.commands.setContent(prepareDocForEditor(doc));
-  lastSyncedDocJsonStr = serializeDocForHost(editor.getJSON());
-  suppressUpdate = false;
-  updateTableMenuState();
+  try {
+    const prepared = prepareDocForEditor(doc);
+    let appliedDiff = false;
+    try {
+      const newPmDoc = editor.schema.nodeFromJSON(prepared);
+      const oldDoc = editor.state.doc;
+      const diffStart = oldDoc.content.findDiffStart(newPmDoc.content);
+      let tr = editor.state.tr;
+      if (diffStart !== null) {
+        const diffEnd = oldDoc.content.findDiffEnd(newPmDoc.content);
+        if (diffEnd) {
+          const endA = Math.max(diffStart, diffEnd.a);
+          const endB = Math.max(diffStart, diffEnd.b);
+          tr = tr.replace(diffStart, endA, newPmDoc.slice(diffStart, endB));
+        } else {
+          tr = tr.replaceWith(0, oldDoc.content.size, newPmDoc.content);
+        }
+      }
+      const visSel = options?.selection?.visual;
+      if (visSel) {
+        const maxPos = tr.doc.content.size;
+        const anchor = Math.max(0, Math.min(visSel.anchor, maxPos));
+        const head = Math.max(0, Math.min(visSel.head, maxPos));
+        try {
+          tr = tr.setSelection(TextSelection.create(tr.doc, anchor, head));
+        } catch {
+          try {
+            tr = tr.setSelection(TextSelection.near(tr.doc.resolve(head)));
+          } catch {
+            // Ignore if selection position cannot be resolved
+          }
+        }
+      }
+      if (tr.docChanged || tr.selectionSet) {
+        editor.view.dispatch(tr.scrollIntoView());
+      }
+      appliedDiff = true;
+    } catch {
+      appliedDiff = false;
+    }
+
+    if (!appliedDiff) {
+      editor.commands.setContent(prepared);
+      const visSel = options?.selection?.visual;
+      if (visSel) {
+        try {
+          const maxPos = editor.state.doc.content.size;
+          const anchor = Math.max(0, Math.min(visSel.anchor, maxPos));
+          const head = Math.max(0, Math.min(visSel.head, maxPos));
+          const tr = editor.state.tr.setSelection(
+            TextSelection.create(editor.state.doc, anchor, head),
+          );
+          editor.view.dispatch(tr.scrollIntoView());
+        } catch {
+          // Ignore fallback selection error
+        }
+      }
+    }
+
+    lastSyncedDocJsonStr = serializeDocForHost(editor.getJSON());
+    lastCommittedVisualSelection = getCurrentVisualSelectionSnapshot();
+    updateTableMenuState();
+  } finally {
+    suppressUpdate = false;
+  }
 
   if (
     editorMode === "markdown" ||
@@ -2818,50 +3351,52 @@ function attachRawEditorHandlers(): void {
   }
   raw.dataset.bound = "1";
 
-  const triggerRawUpdate = (immediate = false): void => {
-    if (suppressRawUpdate || readonly || editorMode !== "raw") {
+  const sendRawUpdateNow = (): void => {
+    if (suppressRawUpdate || readonly || editorMode !== "raw" || isRawComposing) {
       return;
     }
     const value = raw.value;
-    if (rawUpdateTimer) {
-      clearTimeout(rawUpdateTimer);
-    }
-    if (immediate) {
-      vscode.postMessage({ type: "updateRaw", markdown: value });
-    } else {
-      rawUpdateTimer = setTimeout(() => {
-        vscode.postMessage({ type: "updateRaw", markdown: value });
-      }, RAW_UPDATE_DEBOUNCE_MS);
-    }
-  };
-
-  interface RawHistoryEntry {
-    text: string;
-    cursorStart: number;
-    cursorEnd: number;
-  }
-  const rawUndoStack: RawHistoryEntry[] = [];
-  const rawRedoStack: RawHistoryEntry[] = [];
-  const MAX_HISTORY = 100;
-  let rawTypingTimer: ReturnType<typeof setTimeout> | undefined;
-
-  const pushRawHistory = (): void => {
-    const currentText = raw.value;
-    const last = rawUndoStack[rawUndoStack.length - 1];
-    if (last && last.text === currentText) {
-      last.cursorStart = raw.selectionStart;
-      last.cursorEnd = raw.selectionEnd;
+    if (value === lastSyncedRawText) {
+      pendingRawGroupId = undefined;
+      pendingRawSelectionBefore = undefined;
       return;
     }
-    rawUndoStack.push({
-      text: currentText,
-      cursorStart: raw.selectionStart,
-      cursorEnd: raw.selectionEnd,
+    const undoGroupId =
+      pendingRawGroupId ??
+      rawUndoTracker.nextGroupId({ kind: "command", timestamp: Date.now() });
+    const selectionBefore = pendingRawSelectionBefore ?? lastCommittedRawSelection;
+    const selectionAfter: EditorSelectionSnapshot = {
+      raw: { start: raw.selectionStart, end: raw.selectionEnd },
+    };
+    lastSyncedRawText = value;
+    lastCommittedRawSelection = selectionAfter;
+    pendingRawGroupId = undefined;
+    pendingRawSelectionBefore = undefined;
+    vscode.postMessage({
+      type: "updateRaw",
+      markdown: value,
+      undoGroupId,
+      selectionBefore,
+      selectionAfter,
     });
-    if (rawUndoStack.length > MAX_HISTORY) {
-      rawUndoStack.shift();
+  };
+
+  const triggerRawUpdate = (immediate = false): void => {
+    if (suppressRawUpdate || readonly || editorMode !== "raw" || isRawComposing) {
+      return;
     }
-    rawRedoStack.length = 0;
+    if (rawUpdateTimer) {
+      clearTimeout(rawUpdateTimer);
+      rawUpdateTimer = undefined;
+    }
+    if (immediate) {
+      sendRawUpdateNow();
+    } else {
+      rawUpdateTimer = setTimeout(() => {
+        rawUpdateTimer = undefined;
+        sendRawUpdateNow();
+      }, RAW_UPDATE_DEBOUNCE_MS);
+    }
   };
 
   const applyRawTextChange = (
@@ -2869,24 +3404,148 @@ function attachRawEditorHandlers(): void {
     newCursorStart: number,
     newCursorEnd: number,
   ): void => {
-    pushRawHistory();
+    flushPendingRawUpdate();
+    const selectionBefore: EditorSelectionSnapshot = {
+      raw: { start: raw.selectionStart, end: raw.selectionEnd },
+    };
+    const selectionAfter: EditorSelectionSnapshot = {
+      raw: { start: newCursorStart, end: newCursorEnd },
+    };
+    const undoGroupId = rawUndoTracker.nextGroupId({
+      kind: "command",
+      timestamp: Date.now(),
+    });
     suppressRawUpdate = true;
     raw.value = updatedText;
     raw.setSelectionRange(newCursorStart, newCursorEnd);
     suppressRawUpdate = false;
-    triggerRawUpdate(true);
+    lastSyncedRawText = updatedText;
+    lastCommittedRawSelection = selectionAfter;
+    pendingRawGroupId = undefined;
+    pendingRawSelectionBefore = undefined;
+    vscode.postMessage({
+      type: "updateRaw",
+      markdown: updatedText,
+      undoGroupId,
+      selectionBefore,
+      selectionAfter,
+    });
+  };
+  applyRawTextChangeFn = applyRawTextChange;
+
+  const trackRawCursorMove = (): void => {
+    if (readonly || editorMode !== "raw" || isRawComposing || rawUpdateTimer) {
+      return;
+    }
+    const curStart = raw.selectionStart;
+    const curEnd = raw.selectionEnd;
+    const prev = lastCommittedRawSelection?.raw;
+    if (!prev || prev.start !== curStart || prev.end !== curEnd) {
+      rawUndoTracker.notifyCursorMove();
+      lastCommittedRawSelection = { raw: { start: curStart, end: curEnd } };
+    }
   };
 
-  raw.addEventListener("input", () => {
-    if (!rawTypingTimer) {
-      pushRawHistory();
-    } else {
-      clearTimeout(rawTypingTimer);
+  raw.addEventListener("mouseup", trackRawCursorMove);
+  raw.addEventListener("select", trackRawCursorMove);
+  raw.addEventListener("focus", () => {
+    if (!rawUpdateTimer) {
+      lastCommittedRawSelection = {
+        raw: { start: raw.selectionStart, end: raw.selectionEnd },
+      };
     }
-    rawTypingTimer = setTimeout(() => {
-      rawTypingTimer = undefined;
-      pushRawHistory();
-    }, 600);
+  });
+  raw.addEventListener("keyup", (e: KeyboardEvent) => {
+    if (
+      e.key === "ArrowLeft" ||
+      e.key === "ArrowRight" ||
+      e.key === "ArrowUp" ||
+      e.key === "ArrowDown" ||
+      e.key === "Home" ||
+      e.key === "End" ||
+      e.key === "PageUp" ||
+      e.key === "PageDown"
+    ) {
+      trackRawCursorMove();
+    }
+  });
+
+  raw.addEventListener("compositionstart", () => {
+    if (readonly || editorMode !== "raw") {
+      return;
+    }
+    flushPendingRawUpdate();
+    isRawComposing = true;
+    pendingRawSelectionBefore = {
+      raw: { start: raw.selectionStart, end: raw.selectionEnd },
+    };
+  });
+
+  raw.addEventListener("compositionend", () => {
+    if (readonly || editorMode !== "raw") {
+      isRawComposing = false;
+      return;
+    }
+    isRawComposing = false;
+    pendingRawGroupId = rawUndoTracker.nextGroupId({
+      kind: "compositionConfirm",
+      timestamp: Date.now(),
+    });
+    setTimeout(() => {
+      if (
+        !isRawComposing &&
+        !readonly &&
+        editorMode === "raw" &&
+        raw.value !== lastSyncedRawText
+      ) {
+        triggerRawUpdate(true);
+      }
+    }, 0);
+  });
+
+  raw.addEventListener("beforeinput", (e: Event) => {
+    if (readonly || editorMode !== "raw" || isRawComposing) {
+      return;
+    }
+    const ie = e as InputEvent;
+    if (ie.isComposing) {
+      return;
+    }
+    const meta = resolveRawInputMeta(ie, raw);
+    const nextGroupId = rawUndoTracker.nextGroupId(meta);
+    if (
+      rawUpdateTimer &&
+      pendingRawGroupId &&
+      nextGroupId !== pendingRawGroupId
+    ) {
+      flushPendingRawUpdate();
+    }
+    if (!pendingRawGroupId) {
+      pendingRawSelectionBefore = {
+        raw: { start: raw.selectionStart, end: raw.selectionEnd },
+      };
+    }
+    pendingRawGroupId = nextGroupId;
+  });
+
+  raw.addEventListener("input", () => {
+    if (
+      suppressRawUpdate ||
+      readonly ||
+      editorMode !== "raw" ||
+      isRawComposing
+    ) {
+      return;
+    }
+    if (!pendingRawGroupId) {
+      const inferred = inferRawInputMetaFromDiff(lastSyncedRawText, raw.value);
+      pendingRawGroupId = rawUndoTracker.nextGroupId(inferred);
+      if (!pendingRawSelectionBefore) {
+        pendingRawSelectionBefore = lastCommittedRawSelection ?? {
+          raw: { start: raw.selectionStart, end: raw.selectionEnd },
+        };
+      }
+    }
     triggerRawUpdate(false);
   });
 
@@ -2894,65 +3553,11 @@ function attachRawEditorHandlers(): void {
     if (readonly || editorMode !== "raw") {
       return;
     }
+    if (e.isComposing || e.keyCode === 229) {
+      return;
+    }
 
     const isMod = e.metaKey || e.ctrlKey;
-
-    // 0. Undo / Redo with exact cursor retention
-    if (isMod && (e.key === "z" || e.key === "Z")) {
-      if (e.shiftKey) {
-        // Redo (Cmd+Shift+Z / Ctrl+Shift+Z)
-        if (rawRedoStack.length > 0) {
-          e.preventDefault();
-          rawUndoStack.push({
-            text: raw.value,
-            cursorStart: raw.selectionStart,
-            cursorEnd: raw.selectionEnd,
-          });
-          const next = rawRedoStack.pop()!;
-          suppressRawUpdate = true;
-          raw.value = next.text;
-          raw.setSelectionRange(next.cursorStart, next.cursorEnd);
-          suppressRawUpdate = false;
-          triggerRawUpdate(true);
-          return;
-        }
-      } else {
-        // Undo (Cmd+Z / Ctrl+Z)
-        if (rawUndoStack.length > 0) {
-          e.preventDefault();
-          rawRedoStack.push({
-            text: raw.value,
-            cursorStart: raw.selectionStart,
-            cursorEnd: raw.selectionEnd,
-          });
-          const prev = rawUndoStack.pop()!;
-          suppressRawUpdate = true;
-          raw.value = prev.text;
-          raw.setSelectionRange(prev.cursorStart, prev.cursorEnd);
-          suppressRawUpdate = false;
-          triggerRawUpdate(true);
-          return;
-        }
-      }
-    }
-    if (e.ctrlKey && !e.metaKey && (e.key === "y" || e.key === "Y")) {
-      // Windows Redo (Ctrl+Y)
-      if (rawRedoStack.length > 0) {
-        e.preventDefault();
-        rawUndoStack.push({
-          text: raw.value,
-          cursorStart: raw.selectionStart,
-          cursorEnd: raw.selectionEnd,
-        });
-        const next = rawRedoStack.pop()!;
-        suppressRawUpdate = true;
-        raw.value = next.text;
-        raw.setSelectionRange(next.cursorStart, next.cursorEnd);
-        suppressRawUpdate = false;
-        triggerRawUpdate(true);
-        return;
-      }
-    }
 
     // 1. Tab / Shift+Tab: Table alignment (cursor stays in place) or List indent
     if (e.key === "Tab") {
@@ -3277,6 +3882,10 @@ function applyModifiedTableNode(
         return;
       }
       const cmd = clone.getAttribute("data-cmd");
+      if (cmd !== "insertToc") {
+        flushPendingVisualUpdate();
+        nextVisualInputMeta = { kind: "command", timestamp: Date.now() };
+      }
       switch (cmd) {
         case "bold":
           editor.chain().focus().toggleBold().run();
@@ -3324,12 +3933,27 @@ function applyModifiedTableNode(
             const raw = getRawEditor();
             if (raw) {
               const updated = updateOrInsertTableOfContents(raw.value);
-              raw.value = updated;
-              vscode.postMessage({ type: "updateRaw", markdown: updated });
+              const pos = Math.min(raw.selectionStart, updated.length);
+              if (applyRawTextChangeFn) {
+                applyRawTextChangeFn(updated, pos, pos);
+              } else {
+                raw.value = updated;
+                vscode.postMessage({
+                  type: "updateRaw",
+                  markdown: updated,
+                  undoGroupId: rawUndoTracker.nextGroupId({ kind: "command" }),
+                });
+              }
             }
           } else if (editorMode === "markdown" && editor) {
+            flushPendingVisualUpdate();
             const updated = updateOrInsertTableOfContents(latestMarkdownText);
-            vscode.postMessage({ type: "updateRaw", markdown: updated });
+            vscode.postMessage({
+              type: "updateRaw",
+              markdown: updated,
+              undoGroupId: visualUndoTracker.nextGroupId({ kind: "command" }),
+              selectionBefore: getCurrentVisualSelectionSnapshot(),
+            });
           }
           break;
         }
@@ -3589,18 +4213,7 @@ function postDocUpdate(): void {
     clearTimeout(visualUpdateTimer);
     visualUpdateTimer = undefined;
   }
-  const json = editor.getJSON();
-  const docJson = serializeDocForHost(json);
-  if (docJson === lastSyncedDocJsonStr) {
-    return;
-  }
-  lastSyncedDocJsonStr = docJson;
-  vscode.postMessage({
-    type: "update",
-    docJson,
-    epoch: updateEpoch,
-  });
-  checkTableLimitsFromEditor(editor, json);
+  sendPendingVisualUpdate(true);
 }
 
 function handleTableOperation(op: string): void {
@@ -3633,11 +4246,21 @@ function handleTableOperation(op: string): void {
             block.tableText,
             tablePipeAlignment,
           );
-          raw.value =
+          const updated =
             raw.value.slice(0, block.startOffset) +
             formatted +
             raw.value.slice(block.endOffset);
-          vscode.postMessage({ type: "updateRaw", markdown: raw.value });
+          const cursorPos = Math.min(raw.selectionStart, updated.length);
+          if (applyRawTextChangeFn) {
+            applyRawTextChangeFn(updated, cursorPos, cursorPos);
+          } else {
+            raw.value = updated;
+            vscode.postMessage({
+              type: "updateRaw",
+              markdown: updated,
+              undoGroupId: rawUndoTracker.nextGroupId({ kind: "command" }),
+            });
+          }
         }
       }
     } else if (editorMode === "markdown" && editor) {
@@ -3650,16 +4273,16 @@ function handleTableOperation(op: string): void {
     return;
   }
 
+  if (op !== "convertToGfm" && op !== "setDefaultGfm" && op !== "setDefaultHtml") {
+    flushPendingVisualUpdate();
+  }
+
   switch (op) {
     case "insert":
       editor
         .chain()
         .focus()
         .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-        .run();
-      editor
-        .chain()
-        .focus()
         .updateAttributes("table", { tableFormat: insertTableFormat })
         .run();
       postDocUpdate();
@@ -3969,6 +4592,7 @@ function attachPasteHandler(): void {
           );
           if (tableNode) {
             event.preventDefault();
+            flushPendingVisualUpdate();
             editor.chain().focus().insertContent(tableNode as JSONContent).run();
             postDocUpdate();
             return;
@@ -4065,7 +4689,7 @@ window.addEventListener("message", (event) => {
       if (editorMode === "markdown" || editorMode === "preview") {
         initEditor(pendingInitialDoc);
       }
-      scheduleRawTextUpdate(latestMarkdownText);
+      syncRawTextFromHost(latestMarkdownText, true);
       // Ensure UI matches Host mode after init (DEFAULT may be raw before first paint).
       setModeUi(editorMode);
       break;
@@ -4080,17 +4704,35 @@ window.addEventListener("message", (event) => {
         break;
       }
       pendingInitialDoc = JSON.parse(message.docJson);
+      if (message.isUndoRedo) {
+        rawUndoTracker.reset();
+        visualUndoTracker.reset();
+        pendingRawGroupId = undefined;
+        pendingRawSelectionBefore = undefined;
+        pendingVisualGroupId = undefined;
+        pendingVisualSelectionBefore = undefined;
+      }
+      const skipRawEcho =
+        message.origin === "raw" && editorMode === "raw" && !message.isUndoRedo;
       if (isEditorInitialized && editor) {
         if (editorMode === "preview") {
           applyPreviewTipTap();
         }
         // Host-initiated full doc (table convert, Raw parse, revert, undo/redo).
         gfmConvertPending = false;
-        syncRawTextFromHost(latestMarkdownText, true);
-        applyExternalDoc(pendingInitialDoc, { force: true });
+        if (!skipRawEcho) {
+          syncRawTextFromHost(latestMarkdownText, true, message.selection?.raw);
+        }
+        applyExternalDoc(pendingInitialDoc, {
+          force: true,
+          selection: message.selection,
+          isUndoRedo: !!message.isUndoRedo,
+        });
       } else {
         gfmConvertPending = false;
-        syncRawTextFromHost(latestMarkdownText, true);
+        if (!skipRawEcho) {
+          syncRawTextFromHost(latestMarkdownText, true, message.selection?.raw);
+        }
         if (editorMode === "preview") {
           ensureTipTapInitialized();
           applyPreviewTipTap();
@@ -4133,6 +4775,7 @@ window.addEventListener("message", (event) => {
     case "imageInserted":
       ensureTipTapInitialized();
       if (editor && !readonly && editorMode === "markdown") {
+        flushPendingVisualUpdate();
         const displaySrc =
           typeof message.displaySrc === "string" && message.displaySrc.length > 0
             ? message.displaySrc
@@ -4148,11 +4791,7 @@ window.addEventListener("message", (event) => {
             originalSrc?: string;
           })
           .run();
-        vscode.postMessage({
-          type: "update",
-          docJson: serializeDocForHost(editor.getJSON()),
-          epoch: updateEpoch,
-        });
+        postDocUpdate();
       }
       break;
     case "themeUpdated":
@@ -4212,5 +4851,6 @@ window.addEventListener("message", (event) => {
 
 attachCommonHandlers();
 attachFindWidgetShortcuts();
+attachUndoRedoShortcuts();
 
 vscode.postMessage({ type: "ready" });

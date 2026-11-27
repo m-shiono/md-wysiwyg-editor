@@ -214,6 +214,8 @@ function installDomShims(win: Record<string, unknown>): void {
     win.innerWidth = 1024;
     win.innerHeight = 768;
   }
+  win.scrollBy = () => undefined;
+  win.scrollTo = () => undefined;
 }
 
 /**

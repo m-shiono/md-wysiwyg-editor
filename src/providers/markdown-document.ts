@@ -9,6 +9,34 @@ import {
   type SerializeOptions,
 } from '../serializers/markdown-serializer';
 import { logError, logWarn } from '../utils/logger';
+import { MAX_UNDO_HISTORY } from '../utils/undo-grouping';
+import type { EditorSelectionSnapshot } from '../webviews/messages';
+
+export interface UpdateDocOptions {
+  syncWebview?: boolean;
+  undoGroupId?: string;
+  selectionBefore?: EditorSelectionSnapshot;
+  selectionAfter?: EditorSelectionSnapshot;
+}
+
+export interface UndoRedoContext {
+  selection?: EditorSelectionSnapshot;
+  isUndoRedo: true;
+}
+
+interface DocumentSnapshot {
+  doc: TipTapDoc;
+  markdownText: string;
+  isRawParseFailed: boolean;
+  selection?: EditorSelectionSnapshot;
+}
+
+interface EditHistoryEntry {
+  label: string;
+  undoGroupId?: string;
+  before: DocumentSnapshot;
+  after: DocumentSnapshot;
+}
 
 export class MarkdownDocument implements vscode.CustomDocument {
   static async create(
@@ -52,12 +80,17 @@ export class MarkdownDocument implements vscode.CustomDocument {
   private readonly _onDidContentChange = new vscode.EventEmitter<void>();
   readonly onDidContentChange = this._onDidContentChange.event;
 
-  private _editStack: Array<{ undo: () => void; redo: () => void; label: string }> = [];
+  private _editStack: EditHistoryEntry[] = [];
   private _editIndex = -1;
+  private _savedMarkdownText: string;
+  private _savedEditIndex = -1;
+  private _historyRevision = 0;
+  private _activeUndoRedoContext: UndoRedoContext | undefined;
 
   private constructor(uri: vscode.Uri, initialData: Uint8Array) {
     this._uri = uri;
     this._markdownText = Buffer.from(initialData).toString('utf8');
+    this._savedMarkdownText = this._markdownText;
     if (isLargeFile(this._markdownText)) {
       logWarn(`Large file detected (${this._uri.fsPath}): editing continues with performance warning`);
     }
@@ -98,6 +131,30 @@ export class MarkdownDocument implements vscode.CustomDocument {
     return this._isDirty;
   }
 
+  get canUndo(): boolean {
+    return this._editIndex >= 0;
+  }
+
+  get canRedo(): boolean {
+    return this._editIndex + 1 < this._editStack.length;
+  }
+
+  get undoDepth(): number {
+    return this._editIndex + 1;
+  }
+
+  get redoDepth(): number {
+    return Math.max(0, this._editStack.length - 1 - this._editIndex);
+  }
+
+  get historyRevision(): number {
+    return this._historyRevision;
+  }
+
+  get activeUndoRedoContext(): UndoRedoContext | undefined {
+    return this._activeUndoRedoContext;
+  }
+
   dispose(): void {
     this._onDidChange.dispose();
     this._onDidContentChange.dispose();
@@ -125,6 +182,8 @@ export class MarkdownDocument implements vscode.CustomDocument {
       this._markdownText = serialized;
       await vscode.workspace.fs.writeFile(targetResource, Buffer.from(serialized, 'utf8'));
       this._isDirty = false;
+      this._savedMarkdownText = serialized;
+      this._savedEditIndex = this._editIndex;
     } catch (error) {
       logError('Serialize failure on save', error);
       void vscode.window.showErrorMessage('Failed to save: serialization error');
@@ -166,6 +225,8 @@ export class MarkdownDocument implements vscode.CustomDocument {
     this._isDirty = false;
     this._editStack = [];
     this._editIndex = -1;
+    this._savedMarkdownText = diskText;
+    this._savedEditIndex = -1;
     this._onDidContentChange.fire();
     return true;
   }
@@ -176,6 +237,10 @@ export class MarkdownDocument implements vscode.CustomDocument {
     this._doc = parseMarkdown(this._markdownText);
     this._isRawParseFailed = false;
     this._isDirty = false;
+    this._editStack = [];
+    this._editIndex = -1;
+    this._savedMarkdownText = this._markdownText;
+    this._savedEditIndex = -1;
     this._onDidContentChange.fire();
   }
 
@@ -224,7 +289,7 @@ export class MarkdownDocument implements vscode.CustomDocument {
   applyRawSource(
     markdown: string,
     label = 'Raw edit',
-    options?: { syncWebview?: boolean },
+    options?: UpdateDocOptions,
   ): boolean {
     if (markdown === this._markdownText && !this._isRawParseFailed) {
       return true;
@@ -239,20 +304,21 @@ export class MarkdownDocument implements vscode.CustomDocument {
       this._doc = newDoc;
       this._markdownText = markdown;
       this._isRawParseFailed = false;
-      this.pushEdit(
+      this.commitHistoryEdit(
         label,
-        () => {
-          this._doc = previousDoc;
-          this._markdownText = previousText;
-          this._isRawParseFailed = previousFailed;
-          this._onDidContentChange.fire();
+        {
+          doc: previousDoc,
+          markdownText: previousText,
+          isRawParseFailed: previousFailed,
+          selection: options?.selectionBefore,
         },
-        () => {
-          this._doc = newDoc;
-          this._markdownText = markdown;
-          this._isRawParseFailed = false;
-          this._onDidContentChange.fire();
+        {
+          doc: newDoc,
+          markdownText: markdown,
+          isRawParseFailed: false,
+          selection: options?.selectionAfter,
         },
+        options,
       );
       if (options?.syncWebview !== false) {
         this._onDidContentChange.fire();
@@ -275,9 +341,11 @@ export class MarkdownDocument implements vscode.CustomDocument {
   updateDoc(
     newDoc: TipTapDoc,
     label = 'Edit',
-    options?: { syncWebview?: boolean },
+    options?: UpdateDocOptions,
   ): void {
     const previous = this._doc;
+    const previousText = this._markdownText;
+    const previousFailed = this._isRawParseFailed;
     this._doc = newDoc;
     this._isRawParseFailed = false;
     const opts = this.getSerializeOptions();
@@ -305,26 +373,21 @@ export class MarkdownDocument implements vscode.CustomDocument {
     }
 
     this._markdownText = serialized;
-    this.pushEdit(
+    this.commitHistoryEdit(
       label,
-      () => {
-        this._doc = previous;
-        try {
-          this._markdownText = serializeMarkdown(previous, opts);
-        } catch {
-          /* noop */
-        }
-        this._onDidContentChange.fire();
+      {
+        doc: previous,
+        markdownText: previousText,
+        isRawParseFailed: previousFailed,
+        selection: options?.selectionBefore,
       },
-      () => {
-        this._doc = newDoc;
-        try {
-          this._markdownText = serializeMarkdown(newDoc, opts);
-        } catch {
-          /* noop */
-        }
-        this._onDidContentChange.fire();
+      {
+        doc: newDoc,
+        markdownText: serialized,
+        isRawParseFailed: false,
+        selection: options?.selectionAfter,
       },
+      options,
     );
     // Webview-originated edits must not echo setContent back into the same editor.
     if (options?.syncWebview !== false) {
@@ -335,32 +398,117 @@ export class MarkdownDocument implements vscode.CustomDocument {
   updateFromJson(
     json: string,
     label = 'Edit',
-    options?: { syncWebview?: boolean },
+    options?: UpdateDocOptions,
   ): void {
     this.updateDoc(jsonToDoc(json), label, options);
   }
 
-  private pushEdit(label: string, undo: () => void, redo: () => void): void {
+  undo(): boolean {
+    if (this._editIndex < 0) {
+      return false;
+    }
+    const entry = this._editStack[this._editIndex];
+    if (!entry) {
+      return false;
+    }
+    this._editIndex -= 1;
+    this._historyRevision += 1;
+    this._doc = entry.before.doc;
+    this._markdownText = entry.before.markdownText;
+    this._isRawParseFailed = entry.before.isRawParseFailed;
+    this._isDirty = !(
+      this._editIndex === this._savedEditIndex &&
+      this._markdownText === this._savedMarkdownText &&
+      !this._isRawParseFailed
+    );
+    this._activeUndoRedoContext = {
+      selection: entry.before.selection,
+      isUndoRedo: true,
+    };
+    try {
+      this._onDidContentChange.fire();
+    } finally {
+      this._activeUndoRedoContext = undefined;
+    }
+    return true;
+  }
+
+  redo(): boolean {
+    if (this._editIndex + 1 >= this._editStack.length) {
+      return false;
+    }
+    this._editIndex += 1;
+    const entry = this._editStack[this._editIndex];
+    if (!entry) {
+      this._editIndex -= 1;
+      return false;
+    }
+    this._historyRevision += 1;
+    this._doc = entry.after.doc;
+    this._markdownText = entry.after.markdownText;
+    this._isRawParseFailed = entry.after.isRawParseFailed;
+    this._isDirty = !(
+      this._editIndex === this._savedEditIndex &&
+      this._markdownText === this._savedMarkdownText &&
+      !this._isRawParseFailed
+    );
+    this._activeUndoRedoContext = {
+      selection: entry.after.selection,
+      isUndoRedo: true,
+    };
+    try {
+      this._onDidContentChange.fire();
+    } finally {
+      this._activeUndoRedoContext = undefined;
+    }
+    return true;
+  }
+
+  private commitHistoryEdit(
+    label: string,
+    before: DocumentSnapshot,
+    after: DocumentSnapshot,
+    options?: UpdateDocOptions,
+  ): void {
+    const groupId = options?.undoGroupId;
+    if (
+      groupId &&
+      this._editIndex >= 0 &&
+      this._editIndex === this._editStack.length - 1 &&
+      this._editIndex !== this._savedEditIndex &&
+      this._editStack[this._editIndex]?.undoGroupId === groupId
+    ) {
+      this._editStack[this._editIndex].after = after;
+      this._isDirty = true;
+      return;
+    }
+
+    if (this._savedEditIndex > this._editIndex) {
+      this._savedEditIndex = -2;
+    }
     this._editStack = this._editStack.slice(0, this._editIndex + 1);
-    this._editStack.push({ label, undo, redo });
+    this._editStack.push({ label, undoGroupId: groupId, before, after });
+    while (this._editStack.length > MAX_UNDO_HISTORY) {
+      this._editStack.shift();
+      if (this._savedEditIndex >= 0) {
+        this._savedEditIndex -= 1;
+        if (this._savedEditIndex < 0) {
+          this._savedEditIndex = -2;
+        }
+      } else if (this._savedEditIndex === -1) {
+        this._savedEditIndex = -2;
+      }
+    }
     this._editIndex = this._editStack.length - 1;
     this._isDirty = true;
     this._onDidChange.fire({
       document: this,
       label,
       undo: async () => {
-        if (this._editIndex < 0) {
-          return;
-        }
-        this._editIndex--;
-        this._editStack[this._editIndex + 1]?.undo();
+        this.undo();
       },
       redo: async () => {
-        if (this._editIndex + 1 >= this._editStack.length) {
-          return;
-        }
-        this._editIndex++;
-        this._editStack[this._editIndex]?.redo();
+        this.redo();
       },
     });
   }

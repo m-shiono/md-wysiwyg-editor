@@ -45,3 +45,4 @@ import './suite/unit/image-rich-editing.test';
 import './suite/unit/marp-preview-manager.test';
 import './suite/unit/issue-31-compat-and-security.test';
 import './suite/unit/auto-sync-dirty-fix.test';
+import './suite/unit/undo-redo.test';
