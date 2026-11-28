@@ -285,7 +285,7 @@
     "jsdom": "^31.0.0",
     "mocha": "^10.8.2",
     "prettier": "^3.4.0",
-    "typescript": "^5.7.0"
+    "typescript": "^7.0.2"
   },
   "dependencies": {
     "@marp-team/marp-core": "^5.0.2",
