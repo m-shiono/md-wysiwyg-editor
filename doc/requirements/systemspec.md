@@ -1461,6 +1461,128 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
 
 ---
 
+## §17 行番号表示および文字数・単語数ステータス表示（line-numbers-and-document-stats）
+
+### 概要
+
+Source モード（Raw エディタ）での論理行番号表示と、VS Code 右下ステータスバー（`vscode.StatusBarItem`）への現在行/列・総行数・文字数・単語数（日本語 CJK＋英語混在対応・選択範囲集計）表示を提供する（AD-023）。すべて表示層のみで完結させ、`MarkdownDocument` 正本・`isDirty`・Undo 履歴には一切干渉しない。
+
+### Inputs & Types
+
+| 入力 | 型 | 必須 | 備考 |
+|---|---|---|---|
+| `markdownText` | `string` | はい | `MarkdownDocument.markdownText` 正本 |
+| `cursorStatus` | Webview → Host postMessage | 任意 | `{ type: 'cursorStatus', mode: EditorMode, line: number, column?: number, selectedText?: string }` |
+
+### Behavior
+
+1. **Source モード左ガター（`#raw-line-numbers`）**:
+   - `#raw-editor-container` 内で `#raw-line-numbers`（左ガター）と `#raw-editor-main`（`#raw-search-backdrop` + `#raw-editor`）に分離し、検索ハイライト背景の座標ズレを防ぐ。
+   - 論理行番号（1-based）を表示し、`#raw-editor` の `scrollTop` と垂直スクロールを同期する。現在カーソル行に `.active-line` クラスを付与する。
+2. **文字数・単語数・行/列カウント（`src/utils/document-stats.ts`）**:
+   - `charCount`: 改行（`\r`, `\n`）を除外した Unicode コードポイント数。
+   - `wordCount`: CJK 文字（ひらがな・カタカナ・漢字・ハングル）は 1 文字 = 1 語、非 CJK は連続語構成文字を 1 語として合算。
+   - `lineCount`: 空文字は `1`、それ以外は改行区切りの論理行数。
+   - `selectedText` が非空の場合は `selectedCharCount` / `selectedWordCount` も併せて集計する。
+3. **VS Code ステータスバー表示（`StatusBarItem`）**:
+   - Source (`raw`): `Ln X, Col Y | ... chars | ... words`
+   - Visual (`markdown`): `Ln X / Total | ... chars | ... words`（現在ブロックのテキスト/比率から対応行を推定）
+   - Preview (`preview`): `Total lines | ... chars | ... words`
+   - 選択範囲がある場合は文字数に `(... sel)` を併記する。
+   - アクティブパネル切替・パネル破棄・通常テキストエディタへのフォーカス移動時は非表示（`hide()`）とする。
+4. **誤 dirty 非発生**:
+   - `cursorStatus` 受信は `MarkdownDocument.updateDoc` / `isDirty` / Undo スタックを変更しない。
+
+### Non-Goals
+
+- Visual モード左ガターへの行番号列表示（表・図を含む WYSIWYG 表現のため、ステータスバーの `Ln X / Total` のみとする）
+- ステータスバー項目クリックによる Go to Line ダイアログ実装
+
+### Related Tests
+
+- [doc/test/testspec-line-numbers-and-stats.md](../test/testspec-line-numbers-and-stats.md) — `TC-STATS-001`–`010`
+
+---
+
+## §18 見出しアウトラインパネル（document-outline）
+
+### 概要
+
+長文 Markdown ドキュメントの見出し構造（H1〜H6）を左サイドパネル（`#outline-panel`）に階層表示し、Visual / Preview / Source の全モードでクリックジャンプおよび現在見出しハイライトを提供する（AD-024）。表示層のみで完結させ、Readonly 時も利用可能とし、`MarkdownDocument` 正本や `isDirty` には一切干渉しない。
+
+### Behavior
+
+1. **開閉トグル（`Outline` ボタン）**:
+   - `#mode-toolbar` に非モードアクションボタン `Outline`（`data-action="toggle-outline"`、`data-mode` なし）を配置し、押下で `#outline-panel` を開閉する（`aria-pressed` 同期、`editorMode` 不変）。
+   - パネル内閉じるボタン（`#outline-close-btn`）でも閉じられる。
+2. **見出し抽出と階層表示（`extractOutlineHeadings`）**:
+   - 既存の TOC 生成（§15 / `src/utils/editor-assist.ts`）と同一規則で YAML フロントマター・コードフェンスを除外し、H1〜H6 の `{ level, text, slug, line, index }` を抽出する。
+   - `data-level` 属性（`1`〜`6`）と外部 CSS でインデント表示し、見出し 0 件時は `No headings` を表示する。
+3. **クリックジャンプと現在位置追従**:
+   - **Source (`raw`)**: `findLineStartOffset` で対象見出し行先頭へカーソル移動・スクロールし、行番号ガターおよびステータスバーを更新する。
+   - **Visual (`markdown`) / Preview (`preview`)**: `#editor`（Marp 時は `#preview-marp-root`）内の対応見出し要素へ `scrollIntoView` する。
+   - スクロールおよび編集追従でアクティブ項目（`.outline-item.active`）を更新する。
+
+### Non-Goals
+
+- アウトライン上でのドラッグ＆ドロップによる見出し並び替え
+- VS Code 標準エクスプローラ Outline ビューへの独自ツリープロバイダ登録
+
+### Related Tests
+
+- [doc/test/testspec-document-outline.md](../test/testspec-document-outline.md) — `TC-OUT-001`–`009`
+
+---
+
+## §19 リンクのクリック遷移およびミニポップオーバー（link-navigation-and-popover）
+
+### 概要
+
+Visual / Preview モード上のリンク（`<a href>`）に対する安全な遷移と編集用ミニポップオーバー（`#link-popover`）を提供する（AD-025）。危険スキームは Host / Webview 双方で厳格にブロックし、遷移操作は `isDirty` を変更しない。
+
+### Behavior
+
+1. **操作モード別の振る舞い**:
+   - **Preview モード / Readonly 時**: リンクの通常クリックで遷移する。
+   - **Visual モード（非 RO）**: `Cmd/Ctrl+Click` で直接遷移、通常クリックで `#link-popover`（URL プレビュー / Open / Edit / Unlink）を表示する。
+2. **遷移種別とセキュリティ境界（§9 / AD-010）**:
+   - **同一文書アンカー（`#slug`）**: Webview 内で該当見出しへスクロール（§18 見出し抽出と共用）。
+   - **外部 URL**: `https:` / `http:` / `mailto:` のみ許可し、Host 経由で `vscode.env.openExternal` を呼ぶ。
+   - **相対ファイルリンク**: Host 側で `vscode.Uri.joinPath` により `file` / `vscode-remote` スキームを保全解決し、存在確認後に `vscode.open` で開く（`untitled:` または未存在時は Warning 通知）。
+   - **危険スキーム**: `javascript:`, `data:`, `file:`, `vbscript:`, `command:`, プロトコル相対 `//...`, 制御文字を含む URL はブロックし Warning 通知＋ログ記録する。
+3. **Undo / Dirty 整合**:
+   - `Edit` / `Unlink` は 1 操作＝1 Undo 記録ポイントとして Host に同期する（AD-022）。遷移操作のみでは `isDirty` を変更しない。
+
+### Related Tests
+
+- [doc/test/testspec-link-navigation.md](../test/testspec-link-navigation.md) — `TC-LINK-001`–`010`
+
+---
+
+## §20 スラッシュコマンドメニュー（slash-command-menu）
+
+### 概要
+
+Visual モード（非 Readonly）において、行頭または空白直後の `/` 入力でフローティング候補メニュー（`#slash-menu`）を表示し、キーワード絞り込みとキーボード操作のみで各種ブロック（見出し・リスト・表・コード・Mermaid・PlantUML・KaTeX 数式・引用・水平線・TOC）を挿入できる（AD-026）。
+
+### Behavior
+
+1. **起動トリガーとガード**:
+   - **Visual モード（`editorMode === 'markdown'`）かつ非 Readonly** のみ有効。
+   - 行頭または空白文字直後の `/[a-zA-Z0-9_-]*` に一致した場合のみ起動する。URL 途中（`https://...`）や語中（`a/b`）では起動しない。
+   - IME 変換中（`isComposing === true`）、`codeBlock` 内、`code` インラインマーク内、および範囲選択中は起動しない。
+2. **対応ブロック（14 項目）**:
+   - Heading 1–3, Bullet List, Ordered List, Task List, Table, Code Block, Mermaid Diagram, PlantUML Diagram, Math Block (KaTeX), Blockquote, Horizontal Rule, Table of Contents。
+3. **キーボード操作と Undo 整合**:
+   - `/` に続くキーワードでリアルタイム絞り込み、`ArrowUp` / `ArrowDown` で選択移動、`Enter` / `Tab` で確定、`Escape` で閉じる。
+   - 確定時はトリガー文字列（`/...`）を削除して対象ブロックを挿入し、1 操作＝1 Undo 記録ポイントとして Host に同期する（AD-022）。
+
+### Related Tests
+
+- [doc/test/testspec-slash-commands.md](../test/testspec-slash-commands.md) — `TC-SLASH-001`–`009`
+
+---
+
 | ID | 内容 | 本仕様での扱い |
 |----|------|---------------|
 | RK-001 | HTML 混在による Git diff 可読性低下 | AD-013 で緩和。レビューはプレビュー推奨 |
@@ -1519,6 +1641,10 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
 | [doc/test/testspec-issue-31-test-review.md](../test/testspec-issue-31-test-review.md) | **作成済** — `TC-I31-001`–`042` 実装・Green 実測済（`issue-31-test-review`: 4層テスト刷新・Provider ライフサイクル・`vscode-remote:`/`untitled:`・`imageInserted` `epoch`・Marp CSP/バッファ・Export Dirty Gate・Readonly バッジ・Switch Guard・`activationEvents`・`^1.85.0`/派生 IDE・`UD-001` Option A） |
 | [doc/test/testspec-auto-sync-dirty-fix.md](../test/testspec-auto-sync-dirty-fix.md) | **作成済** — 誤 dirty 防止（`updateDoc` `previous` シリアライズ比較・`math`/`plantuml` NodeView ガード・`Link` 重複解消・no-op `update` 抑止）および外部ファイル変更自動同期（`FileSystemWatcher` 250ms デバウンス・自己保存 500ms 抑止・`!isDirty` ガード・`reloadFromDisk()` 全モード同期・不完全読込保護、§1, §8, §12, §14） |
 | [doc/test/testspec-undo-redo.md](../test/testspec-undo-redo.md) | **作成済** — TC-UNDO-001–014（単一正本 `MarkdownDocument` Undo/Redo・最大100段・英語単語/文節＆日本語 IME 確定記録ポイント・`Ctrl+Z`/`Cmd+Z` 両対応・カーソル復元・保存地点 `isDirty` 連動、§1, §2, §15） |
+| [doc/test/testspec-line-numbers-and-stats.md](../test/testspec-line-numbers-and-stats.md) | **作成済** — `TC-STATS-001`–`010`（Source 行番号ガター・文字数/単語数/選択集計・`StatusBarItem`・誤 dirty 非発生、§17） |
+| [doc/test/testspec-document-outline.md](../test/testspec-document-outline.md) | **作成済** — `TC-OUT-001`–`009`（見出しアウトライン抽出・開閉トグル・全モードジャンプ・Readonly 許可、§18） |
+| [doc/test/testspec-link-navigation.md](../test/testspec-link-navigation.md) | **作成済** — `TC-LINK-001`–`010`（リンク分類・スキーム検証・相対パス解決・`#link-popover`・修飾クリック遷移、§19） |
+| [doc/test/testspec-slash-commands.md](../test/testspec-slash-commands.md) | **作成済** — `TC-SLASH-001`–`009`（`/` トリガー検出・絞り込み・ブロック挿入・RO/IME/コード内ガード、§20） |
 | MVP 外項目 | [doc/requirements/backlog.md](backlog.md) |
 
 ---
@@ -1618,4 +1744,8 @@ Markdownファイル（`.md`）の編集体験を維持したまま、表計算�
 | 2026-11-15 | Related Tests, 改訂履歴 | `issue-31-test-review` の testspec 作成・既存 testspec 是正・テスト実装完了（`TC-I31-001`–`042` / `TC-184` / `TC-PUML-006` / C-2, C-3, C-5, C-6 反映）に伴い、Related Tests 表を `**作成済**`・同期済へ更新 |
 | 2026-11-23 | §1, §8, §12, §14, RK-033–035, Related Tests, Spec Gaps, 改訂履歴 | 誤 dirty 防止と外部ファイル変更自動同期（`auto-sync-dirty-fix`）: Host `MarkdownDocument.updateDoc` での `previous` シリアライズ比較による実質差分判定、Webview `math`/`plantuml` NodeView `ignoreMutation`/`stopEvent` ガード・`StarterKit` `link: false` 重複排除・no-op `update` 送信抑止、およびドキュメント単位 `FileSystemWatcher`（`file`/`vscode-remote`、250ms デバウンス、自己保存 500ms 抑止＋内容一致スキップ、`!isDirty` ガード、`reloadFromDisk()` による Undo リセットと全モード同期・不完全読込非破壊ログ）を契約化。Requirements Brief `auto-sync-dirty-fix` AD-001–AD-007 |
 | 2026-11-27 | §1, §2, §15, Related Tests, Spec Gaps, 改訂履歴 | 単一正本 Undo / Redo（`undo-redo`）: `MarkdownDocument` 単一履歴（上限 100 段・保存地点 `isDirty` 復帰）へ一本化し、TipTap `undoRedo: false`・Source 独自スタックを廃止。英語単語/文節境界・800ms アイドル・削除種別・カーソル移動・日本語 IME `compositionend` 確定単位・構造コマンド単位の `undoGroupId` コアレッシング、OS 非依存 `Ctrl+Z` / `Cmd+Z`・Redo 対応、直列メッセージキュー、ProseMirror 最小差分＋カーソル復元、IME `Enter` 保護を契約化 |
+| 2026-11-28 | §17, Related Tests, 改訂履歴 | 行番号表示および文字数・単語数ステータス表示（`line-numbers-and-document-stats`）: Source モード左ガター（`#raw-line-numbers`）＋スクロール同期＋現在行ハイライト、および VS Code 右下 `StatusBarItem` への現在行/列・総行数・文字数・単語数（CJK+英語・選択範囲併記）表示を追加 |
+| 2026-11-28 | §18, Related Tests, 改訂履歴 | 見出しアウトラインパネル（`document-outline`）: `#mode-toolbar` の `Outline` トグル、H1〜H6 階層ツリー表示、Visual/Preview/Source 全モードでのクリックジャンプ・現在位置ハイライトを追加 |
+| 2026-11-28 | §19, Related Tests, 改訂履歴 | リンクのクリック遷移およびミニポップオーバー（`link-navigation-and-popover`）: Preview/RO 通常クリック遷移、Visual `Cmd/Ctrl+Click` 遷移＆通常クリック `#link-popover`（Open/Edit/Unlink）、`https`/`http`/`mailto`/アンカー/相対ファイル許可・危険スキームブロックを追加 |
+| 2026-11-28 | §20, Related Tests, 改訂履歴 | スラッシュコマンドメニュー（`slash-command-menu`）: Visual モード専用 `/` トリガー、14 ブロック挿入（Mermaid/PlantUML/KaTeX/Table/TOC 等）、キーワード絞り込み、RO/IME/コード内ガードを追加 |
 

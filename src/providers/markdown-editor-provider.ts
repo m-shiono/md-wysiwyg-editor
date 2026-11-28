@@ -42,6 +42,16 @@ import type {
 } from '../webviews/messages';
 import { showNativeMarkdownPreview } from '../commands/native-markdown-preview';
 import { setMarkdownEditorProvider } from '../utils/editor-provider-hook';
+import {
+  countDocumentStats,
+  formatStatusBarText,
+  formatStatusBarTooltip,
+} from '../utils/document-stats';
+import {
+  classifyLinkHref,
+  resolveRelativeLinkTarget,
+} from '../utils/link-navigation';
+import { updateOrInsertTableOfContents } from '../utils/editor-assist';
 
 export class MarkdownEditorProvider implements vscode.CustomEditorProvider<MarkdownDocument> {
   static readonly viewType = 'md-wysiwyg-editor.wysiwyg';
@@ -65,6 +75,12 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
   private readonly _savingUris = new Set<string>();
   private readonly _selfSaveSuppressUntil = new Map<string, number>();
   private readonly _messageQueues = new Map<string, Promise<void>>();
+  private readonly _statusBarItem: vscode.StatusBarItem;
+  private _activeUriKey: string | undefined;
+  private readonly _cursorStatuses = new Map<
+    string,
+    { mode: EditorMode; line: number; column?: number; selectedText?: string }
+  >();
   private readonly _pendingDiagnostics = new Map<
     string,
     (snapshot: WebviewDiagnosticSnapshot) => void
@@ -76,7 +92,18 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     private readonly marpManager: MarpPreviewManager,
   ) {
     setMarkdownEditorProvider(this);
+    this._statusBarItem = vscode.window.createStatusBarItem(
+      vscode.StatusBarAlignment.Right,
+      100,
+    );
     this.context.subscriptions.push(
+      this._statusBarItem,
+      vscode.window.onDidChangeActiveTextEditor((editor) => {
+        if (editor) {
+          this._activeUriKey = undefined;
+          this._statusBarItem.hide();
+        }
+      }),
       vscode.window.onDidChangeActiveColorTheme((theme) => {
         const message = buildThemeUpdatedMessage(mapColorThemeKind(theme.kind));
         for (const panel of this._openPanels.values()) {
@@ -238,11 +265,19 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
         });
       }
       void this.marpManager.updatePreview(document.uri, document.markdownText);
+      if (this._activeUriKey === key) {
+        this.updateStatusBar();
+      }
     });
 
     webviewPanel.onDidChangeViewState((event) => {
       if (event.webviewPanel.active) {
+        this._activeUriKey = key;
         this.syncDocumentModeWithConfig(document, webviewPanel);
+        this.updateStatusBar();
+      } else if (this._activeUriKey === key) {
+        this._activeUriKey = undefined;
+        this.updateStatusBar();
       }
     });
 
@@ -255,10 +290,20 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
       this._readyUris.delete(key);
       this._webviewHtml.delete(key);
       this._messageQueues.delete(key);
+      this._cursorStatuses.delete(key);
+      if (this._activeUriKey === key) {
+        this._activeUriKey = undefined;
+        this.updateStatusBar();
+      }
       handleCustomEditorDisposed(this.context, document.uri);
     });
 
     this.setupFileWatcher(document);
+
+    if (webviewPanel.active) {
+      this._activeUriKey = key;
+      this.updateStatusBar();
+    }
 
     void this.marpManager.updatePreview(document.uri, document.markdownText);
   }
@@ -558,6 +603,28 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     }
   }
 
+  private updateStatusBar(): void {
+    const key = this._activeUriKey;
+    if (!key) {
+      this._statusBarItem.hide();
+      return;
+    }
+    const document = this._openDocuments.get(key);
+    const panel = this._openPanels.get(key);
+    if (!document || !panel) {
+      this._statusBarItem.hide();
+      return;
+    }
+    const mode = this.modeStateFor(document).mode;
+    const cursor = this._cursorStatuses.get(key);
+    const stats = countDocumentStats(document.markdownText, cursor?.selectedText);
+    stats.line = cursor?.line ?? 1;
+    stats.column = cursor?.column ?? 1;
+    this._statusBarItem.text = formatStatusBarText(stats, mode);
+    this._statusBarItem.tooltip = formatStatusBarTooltip(stats, mode);
+    this._statusBarItem.show();
+  }
+
   private modeStateFor(document: MarkdownDocument, refreshFromConfig = false): EditorModeState {
     const key = document.uri.toString();
     let state = this._modeStates.get(key);
@@ -629,8 +696,28 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
           )) {
             this.postDisplayMessage(document, panel.webview, outbound);
           }
+          if (this._activeUriKey === document.uri.toString()) {
+            this.updateStatusBar();
+          }
         }
         break;
+      case 'cursorStatus': {
+        const key = document.uri.toString();
+        this._cursorStatuses.set(key, {
+          mode: isEditorMode(message.mode) ? message.mode : modeState.mode,
+          line: typeof message.line === 'number' && Number.isFinite(message.line) ? message.line : 1,
+          column:
+            typeof message.column === 'number' && Number.isFinite(message.column)
+              ? message.column
+              : undefined,
+          selectedText: typeof message.selectedText === 'string' ? message.selectedText : '',
+        });
+        if (panel.active || this._activeUriKey === key) {
+          this._activeUriKey = key;
+          this.updateStatusBar();
+        }
+        break;
+      }
       case 'update':
         if (
           readonly ||
@@ -665,6 +752,9 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
           markdownText: document.markdownText,
         });
         void this.marpManager.updatePreview(document.uri, document.markdownText);
+        if (this._activeUriKey === document.uri.toString()) {
+          this.updateStatusBar();
+        }
         break;
       case 'updateRaw':
         // Late flush after Raw→other mode must still apply; only file RO blocks.
@@ -693,6 +783,34 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
               origin: 'raw',
             });
             void this.marpManager.updatePreview(document.uri, document.markdownText);
+            if (this._activeUriKey === document.uri.toString()) {
+              this.updateStatusBar();
+            }
+          }
+        }
+        break;
+      case 'insertToc':
+        if (readonly) {
+          return;
+        }
+        {
+          const updated = updateOrInsertTableOfContents(document.markdownText);
+          const ok = document.applyRawSource(updated, 'Insert TOC', {
+            syncWebview: false,
+            undoGroupId: typeof message.undoGroupId === 'string' ? message.undoGroupId : undefined,
+            selectionBefore: message.selectionBefore,
+          });
+          if (ok) {
+            this.postDisplayMessage(document, panel.webview, {
+              type: 'docUpdated',
+              docJson: document.docJson,
+              markdownText: document.markdownText,
+              origin: 'raw',
+            });
+            void this.marpManager.updatePreview(document.uri, document.markdownText);
+            if (this._activeUriKey === document.uri.toString()) {
+              this.updateStatusBar();
+            }
           }
         }
         break;
@@ -860,6 +978,42 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
           logInfo(message.message);
         }
         break;
+      case 'openLink': {
+        if (typeof message.href !== 'string') {
+          return;
+        }
+        const classified = classifyLinkHref(message.href);
+        if (classified.kind === 'external') {
+          await vscode.env.openExternal(vscode.Uri.parse(classified.url));
+        } else if (classified.kind === 'relative') {
+          const targetUri = resolveRelativeLinkTarget(
+            document.uri,
+            classified.path,
+            vscode.Uri.joinPath,
+          );
+          if (!targetUri) {
+            void vscode.window.showWarningMessage(
+              'Cannot resolve relative link in an unsaved document.',
+            );
+            return;
+          }
+          try {
+            await vscode.workspace.fs.stat(targetUri);
+            await vscode.commands.executeCommand('vscode.open', targetUri);
+          } catch {
+            void vscode.window.showWarningMessage(
+              `Target file not found: ${classified.path}`,
+            );
+          }
+        } else if (classified.kind === 'unsafe') {
+          logError(
+            `Blocked unsafe link: ${classified.reason}`,
+            new Error(message.href),
+          );
+          void vscode.window.showWarningMessage('Blocked unsafe link.');
+        }
+        break;
+      }
       case 'openNativePreview':
         await showNativeMarkdownPreview({
           uri: document.uri,
@@ -978,6 +1132,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
       <button type="button" data-mode="raw"${initialMode === 'raw' ? ' class="active"' : ''} title="Source Editor (Markdown)" aria-label="Source Editor">Source</button>
     </span>
     <button type="button" data-mode="preview"${initialMode === 'preview' ? ' class="active"' : ''} title="Editor Preview" aria-label="Editor Preview">Preview</button>
+    <button type="button" data-action="toggle-outline" aria-pressed="false" title="Toggle Document Outline" aria-label="Toggle Document Outline">Outline</button>
     <button type="button" data-action="native-preview" title="Open Default Markdown Preview" aria-label="Open Default Markdown Preview">Default Preview</button>
   </div>
   <div id="toolbar" role="toolbar" aria-label="Formatting">
@@ -1070,11 +1225,25 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
   </div>
   <div id="table-warning" class="hidden"></div>
   <div id="raw-parse-banner" class="hidden" role="alert"></div>
-  <div id="preview-marp-root" class="hidden" role="document" aria-readonly="true"></div>
-  <div id="editor"></div>
-  <div id="raw-editor-container" class="hidden">
-    <div id="raw-search-backdrop" aria-hidden="true"></div>
-    <textarea id="raw-editor" spellcheck="false" aria-label="Raw Markdown"></textarea>
+  <div id="editor-workspace">
+    <aside id="outline-panel" class="hidden" role="navigation" aria-label="Document Outline">
+      <div class="outline-header">
+        <span class="outline-title">Outline</span>
+        <button type="button" id="outline-close-btn" title="Close Outline" aria-label="Close Outline">×</button>
+      </div>
+      <div id="outline-list" role="list"></div>
+    </aside>
+    <div id="editor-main">
+      <div id="preview-marp-root" class="hidden" role="document" aria-readonly="true"></div>
+      <div id="editor"></div>
+      <div id="raw-editor-container" class="hidden">
+        <div id="raw-line-numbers" aria-hidden="true"></div>
+        <div id="raw-editor-main">
+          <div id="raw-search-backdrop" aria-hidden="true"></div>
+          <textarea id="raw-editor" spellcheck="false" aria-label="Raw Markdown"></textarea>
+        </div>
+      </div>
+    </div>
   </div>
   <div id="table-context-menu" class="context-menu hidden" role="menu" aria-label="Table Context Menu">
     <button type="button" data-table-op="addRowBefore" role="menuitem">Add row above</button>
@@ -1107,6 +1276,13 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider<Markd
     <input type="text" id="image-alt-input" placeholder="Alt text" aria-label="Alt text" />
     <button type="button" data-action="zoom" title="Zoom">Zoom</button>
   </div>
+  <div id="link-popover" class="link-popover hidden" role="toolbar" aria-label="Link Options">
+    <span id="link-popover-url" class="link-popover-url"></span>
+    <button type="button" data-link-action="open" title="Open link">Open</button>
+    <button type="button" data-link-action="edit" title="Edit link">Edit</button>
+    <button type="button" data-link-action="unlink" title="Remove link">Unlink</button>
+  </div>
+  <div id="slash-menu" class="slash-menu hidden" role="listbox" aria-label="Insert block"></div>
   <div id="image-lightbox" class="hidden" role="dialog" aria-modal="true" aria-label="Image Preview">
     <div class="lightbox-backdrop"></div>
     <div class="lightbox-content">

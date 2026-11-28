@@ -85,6 +85,19 @@ export type WebviewInboundMessage =
   | { type: 'setTablePipeAlignment'; alignment: 'aligned' | 'compact' }
   | { type: 'log'; message: string }
   | { type: 'openNativePreview' }
+  | { type: 'openLink'; href: string }
+  | {
+      type: 'insertToc';
+      undoGroupId?: string;
+      selectionBefore?: EditorSelectionSnapshot;
+    }
+  | {
+      type: 'cursorStatus';
+      mode: EditorMode;
+      line: number;
+      column?: number;
+      selectedText?: string;
+    }
   | ({ type: 'testDiagnosticResponse'; requestId: string } & WebviewDiagnosticSnapshot);
 
 export interface VsCodeApi {

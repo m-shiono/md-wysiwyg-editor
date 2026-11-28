@@ -308,18 +308,29 @@ export interface HeadingItem {
   slug: string;
 }
 
+export interface OutlineHeadingItem extends HeadingItem {
+  line: number;
+  index: number;
+}
+
 /**
- * Parse all headings (H1-H6) from markdown text.
+ * Parse all headings (H1-H6) from markdown text with 1-based line numbers and order index.
  */
-export function extractHeadings(markdown: string): HeadingItem[] {
-  const headings: HeadingItem[] = [];
-  const { body } = splitYamlFrontmatter(markdown);
+export function extractOutlineHeadings(markdown: string): OutlineHeadingItem[] {
+  const headings: OutlineHeadingItem[] = [];
+  const fm = splitYamlFrontmatter(markdown);
+  const body = fm.body;
+  const frontmatterLineOffset =
+    fm.frontmatterBody !== null
+      ? markdown.slice(0, markdown.length - body.length).split(/\r?\n/).length - 1
+      : 0;
   const lines = body.split(/\r?\n/);
   let inCodeBlock = false;
 
   const slugCounts = new Map<string, number>();
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const trimmed = line.trim();
     if (trimmed.startsWith('```') || trimmed.startsWith('~~~')) {
       inCodeBlock = !inCodeBlock;
@@ -343,10 +354,48 @@ export function extractHeadings(markdown: string): HeadingItem[] {
         slug = `${slug}-${count}`;
       }
 
-      headings.push({ level, text: headingText, slug });
+      headings.push({
+        level,
+        text: headingText,
+        slug,
+        line: frontmatterLineOffset + i + 1,
+        index: headings.length,
+      });
     }
   }
   return headings;
+}
+
+/**
+ * Parse all headings (H1-H6) from markdown text.
+ */
+export function extractHeadings(markdown: string): HeadingItem[] {
+  return extractOutlineHeadings(markdown).map(({ level, text, slug }) => ({
+    level,
+    text,
+    slug,
+  }));
+}
+
+/**
+ * Find the UTF-16 offset of the start of a 1-based line number (clamped safely).
+ */
+export function findLineStartOffset(text: string, lineNumber: number): number {
+  if (!text || lineNumber <= 1) {
+    return 0;
+  }
+  let currentLine = 1;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '\n') {
+      currentLine++;
+      if (currentLine === lineNumber) {
+        return i + 1;
+      }
+    }
+  }
+  // Clamp to start of last line if lineNumber exceeds total lines
+  const lastNewline = text.lastIndexOf('\n');
+  return lastNewline === -1 ? 0 : lastNewline + 1;
 }
 
 /**

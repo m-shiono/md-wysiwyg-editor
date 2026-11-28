@@ -46,3 +46,7 @@ import './suite/unit/marp-preview-manager.test';
 import './suite/unit/issue-31-compat-and-security.test';
 import './suite/unit/auto-sync-dirty-fix.test';
 import './suite/unit/undo-redo.test';
+import './suite/unit/line-numbers-and-stats.test';
+import './suite/unit/document-outline.test';
+import './suite/unit/link-navigation.test';
+import './suite/unit/slash-commands.test';

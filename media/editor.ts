@@ -15,6 +15,21 @@ import {
   UndoGroupTracker,
   type UndoInputEvent,
 } from "../src/utils/undo-grouping";
+import {
+  computeLineColumnFromOffset,
+  estimateVisualLineNumber,
+} from "../src/utils/document-stats";
+import {
+  extractOutlineHeadings,
+  findLineStartOffset,
+  type OutlineHeadingItem,
+} from "../src/utils/editor-assist";
+import { classifyLinkHref } from "../src/utils/link-navigation";
+import {
+  detectSlashTrigger,
+  filterSlashCommands,
+  type SlashCommandItem,
+} from "../src/utils/slash-commands";
 import type { EditorSelectionSnapshot } from "../src/webviews/messages";
 import {
   applyImageSizePreset,
@@ -1897,6 +1912,779 @@ function getRawEditor(): HTMLTextAreaElement | null {
   return document.getElementById("raw-editor") as HTMLTextAreaElement | null;
 }
 
+function getRawLineNumbers(): HTMLElement | null {
+  return document.getElementById("raw-line-numbers");
+}
+
+let lastRawLineCount = 0;
+let lastRawActiveLine = -1;
+let cursorStatusTimer: ReturnType<typeof setTimeout> | undefined;
+const CURSOR_STATUS_DEBOUNCE_MS = 120;
+
+function updateRawLineNumbers(activeLine?: number): void {
+  const raw = getRawEditor();
+  const gutter = getRawLineNumbers();
+  if (!raw || !gutter) {
+    return;
+  }
+  const text = raw.value;
+  const lineCount = text.length === 0 ? 1 : text.split(/\r?\n/).length;
+  const currentLine =
+    activeLine ?? computeLineColumnFromOffset(text, raw.selectionStart).line;
+
+  if (lineCount !== lastRawLineCount) {
+    const frag = document.createDocumentFragment();
+    for (let i = 1; i <= lineCount; i++) {
+      const div = document.createElement("div");
+      div.className = i === currentLine ? "line-num active-line" : "line-num";
+      div.textContent = String(i);
+      frag.appendChild(div);
+    }
+    gutter.textContent = "";
+    gutter.appendChild(frag);
+    lastRawLineCount = lineCount;
+    lastRawActiveLine = currentLine;
+  } else if (currentLine !== lastRawActiveLine) {
+    const children = gutter.children;
+    if (lastRawActiveLine >= 1 && lastRawActiveLine <= children.length) {
+      children[lastRawActiveLine - 1]?.classList.remove("active-line");
+    }
+    if (currentLine >= 1 && currentLine <= children.length) {
+      children[currentLine - 1]?.classList.add("active-line");
+    }
+    lastRawActiveLine = currentLine;
+  }
+  gutter.scrollTop = raw.scrollTop;
+}
+
+function computeVisualCursorContext(): { line: number; selectedText: string } {
+  if (!editor) {
+    return { line: 1, selectedText: "" };
+  }
+  const { from, to } = editor.state.selection;
+  const selectedText =
+    from !== to ? editor.state.doc.textBetween(from, to, "\n") : "";
+  const $from = editor.state.selection.$from;
+  const topIndex = $from.depth >= 1 ? $from.index(0) : 0;
+  const totalBlocks = editor.state.doc.childCount;
+  const topNode =
+    topIndex >= 0 && topIndex < totalBlocks
+      ? editor.state.doc.child(topIndex)
+      : null;
+  const anchorText = topNode ? topNode.textContent : "";
+  const line = estimateVisualLineNumber(
+    latestMarkdownText,
+    anchorText,
+    topIndex,
+    totalBlocks,
+  );
+  return { line, selectedText };
+}
+
+function sendCursorStatusNow(): void {
+  if (editorMode === "raw") {
+    const raw = getRawEditor();
+    if (!raw) {
+      return;
+    }
+    const { line, column } = computeLineColumnFromOffset(
+      raw.value,
+      raw.selectionStart,
+    );
+    updateRawLineNumbers(line);
+    const start = Math.min(raw.selectionStart, raw.selectionEnd);
+    const end = Math.max(raw.selectionStart, raw.selectionEnd);
+    const selectedText = start !== end ? raw.value.slice(start, end) : "";
+    vscode.postMessage({
+      type: "cursorStatus",
+      mode: "raw",
+      line,
+      column,
+      selectedText,
+    });
+    return;
+  }
+  if (editorMode === "markdown") {
+    const { line, selectedText } = computeVisualCursorContext();
+    vscode.postMessage({
+      type: "cursorStatus",
+      mode: "markdown",
+      line,
+      selectedText,
+    });
+    return;
+  }
+  vscode.postMessage({
+    type: "cursorStatus",
+    mode: "preview",
+    line: 1,
+    selectedText: "",
+  });
+}
+
+function scheduleCursorStatusUpdate(immediate = false): void {
+  if (cursorStatusTimer) {
+    clearTimeout(cursorStatusTimer);
+    cursorStatusTimer = undefined;
+  }
+  if (immediate) {
+    sendCursorStatusNow();
+    return;
+  }
+  cursorStatusTimer = setTimeout(() => {
+    cursorStatusTimer = undefined;
+    sendCursorStatusNow();
+  }, CURSOR_STATUS_DEBOUNCE_MS);
+}
+
+let isOutlineOpen = false;
+let currentOutlineHeadings: OutlineHeadingItem[] = [];
+let lastOutlineSignature = "";
+let activeOutlineIndex = -1;
+
+function setActiveOutlineItem(index: number): void {
+  if (index === activeOutlineIndex) {
+    return;
+  }
+  activeOutlineIndex = index;
+  const list = document.getElementById("outline-list");
+  if (!list) {
+    return;
+  }
+  const items = list.querySelectorAll(".outline-item");
+  items.forEach((el) => {
+    const itemIdx = Number(el.getAttribute("data-heading-index"));
+    el.classList.toggle("active", itemIdx === index);
+  });
+}
+
+function renderOutline(force = false): void {
+  if (!isOutlineOpen && !force) {
+    return;
+  }
+  const list = document.getElementById("outline-list");
+  if (!list) {
+    return;
+  }
+  const sourceText =
+    editorMode === "raw" ? (getRawEditor()?.value ?? latestMarkdownText) : latestMarkdownText;
+  const headings = extractOutlineHeadings(sourceText);
+  const sig = JSON.stringify(headings);
+  if (!force && sig === lastOutlineSignature) {
+    return;
+  }
+  lastOutlineSignature = sig;
+  currentOutlineHeadings = headings;
+  list.textContent = "";
+
+  if (headings.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "outline-empty";
+    empty.textContent = "No headings";
+    list.appendChild(empty);
+    activeOutlineIndex = -1;
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  for (const h of headings) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = h.index === activeOutlineIndex ? "outline-item active" : "outline-item";
+    btn.setAttribute("role", "listitem");
+    btn.setAttribute("data-level", String(h.level));
+    btn.setAttribute("data-heading-index", String(h.index));
+    btn.setAttribute("data-line", String(h.line));
+    btn.setAttribute("data-slug", h.slug);
+    btn.title = h.text;
+    btn.textContent = h.text;
+    frag.appendChild(btn);
+  }
+  list.appendChild(frag);
+  updateActiveOutlineFromPosition();
+}
+
+function updateActiveOutlineFromPosition(): void {
+  if (!isOutlineOpen || currentOutlineHeadings.length === 0) {
+    return;
+  }
+  if (editorMode === "raw") {
+    const raw = getRawEditor();
+    if (!raw) {
+      return;
+    }
+    const { line } = computeLineColumnFromOffset(raw.value, raw.selectionStart);
+    let activeIdx = currentOutlineHeadings[0].index;
+    for (const h of currentOutlineHeadings) {
+      if (h.line <= line) {
+        activeIdx = h.index;
+      } else {
+        break;
+      }
+    }
+    setActiveOutlineItem(activeIdx);
+    return;
+  }
+  const container =
+    editorMode === "preview" && previewSurface === "marp"
+      ? document.getElementById("preview-marp-root")
+      : document.getElementById("editor");
+  if (!container) {
+    return;
+  }
+  const containerRect = container.getBoundingClientRect();
+  const headingEls = Array.from(container.querySelectorAll("h1, h2, h3, h4, h5, h6"));
+  if (headingEls.length === 0) {
+    return;
+  }
+  let activeIdx = currentOutlineHeadings[0]?.index ?? 0;
+  for (let i = 0; i < headingEls.length; i++) {
+    const rect = headingEls[i].getBoundingClientRect();
+    if (rect.top <= containerRect.top + 48) {
+      activeIdx = currentOutlineHeadings[i]?.index ?? i;
+    } else {
+      break;
+    }
+  }
+  setActiveOutlineItem(activeIdx);
+}
+
+function toggleOutlinePanel(forceOpen?: boolean): void {
+  const panel = document.getElementById("outline-panel");
+  const toggleBtn = document.querySelector(
+    '#mode-toolbar button[data-action="toggle-outline"]',
+  ) as HTMLElement | null;
+  const nextOpen = forceOpen !== undefined ? forceOpen : !isOutlineOpen;
+  isOutlineOpen = nextOpen;
+  if (panel) {
+    panel.classList.toggle("hidden", !nextOpen);
+  }
+  if (toggleBtn) {
+    toggleBtn.setAttribute("aria-pressed", String(nextOpen));
+    toggleBtn.classList.toggle("active", nextOpen);
+  }
+  if (nextOpen) {
+    renderOutline(true);
+  }
+}
+
+function jumpToOutlineHeading(item: OutlineHeadingItem): void {
+  if (editorMode === "raw") {
+    const raw = getRawEditor();
+    if (!raw) {
+      return;
+    }
+    const offset = findLineStartOffset(raw.value, item.line);
+    raw.setSelectionRange(offset, offset);
+    raw.focus();
+    const computedLineHeight =
+      typeof getComputedStyle === "function"
+        ? parseFloat(getComputedStyle(raw).lineHeight) || 21
+        : 21;
+    raw.scrollTop = Math.max(0, (item.line - 2) * computedLineHeight);
+    updateRawLineNumbers(item.line);
+    scheduleCursorStatusUpdate(true);
+    setActiveOutlineItem(item.index);
+    return;
+  }
+
+  const container =
+    editorMode === "preview" && previewSurface === "marp"
+      ? document.getElementById("preview-marp-root")
+      : document.getElementById("editor");
+  if (!container) {
+    return;
+  }
+  const headingEls = Array.from(container.querySelectorAll("h1, h2, h3, h4, h5, h6"));
+  const target =
+    headingEls[item.index] ??
+    headingEls.find((el) => (el.textContent ?? "").trim() === item.text);
+  if (target && typeof target.scrollIntoView === "function") {
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  setActiveOutlineItem(item.index);
+}
+
+function attachOutlineHandlers(): void {
+  const toggleBtn = document.querySelector(
+    '#mode-toolbar button[data-action="toggle-outline"]',
+  ) as HTMLElement | null;
+  if (toggleBtn && toggleBtn.dataset.bound !== "1") {
+    toggleBtn.dataset.bound = "1";
+    toggleBtn.addEventListener("click", () => {
+      toggleOutlinePanel();
+    });
+  }
+
+  const closeBtn = document.getElementById("outline-close-btn");
+  if (closeBtn && closeBtn.dataset.bound !== "1") {
+    closeBtn.dataset.bound = "1";
+    closeBtn.addEventListener("click", () => {
+      toggleOutlinePanel(false);
+    });
+  }
+
+  const list = document.getElementById("outline-list");
+  if (list && list.dataset.bound !== "1") {
+    list.dataset.bound = "1";
+    list.addEventListener("click", (event) => {
+      const target = (event.target as HTMLElement | null)?.closest(
+        ".outline-item",
+      ) as HTMLElement | null;
+      if (!target) {
+        return;
+      }
+      const idx = Number(target.getAttribute("data-heading-index"));
+      const item = currentOutlineHeadings.find((h) => h.index === idx);
+      if (item) {
+        jumpToOutlineHeading(item);
+      }
+    });
+  }
+
+  let outlineScrollTimer: ReturnType<typeof setTimeout> | undefined;
+  const editorEl = document.getElementById("editor");
+  if (editorEl && editorEl.dataset.outlineScrollBound !== "1") {
+    editorEl.dataset.outlineScrollBound = "1";
+    editorEl.addEventListener("scroll", () => {
+      if (!isOutlineOpen) {
+        return;
+      }
+      if (outlineScrollTimer) {
+        clearTimeout(outlineScrollTimer);
+      }
+      outlineScrollTimer = setTimeout(() => {
+        outlineScrollTimer = undefined;
+        updateActiveOutlineFromPosition();
+      }, 100);
+    });
+  }
+}
+
+let activeLinkHref = "";
+let activeLinkElement: HTMLElement | null = null;
+
+function getLinkPopover(): HTMLElement | null {
+  return document.getElementById("link-popover");
+}
+
+function hideLinkPopover(): void {
+  getLinkPopover()?.classList.add("hidden");
+  activeLinkHref = "";
+  activeLinkElement = null;
+}
+
+function showLinkPopover(anchorEl: HTMLElement, href: string): void {
+  const popover = getLinkPopover();
+  const urlEl = document.getElementById("link-popover-url");
+  if (!popover || !urlEl) {
+    return;
+  }
+  activeLinkHref = href;
+  activeLinkElement = anchorEl;
+  urlEl.textContent = href;
+  urlEl.title = href;
+  popover.classList.remove("hidden");
+  const rect = anchorEl.getBoundingClientRect();
+  const top = Math.max(8, Math.min((window.innerHeight || 600) - 40, rect.bottom + 6));
+  const left = Math.max(8, Math.min((window.innerWidth || 800) - 280, rect.left));
+  popover.style.top = `${top}px`;
+  popover.style.left = `${left}px`;
+}
+
+function selectActiveLinkInEditor(): void {
+  if (!editor || !activeLinkElement) {
+    return;
+  }
+  try {
+    const pos = editor.view.posAtDOM(activeLinkElement, 0);
+    const maxPos = editor.state.doc.content.size;
+    if (pos >= 0 && pos <= maxPos) {
+      const targetPos = pos + 1 <= maxPos ? pos + 1 : pos;
+      editor.chain().focus().setTextSelection(targetPos).extendMarkRange("link").run();
+    }
+  } catch {
+    // Fallback to current selection if DOM node is detached
+  }
+}
+
+function navigateToLinkHref(href: string): void {
+  const classified = classifyLinkHref(href);
+  if (classified.kind === "anchor") {
+    const headings = extractOutlineHeadings(latestMarkdownText);
+    const targetSlug = classified.slug.toLowerCase();
+    const found =
+      headings.find((h) => h.slug === classified.slug) ??
+      headings.find((h) => h.slug.toLowerCase() === targetSlug);
+    if (found) {
+      jumpToOutlineHeading(found);
+    }
+    return;
+  }
+  if (classified.kind === "external" || classified.kind === "relative") {
+    vscode.postMessage({ type: "openLink", href });
+  }
+}
+
+function attachLinkNavigationHandlers(): void {
+  const handleLinkContainerClick = (event: MouseEvent): void => {
+    const linkEl = (event.target as HTMLElement | null)?.closest(
+      "a[href]",
+    ) as HTMLAnchorElement | null;
+    if (!linkEl) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const href = linkEl.getAttribute("href") ?? "";
+    if (!href) {
+      return;
+    }
+    if (editorMode === "preview" || readonly) {
+      hideLinkPopover();
+      navigateToLinkHref(href);
+      return;
+    }
+    if (editorMode === "markdown") {
+      if (event.metaKey || event.ctrlKey) {
+        hideLinkPopover();
+        navigateToLinkHref(href);
+      } else {
+        showLinkPopover(linkEl, href);
+      }
+    }
+  };
+
+  for (const rootId of ["editor", "preview-marp-root"]) {
+    const rootEl = document.getElementById(rootId);
+    if (rootEl && rootEl.dataset.linkNavBound !== "1") {
+      rootEl.dataset.linkNavBound = "1";
+      rootEl.addEventListener("click", handleLinkContainerClick, true);
+    }
+  }
+
+  const popover = getLinkPopover();
+  if (popover && popover.dataset.bound !== "1") {
+    popover.dataset.bound = "1";
+    popover.addEventListener("click", (event) => {
+      const btn = (event.target as HTMLElement | null)?.closest(
+        "button[data-link-action]",
+      ) as HTMLElement | null;
+      if (!btn) {
+        return;
+      }
+      const action = btn.getAttribute("data-link-action");
+      if (action === "open") {
+        const href = activeLinkHref;
+        hideLinkPopover();
+        if (href) {
+          navigateToLinkHref(href);
+        }
+      } else if (action === "edit") {
+        selectActiveLinkInEditor();
+        hideLinkPopover();
+        showLinkInputBar();
+      } else if (action === "unlink") {
+        if (!readonly && editorMode === "markdown" && editor) {
+          selectActiveLinkInEditor();
+          flushPendingVisualUpdate();
+          nextVisualInputMeta = { kind: "command", timestamp: Date.now() };
+          editor.chain().focus().extendMarkRange("link").unsetLink().run();
+        }
+        hideLinkPopover();
+      }
+    });
+  }
+
+  if (document.body.dataset.linkDismissBound !== "1") {
+    document.body.dataset.linkDismissBound = "1";
+    document.addEventListener("mousedown", (event) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        !target?.closest("#link-popover") &&
+        !target?.closest("a[href]")
+      ) {
+        hideLinkPopover();
+      }
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        hideLinkPopover();
+      }
+    });
+  }
+}
+
+let slashMenuOpen = false;
+let slashMenuItems: SlashCommandItem[] = [];
+let slashMenuSelectedIndex = 0;
+let slashTriggerRange: { from: number; to: number } | null = null;
+
+function getSlashMenuEl(): HTMLElement | null {
+  return document.getElementById("slash-menu");
+}
+
+function hideSlashMenu(): void {
+  slashMenuOpen = false;
+  slashMenuItems = [];
+  slashMenuSelectedIndex = 0;
+  slashTriggerRange = null;
+  getSlashMenuEl()?.classList.add("hidden");
+}
+
+function renderSlashMenuItems(): void {
+  const menu = getSlashMenuEl();
+  if (!menu) {
+    return;
+  }
+  menu.textContent = "";
+  const frag = document.createDocumentFragment();
+  slashMenuItems.forEach((item, idx) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = idx === slashMenuSelectedIndex ? "slash-menu-item active" : "slash-menu-item";
+    btn.setAttribute("role", "option");
+    btn.setAttribute("aria-selected", String(idx === slashMenuSelectedIndex));
+    btn.setAttribute("data-slash-index", String(idx));
+    btn.setAttribute("data-slash-id", item.id);
+
+    const label = document.createElement("span");
+    label.className = "slash-menu-label";
+    label.textContent = item.label;
+
+    const desc = document.createElement("span");
+    desc.className = "slash-menu-desc";
+    desc.textContent = item.description;
+
+    btn.appendChild(label);
+    btn.appendChild(desc);
+    frag.appendChild(btn);
+  });
+  menu.appendChild(frag);
+  const activeEl = menu.querySelector(".slash-menu-item.active") as HTMLElement | null;
+  if (activeEl && typeof activeEl.scrollIntoView === "function") {
+    activeEl.scrollIntoView({ block: "nearest" });
+  }
+}
+
+function positionSlashMenu(pos: number): void {
+  const menu = getSlashMenuEl();
+  if (!menu || !editor) {
+    return;
+  }
+  let left = 24;
+  let top = 120;
+  try {
+    const coords = editor.view.coordsAtPos(pos);
+    left = Math.max(8, Math.min((window.innerWidth || 800) - 290, coords.left));
+    top = Math.max(8, Math.min((window.innerHeight || 600) - 270, coords.bottom + 6));
+  } catch {
+    const editorEl = document.getElementById("editor");
+    if (editorEl) {
+      const rect = editorEl.getBoundingClientRect();
+      left = rect.left + 24;
+      top = rect.top + 32;
+    }
+  }
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  menu.classList.remove("hidden");
+}
+
+function updateSlashMenuFromSelection(): void {
+  if (!editor || suppressUpdate || readonly || editorMode !== "markdown" || isVisualComposing) {
+    hideSlashMenu();
+    return;
+  }
+  const { from, to, $from } = editor.state.selection;
+  if (from !== to) {
+    hideSlashMenu();
+    return;
+  }
+  if ($from.parent.type.name === "codeBlock" || editor.isActive("code")) {
+    hideSlashMenu();
+    return;
+  }
+  const textBefore = $from.parent.textBetween(0, $from.parentOffset, undefined, "\ufffc");
+  const match = detectSlashTrigger(textBefore);
+  if (!match) {
+    hideSlashMenu();
+    return;
+  }
+  const filtered = filterSlashCommands(match.query);
+  if (filtered.length === 0) {
+    hideSlashMenu();
+    return;
+  }
+  slashMenuItems = filtered;
+  slashMenuSelectedIndex = 0;
+  slashTriggerRange = { from: from - match.matchLength, to: from };
+  slashMenuOpen = true;
+  renderSlashMenuItems();
+  positionSlashMenu(from);
+}
+
+function executeSlashCommand(item: SlashCommandItem): void {
+  if (!editor || readonly || editorMode !== "markdown" || !slashTriggerRange) {
+    hideSlashMenu();
+    return;
+  }
+  const range = slashTriggerRange;
+  hideSlashMenu();
+  flushPendingVisualUpdate();
+  nextVisualInputMeta = { kind: "command", timestamp: Date.now() };
+
+  switch (item.id) {
+    case "h1":
+      editor.chain().focus().deleteRange(range).setHeading({ level: 1 }).run();
+      break;
+    case "h2":
+      editor.chain().focus().deleteRange(range).setHeading({ level: 2 }).run();
+      break;
+    case "h3":
+      editor.chain().focus().deleteRange(range).setHeading({ level: 3 }).run();
+      break;
+    case "bulletList":
+      editor.chain().focus().deleteRange(range).toggleBulletList().run();
+      break;
+    case "orderedList":
+      editor.chain().focus().deleteRange(range).toggleOrderedList().run();
+      break;
+    case "taskList":
+      editor.chain().focus().deleteRange(range).toggleTaskList().run();
+      break;
+    case "table":
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+        .updateAttributes("table", { tableFormat: insertTableFormat })
+        .run();
+      break;
+    case "codeBlock":
+      editor.chain().focus().deleteRange(range).setCodeBlock().run();
+      break;
+    case "mermaid":
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .setCodeBlock({ language: "mermaid" })
+        .insertContent("flowchart TD\n  A[Start] --> B[End]")
+        .run();
+      break;
+    case "plantuml":
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .setCodeBlock({ language: "plantuml" })
+        .insertContent("@startuml\nAlice -> Bob: Hello\n@enduml")
+        .run();
+      break;
+    case "math":
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .setCodeBlock({ language: "math" })
+        .insertContent("E = mc^2")
+        .run();
+      break;
+    case "blockquote":
+      editor.chain().focus().deleteRange(range).toggleBlockquote().run();
+      break;
+    case "horizontalRule":
+      editor.chain().focus().deleteRange(range).setHorizontalRule().run();
+      break;
+    case "toc": {
+      const beforeSel = getCurrentVisualSelectionSnapshot();
+      editor.chain().focus().deleteRange(range).run();
+      flushPendingVisualUpdate();
+      vscode.postMessage({
+        type: "insertToc",
+        undoGroupId: visualUndoTracker.nextGroupId({ kind: "command" }),
+        selectionBefore: beforeSel,
+      });
+      return;
+    }
+  }
+  flushPendingVisualUpdate();
+}
+
+function attachSlashMenuHandlers(): void {
+  const menu = getSlashMenuEl();
+  if (menu && menu.dataset.bound !== "1") {
+    menu.dataset.bound = "1";
+    menu.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+    });
+    menu.addEventListener("click", (event) => {
+      const btn = (event.target as HTMLElement | null)?.closest(
+        ".slash-menu-item",
+      ) as HTMLElement | null;
+      if (!btn) {
+        return;
+      }
+      const idx = Number(btn.getAttribute("data-slash-index"));
+      const item = slashMenuItems[idx];
+      if (item) {
+        executeSlashCommand(item);
+      }
+    });
+  }
+
+  const editorEl = document.getElementById("editor");
+  if (editorEl && editorEl.dataset.slashKeyBound !== "1") {
+    editorEl.dataset.slashKeyBound = "1";
+    editorEl.addEventListener(
+      "keydown",
+      (event: KeyboardEvent) => {
+        if (!slashMenuOpen || isVisualComposing || event.isComposing) {
+          return;
+        }
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          event.stopPropagation();
+          slashMenuSelectedIndex =
+            (slashMenuSelectedIndex + 1) % slashMenuItems.length;
+          renderSlashMenuItems();
+        } else if (event.key === "ArrowUp") {
+          event.preventDefault();
+          event.stopPropagation();
+          slashMenuSelectedIndex =
+            (slashMenuSelectedIndex - 1 + slashMenuItems.length) %
+            slashMenuItems.length;
+          renderSlashMenuItems();
+        } else if (event.key === "Enter" || event.key === "Tab") {
+          event.preventDefault();
+          event.stopPropagation();
+          const item = slashMenuItems[slashMenuSelectedIndex];
+          if (item) {
+            executeSlashCommand(item);
+          }
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          hideSlashMenu();
+        }
+      },
+      true,
+    );
+  }
+
+  if (document.body.dataset.slashDismissBound !== "1") {
+    document.body.dataset.slashDismissBound = "1";
+    document.addEventListener("mousedown", (event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest("#slash-menu")) {
+        hideSlashMenu();
+      }
+    });
+  }
+}
+
 function getLinkInputBar(): HTMLElement | null {
   return document.getElementById("link-input-bar");
 }
@@ -2001,6 +2789,9 @@ function syncRawTextFromHost(
     lastCommittedRawSelection = {
       raw: { start: targetStart, end: targetEnd },
     };
+    if (editorMode === "raw") {
+      updateRawLineNumbers();
+    }
   };
   if (immediate) {
     if (rawSyncTimer) {
@@ -2628,6 +3419,7 @@ function attachVisualInputHandlers(): void {
       }
       flushPendingVisualUpdate();
       isVisualComposing = true;
+      hideSlashMenu();
       pendingVisualSelectionBefore =
         getCurrentVisualSelectionSnapshot() ?? lastCommittedVisualSelection;
     },
@@ -3025,6 +3817,8 @@ function applyMode(mode: EditorMode, notifyHost: boolean): void {
     ensureTipTapInitialized();
   }
   setModeUi(mode);
+  hideLinkPopover();
+  hideSlashMenu();
   if (mode === "raw") {
     const raw = getRawEditor();
     if (raw) {
@@ -3035,11 +3829,14 @@ function applyMode(mode: EditorMode, notifyHost: boolean): void {
       lastCommittedRawSelection = {
         raw: { start: raw.selectionStart, end: raw.selectionEnd },
       };
+      updateRawLineNumbers();
     }
   }
   if (notifyHost) {
     vscode.postMessage({ type: "setMode", editorMode: mode });
   }
+  scheduleCursorStatusUpdate(true);
+  renderOutline();
 }
 
 function initEditor(initialDoc: TipTapDoc): void {
@@ -3068,6 +3865,7 @@ function initEditor(initialDoc: TipTapDoc): void {
         ) {
           return;
         }
+        updateSlashMenuFromSelection();
         if (!pendingVisualGroupId) {
           const meta = nextVisualInputMeta ?? {
             kind: "command",
@@ -3110,6 +3908,7 @@ function initEditor(initialDoc: TipTapDoc): void {
     lastSyncedDocJsonStr = serializeDocForHost(editor.getJSON());
     lastCommittedVisualSelection = getCurrentVisualSelectionSnapshot();
     isEditorInitialized = true;
+    (window as unknown as Record<string, unknown>).__mdWysiwygEditor = editor;
     attachToolbarHandlers();
     attachLinkInputHandlers();
     attachCommonHandlers();
@@ -3117,9 +3916,12 @@ function initEditor(initialDoc: TipTapDoc): void {
     attachTableMenuHandlers();
     attachTableContextMenuHandlers();
     updateFormatToolbarPressedState();
-    editor.on("selectionUpdate", () => {
+    editor.on("selectionUpdate", ({ transaction }) => {
       updateFormatToolbarPressedState();
+      scheduleCursorStatusUpdate();
+      updateSlashMenuFromSelection();
       if (
+        !transaction.docChanged &&
         !suppressUpdate &&
         !isVisualComposing &&
         !pendingVisualGroupId &&
@@ -3165,6 +3967,7 @@ function applyExternalDoc(
     clearTimeout(visualUpdateTimer);
     visualUpdateTimer = undefined;
   }
+  hideSlashMenu();
   pendingVisualGroupId = undefined;
   pendingVisualSelectionBefore = undefined;
   nextVisualInputMeta = null;
@@ -3233,6 +4036,13 @@ function applyExternalDoc(
     lastSyncedDocJsonStr = serializeDocForHost(editor.getJSON());
     lastCommittedVisualSelection = getCurrentVisualSelectionSnapshot();
     updateTableMenuState();
+    if (options?.isUndoRedo && editorMode === "markdown") {
+      try {
+        editor.view.focus();
+      } catch {
+        // Ignore focus error in non-interactive DOM environments
+      }
+    }
   } finally {
     suppressUpdate = false;
   }
@@ -3324,6 +4134,9 @@ function attachModeToolbarHandlers(): void {
     });
   // Re-bind after mode-button clones so Default Preview keeps its click handler.
   attachNativePreviewHandler();
+  attachOutlineHandlers();
+  attachLinkNavigationHandlers();
+  attachSlashMenuHandlers();
 }
 
 /** Non-mode Default Preview — must not call applyMode / change editorMode. */
@@ -3547,7 +4360,29 @@ function attachRawEditorHandlers(): void {
       }
     }
     triggerRawUpdate(false);
+    updateRawLineNumbers();
+    scheduleCursorStatusUpdate();
+    renderOutline();
   });
+
+  raw.addEventListener("scroll", () => {
+    const gutter = getRawLineNumbers();
+    if (gutter) {
+      gutter.scrollTop = raw.scrollTop;
+    }
+  });
+
+  const syncRawCursorAndStatus = (): void => {
+    if (editorMode === "raw") {
+      updateRawLineNumbers();
+      scheduleCursorStatusUpdate();
+      updateActiveOutlineFromPosition();
+    }
+  };
+  raw.addEventListener("keyup", syncRawCursorAndStatus);
+  raw.addEventListener("click", syncRawCursorAndStatus);
+  raw.addEventListener("select", syncRawCursorAndStatus);
+  raw.addEventListener("focus", syncRawCursorAndStatus);
 
   raw.addEventListener("keydown", (e: KeyboardEvent) => {
     if (readonly || editorMode !== "raw") {
@@ -4692,6 +5527,8 @@ window.addEventListener("message", (event) => {
       syncRawTextFromHost(latestMarkdownText, true);
       // Ensure UI matches Host mode after init (DEFAULT may be raw before first paint).
       setModeUi(editorMode);
+      scheduleCursorStatusUpdate(true);
+      renderOutline(true);
       break;
     case "docUpdated":
       latestMarkdownText = message.markdownText ?? latestMarkdownText;
@@ -4701,6 +5538,8 @@ window.addEventListener("message", (event) => {
       if (typeof message.docJson !== "string") {
         // Markdown-originated sync (TC-067): markdownText only.
         scheduleRawTextUpdate(latestMarkdownText);
+        scheduleCursorStatusUpdate();
+        renderOutline();
         break;
       }
       pendingInitialDoc = JSON.parse(message.docJson);
@@ -4738,6 +5577,7 @@ window.addEventListener("message", (event) => {
           applyPreviewTipTap();
         }
       }
+      renderOutline();
       break;
     case "previewMarpHtml":
       if (editorMode === "preview" && typeof message.html === "string") {

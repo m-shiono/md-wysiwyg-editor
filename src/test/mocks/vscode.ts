@@ -70,6 +70,28 @@ export enum ViewColumn {
   Three = 3,
 }
 
+export enum StatusBarAlignment {
+  Left = 1,
+  Right = 2,
+}
+
+export interface MockStatusBarItem {
+  alignment: StatusBarAlignment;
+  priority: number | undefined;
+  text: string;
+  tooltip: string | undefined;
+  visible: boolean;
+  disposed: boolean;
+  show: () => void;
+  hide: () => void;
+  dispose: () => void;
+}
+
+const createdStatusBarItems: MockStatusBarItem[] = [];
+export function __getStatusBarItems(): MockStatusBarItem[] {
+  return createdStatusBarItems;
+}
+
 export enum ProgressLocation {
   SourceControl = 1,
   Window = 10,
@@ -862,6 +884,34 @@ const window = {
     return task({ report: () => undefined }, cts.token);
   },
   setStatusBarMessage: (_text: string, _hideAfterTimeout?: number): Disposable => new Disposable(),
+  createStatusBarItem: (
+    alignment = StatusBarAlignment.Left,
+    priority?: number,
+  ): MockStatusBarItem => {
+    const item: MockStatusBarItem = {
+      alignment,
+      priority,
+      text: '',
+      tooltip: undefined,
+      visible: false,
+      disposed: false,
+      show: () => {
+        item.visible = true;
+      },
+      hide: () => {
+        item.visible = false;
+      },
+      dispose: () => {
+        item.disposed = true;
+        item.visible = false;
+      },
+    };
+    createdStatusBarItems.push(item);
+    return item;
+  },
+  onDidChangeActiveTextEditor: (
+    _listener: (e: unknown) => unknown,
+  ): Disposable => new Disposable(),
   createOutputChannel: (name: string) => ({
     appendLine: (line: string): void => {
       recordedOutputLines.push(line);
@@ -1008,6 +1058,7 @@ export function resetVscodeMock(): void {
   };
   createdPanels.length = 0;
   createdWatchers.length = 0;
+  createdStatusBarItems.length = 0;
   registeredCommands.clear();
   registeredCustomEditors.clear();
   executedCommandCalls.length = 0;
